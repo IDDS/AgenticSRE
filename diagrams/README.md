@@ -1,5 +1,7 @@
 # 架构与诊断原理图
 
+系统介绍图片：[agenticsre-system-overview.png](agenticsre-system-overview.png)。该图使用内置 `imagegen` 生成，用于公开产品介绍；下列可编辑架构图提供更具体的组件与机制说明。
+
 | 图 | Mermaid 源文件 | 文档图片 | 可编辑场景 |
 |---|---|---|---|
 | 系统架构 | [system-architecture.mmd](system-architecture.mmd) | [SVG](system-architecture.svg) / [PNG](system-architecture.png) | [Excalidraw](system-architecture.excalidraw) |

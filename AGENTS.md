@@ -5,7 +5,7 @@ This workspace contains the AgenticSRE implementation and the research report
 
 When updating the report:
 
-- Treat Huawei 2012 Lab SOW reviewers as the primary audience.
+- Treat technical reviewers as the primary audience.
 - Prefer decision-ready analysis over outline-style bullets.
 - Keep claims traceable to cited papers, project artifacts, or reproducible
   local experiments.

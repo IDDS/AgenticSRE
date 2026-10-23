@@ -2,6 +2,10 @@
 
 > 面向通算与智算的 Agentic SRE：从可追溯证据产生假设，以受控调查完成诊断，通过审核、恢复验证和反馈记忆形成闭环。
 
+![AgenticSRE 系统介绍：证据驱动的智能运维](diagrams/agenticsre-system-overview.png)
+
+这张介绍图由 `imagegen` 生成，概括主要模块与控制关系；具体实现和两条诊断链路的审核边界见下文。
+
 ## 项目概述
 
 AgenticSRE 将告警压缩、假设驱动诊断、运维对象建模、受控处置和反馈记忆组织在同一个可审计工作流中。系统同时提供纯多智能体与 Agent+Skill 两条诊断链路，覆盖 Kubernetes 服务、微服务依赖和 vLLM 等被测对象；Web 页面通过 SSE 显示调查阶段、工具事件、观测引用与结果，也可以回放持久化的历史记录。
@@ -15,7 +19,7 @@ AgenticSRE 将告警压缩、假设驱动诊断、运维对象建模、受控处
 - 🧪 **假设与流程审计**：记录候选来源、可反驳条件和观测引用；多智能体由独立角色复核竞争假设，分歧进入有界补证与门禁，详见[诊断策略说明](docs/diagnostic-strategy.md)
 - 🤖 **多智能体协作**：专用智能体编排协作，支持链式/反应式/并行模式；多智能体链路不调用 Skill
 - 🧩 **Agent+Skill 独立链路**：告警、通算实验、智算实验可选择纯多智能体链路，或通过专用 Agent+Skill 入口调用 Skill 完成检测/诊断/自愈/验证
-- 📊 **告警压缩与根因推荐**：保留原文的分组、资源实例隔离、版本化审核与证据包诊断；[能力与边界](docs/alert-compression.md)。根因推荐准确率≥80%为目标，尚未通过独立生产样本验收
+- 📊 **告警压缩与根因推荐**：保留原文的分组、资源实例隔离、版本化审核与证据包诊断；[能力与边界](docs/alert-compression.md)。效果仍需通过独立样本评估
 - 🎯 **可审计置信度**：Raw/Hypothesis/Evidence/Quality/Specificity/History 六因子校准 + 证据不足/冲突动态 cap
 - 🔄 **受控记忆演化**：持久反馈收据、候选规则隔离、人工版本审核、范围准入和来源撤销；合格历史规则与事例为调查提供提示
 - 👁️ **过程可观测**：结构化阶段事件、工具输入输出、观测引用、审核记录与性能指标；可回放和导出
@@ -309,21 +313,6 @@ AgenticSRE/
     └── eval_tasks.yaml      # 测试任务定义
 ```
 
-## SOW 交付对照
+## 版本与验证
 
-| SOW要求 | AgenticSRE对应模块 | 状态 |
-|---------|-------------------|------|
-| 面向智算/通算的专用智能体 | agents/ (8个专用Agent) | ✅ |
-| 告警压缩与根因推荐 | agents/alert_compression.py + orchestrator/rca_engine.py | 已实现；效果验收待完成 |
-| 多智能体协作范式 | orchestrator/ (Pipeline/Daemon) | ✅ |
-| Skill 化运维能力 | skill_runtime/ + orchestrator/skill_bridge.py | ✅ |
-| 多智能体行为可观测性与验证 | observability/ (Tracer/Validator) | ✅ |
-| 假设推理的持续演化 | memory/ + orchestrator/rca_engine.py | ✅ |
-| 根因推荐准确率≥80% | eval/benchmark_runner.py | 目标；待独立事故样本验收 |
-| 根因定位准确率提升10% | memory/context_learner.py (持续演化) | 目标；待冻结基线与独立配对验收 |
-
-最近已上线的 2026-10-22 版本见[发布核验](docs/validation/agentic-sre-release-20261022.md)，不等同于当前 GitHub 源码快照。当前源码已完成远端离线全量回归 **2,023 项通过**；该结果验证软件契约，不能替代真实模型诊断准确率或记忆收益验收。
-
-## License
-
-Research Project — Huawei 2012 Lab
+最近已上线的 2026-10-22 版本见[发布核验](docs/validation/agentic-sre-release-20261022.md)，不等同于当前 GitHub 源码快照。最近一次远端离线全量回归 **2,023 项通过**，后续图文与展示措辞更新另做静态核验；这些结果不能替代真实模型诊断准确率或记忆收益验收。

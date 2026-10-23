@@ -30,7 +30,7 @@
 构建机必须安装 Docker，并能访问基础镜像、Python 软件源、Docker 官方静态
 二进制站点、GitHub Docker Compose 发布页和 Kubernetes kubectl 下载站点。
 受控网络可通过 `PYTHON_BASE_IMAGE`、`PIP_INDEX_URL`、`PIP_TRUSTED_HOST`
-指向华为内网镜像仓和 Python 制品库；这些仅影响联网构建机，客户现场不访问它们。
+指向组织内部的镜像仓和 Python 制品库；这些仅影响联网构建机，离线部署现场不访问它们。
 
 ### x86_64 客户机
 

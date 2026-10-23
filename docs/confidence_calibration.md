@@ -2,7 +2,7 @@
 
 ## 1. 文档目的
 
-本文档面向 AMS、华为 2012 实验室 SOW 评审人员以及 AgenticSRE 开发与运维人员，说明 RCA 结果中置信度的数据来源、大模型与规则脚本的责任边界、六因子计算方法、动态上限以及当前局限。
+本文档面向技术评审人员以及 AgenticSRE 开发与运维人员，说明 RCA 结果中置信度的数据来源、大模型与规则脚本的责任边界、六因子计算方法、动态上限以及当前局限。
 
 文档对应当前实现 `evidence_calibrated_v2`，核心代码位于 `orchestrator/confidence_calibrator.py`；Skill Runtime 的轻量路径为 `skill_evidence_calibrated_v2`。
 
