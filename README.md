@@ -322,7 +322,7 @@ AgenticSRE/
 | 根因推荐准确率≥80% | eval/benchmark_runner.py | 目标；待独立事故样本验收 |
 | 根因定位准确率提升10% | memory/context_learner.py (持续演化) | 目标；待冻结基线与独立配对验收 |
 
-本次版本的提交、部署、回归与验收边界见[2026-10-22 发布核验](docs/validation/agentic-sre-release-20261022.md)。
+最近已上线的 2026-10-22 版本见[发布核验](docs/validation/agentic-sre-release-20261022.md)，不等同于当前 GitHub 源码快照。当前源码已完成远端离线全量回归 **2,023 项通过**；该结果验证软件契约，不能替代真实模型诊断准确率或记忆收益验收。
 
 ## License
 
