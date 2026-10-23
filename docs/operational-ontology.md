@@ -81,3 +81,46 @@ RCA 页面生成方案时携带服务端 run 与 ontology revision。服务端�
 `workload-provenance/v2` 标识新的来源投影。旧快照没有来源字段，不等于当时没有来源声明；混合版本比较会明确缺口并跳过不兼容的来源字段。无可比较变化也不能证明两次采集之间没有发布或短暂变更。报告 JSON 的 `lineage_comparisons`、预览和 HTML 导出包含每个对象最近两份快照的相同派生比较，时间等条件不成立时显式记录 `not_comparable`。这些比较未经过原诊断审核，不能单独当作故障因果。
 
 本阶段仍未连接外部 Git、镜像注册表或 CI/CD 服务，未核验提交、签名、构建证明或发布事件。实现与真实/合成样本的分别验收见 [来源与变化验收](../outputs/provenance-20261020/verification.md)。
+
+## Service 后端关系
+
+`skill_runtime/service_topology.py` 为同一次调查补充 Service、EndpointSlice、Pod、ReplicaSet 与工作负载模板之间的结构化关系。该纯数据模块放在已有镜像/发布包复制目录中，供两条链路共享解析，不执行 Skill。EventAgent 保留原有状态采集，遇到具有 UID 的 Service 时，额外进行两次有十秒超时的只读采集：Pod/ReplicaSet 与 EndpointSlice。健康 Pod 也保留身份与标签，避免只看异常 Pod 时遗漏健康后端。Skill 的已确认成功结构化结果使用同一字段投影；这不代表 Skill 已自动执行同样的额外采集。
+
+自动采集当前覆盖 Deployment/ReplicaSet 控制链；其他工作负载需要另有已保存的结构化观测。仅在 ownerReference 中出现、尚未实际读到的控制器，不会因此获得新增的已核验控制关系。
+
+| 关系 | 依据与限制 |
+|---|---|
+| `selects_pod` | 同集群、namespace 内，真实 Service selector 与 Pod 标签逐项相等；不根据服务名生成 `app=服务名` |
+| `matches_workload_template` | selector 与工作负载模板标签匹配；允许匹配多个工作负载，不等于运行时归属或故障因果 |
+| `controlled_by` | 两端对象均已观测，且 `controller=true` 的 ownerReference 与目标 UID 一致 |
+| `has_endpoint_slice` | Service 名称标签及 ownerReference 的名称、UID 同时匹配 |
+| `endpoint_slice_label_association` | 手工维护的无 Service ownerReference 的 Slice，仅记录名称标签关联，不宣称已验证 Service 实例 |
+| `endpoint_targets_pod` | targetRef 的 kind/name/namespace/UID 与已观测 Pod 一致；不按 IP 猜测 Pod 身份 |
+
+新增关系均保留两端的观测引用、观测时间和非原子采集声明。跨范围、缺少 UID、同名多实例及同一身份的冲突结构不能生成已核验关系；不对 opaque resourceVersion 排序来猜“最新”。历史或审核节选不升级为当前资源事实。
+
+EndpointSlice 的 `ready`、`serving`、`terminating` 保留原值，并按 Kubernetes API 的 nil 默认语义给出有效值。`publishNotReadyAddresses` 情况单独记录；ready 为 true、选择器匹配或动作执行成功都不能证明业务健康。没有 selector、ExternalName、采集失败、分页未完成和超出上限不会自动被判断为选择器错误或“零端点”。字段语义依据 [EndpointSlice API](https://kubernetes.io/docs/reference/kubernetes-api/discovery/endpoint-slice-v1/) 与 [Service](https://kubernetes.io/docs/concepts/services-networking/service/)。
+
+实际集群还可能将空 `endpoints` 数组编码为显式 `null`。投影将其规范为空数组并保留 `endpoint_array_encoding=null_as_empty`；完全缺少该字段仍按数据不完整处理，不能据此判定端点为空。
+
+投影只保留身份、标签、ownerReferences、模板标签、必要状态与端点引用，不保存 env 或任意注解。一次采集最多保留 1024 个拓扑资源，单个 Slice 最多 1000 个端点；超过上限或字段类型错误明确保留缺口，不把截断数据当作完整空集。
+
+这些关系补足事实关联，不等于解决所有 Service 诊断错误、建立跨调查历史 CMDB 或新增执行授权。诊断闭环中的目标聚焦、独立模型评估与业务恢复验证仍分别验收。
+
+### 2026-10-23 验证结果
+
+远端禁网容器中，31 项 Service 拓扑专项回归及完整 2054 项回归通过。原有关系缺失反例在修改前为 16 项失败、1 项通过；真实 API 的空端点 null 编码另有两项修复前失败记录。测试覆盖实例重建、跨范围、冲突版本、手工 Slice、非法字段、截断及既有 API/报告的版本一致性。
+
+发布复制规则的回归也先验证了根目录新增模块会被遗漏；共享模块移入已有复制目录后通过。远端复用现有依赖镜像，按实际应用 COPY 指令构建复制层，在无源码挂载的容器中导入 Ontology、EventAgent 与共享模块成功。该检查验证应用源码打包，不代替从头重建依赖或生产部署。
+
+真实 Train Ticket 业务的三个服务，其后端 Pod UID 集合均与 Kubernetes API 的 selector 查询一致，回滚后的五次原生查票请求成功。限时 selector 注入时，观测关系呈现一个后端、零后端、恢复一个后端，独立 watchdog 实际完成恢复，之后三个连续窗口各五次查询均成功。
+
+这次 selector 实验的两次故障期查询仍满足预设的成功条件，因此 `business_impact_verified=false`，结果保留为 `failed_acceptance`，不作为通过的业务故障案例。首次实验遇到 null 编码异常后也已回滚并保留失败记录。上述实验没有验证模型根因诊断准确性，也不应进入已证实正确的诊断记忆。
+
+### 采集完整度传播与发布复验
+
+发布审查补充修正了非法资源行、投影失败及字段不完整仍可能标为完整采集的路径。现在这些情况沿 `topology_collection → collection_errors → collection_history` 保留为 partial；成功采集的事实继续保存，策略早停不能将该批次当作完整正向证据，Ontology 同时显示 `collection_incomplete`。
+
+六项原生调用链回归包含一个健康对照及五个非法输入分支；冻结旧源码上先得到五项失败、一个通过。修正后的最终发布候选在远端禁网容器中通过全部 37 项专项及 2060 项完整回归；40 项现有弃用警告仍保留。相同候选的应用 COPY 层镜像导入检查通过，未替换生产服务。这些回归验证数据与门禁契约，不代表已测得模型诊断准确率或跨调查记忆收益。
+
+进一步的模型、映射、时态与动作治理设计见 [Ontology 构建方法与落地方案](research/ontology-construction-20261023.md)。该文中的后续阶段属于研究建议。
