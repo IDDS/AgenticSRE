@@ -1,0 +1,43 @@
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.git/
+.gitignore
+.claude/
+.pycache_tmp/
+.DS_Store
+**/.DS_Store
+._*
+**/._*
+
+# Runtime/local state. These are mounted at runtime instead of baked into images.
+data/
+logs/
+.env
+
+# Generated release artifacts.
+*.tar
+*.tar.gz
+*.tgz
+agenticsre-release-*/
+release/
+
+# Heavy research/reference material that is not required by the runtime image.
+doc/
+report/
+测试/
+运维多智能体协作技术研究项目SOW.docx
+
+# The customer offline image includes hermes-agent. Its local development and
+# VCS metadata are still excluded below to keep the build context deterministic.
+hermes-agent/.git/
+hermes-agent/.venv/
+hermes-agent/__pycache__/
+hermes-agent/**/__pycache__/
+hermes-agent/tests/
+hermes-agent/docs/
+
+# Keep eval source and scenario YAMLs, but do not bake historical result dumps.
+eval/results/*
+!eval/results/.gitkeep

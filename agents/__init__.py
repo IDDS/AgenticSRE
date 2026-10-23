@@ -13,6 +13,7 @@ from agents.detection_agent import DetectionAgent, DetectionSignal
 from agents.planning_agent import PlanningAgent
 from agents.remediation_agent import RemediationAgent
 from agents.profiling_agent import ProfilingAgent
+from agents.llm_inference_agent import LLMInferenceAgent
 
 __all__ = [
     "MetricAgent", "LogAgent", "TraceAgent", "EventAgent",
@@ -20,4 +21,5 @@ __all__ = [
     "HypothesisAgent", "Hypothesis",
     "CorrelationAgent", "DetectionAgent", "DetectionSignal",
     "PlanningAgent", "RemediationAgent", "ProfilingAgent",
+    "LLMInferenceAgent",
 ]

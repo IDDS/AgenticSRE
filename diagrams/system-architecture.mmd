@@ -1,0 +1,41 @@
+graph TB
+    UI["交互入口 · Web / API / MCP"]
+    DAEMON["持续检测 · Daemon / Pipeline"]
+    subgraph ENGINES["两条独立诊断链路"]
+        RCA["多智能体 · RCA Engine"]
+        AGENTS["专用 Agent · 采集 / 假设 / 规划 / 推理 / Judge"]
+        SKILL["Agent+Skill · SkillAgent"]
+        RUNTIME["Skill Runtime · 检测 / 诊断 / 自愈 / 验证"]
+        RCA --> AGENTS
+        SKILL --> RUNTIME
+    end
+    subgraph CONTEXT["调查上下文"]
+        ONTOLOGY["Ontology · 对象 / 观测 / 关系 / 动作"]
+        MEMORY["记忆 · 范围准入 / 候选审核 / 撤销"]
+        AUDIT["审计 · 持久轨迹 / 事件 / SSE"]
+    end
+    TOOLS["受控工具 · K8s / 指标 / 日志 / Trace"]
+    OBS["观测后端 · Prometheus / ES / Jaeger"]
+    TARGET["被测系统 · Kubernetes / 服务 / vLLM"]
+    GATE["处置门禁 · 审核 / 版本 / 风险 / 审批"]
+    ACTION["受控执行 · 回滚保护 / 独立恢复验证"]
+    UI --> RCA
+    UI --> SKILL
+    DAEMON --> RCA
+    AGENTS --> TOOLS
+    RUNTIME --> TOOLS
+    TOOLS --> OBS
+    TOOLS --> TARGET
+    RCA <--> CONTEXT
+    SKILL <--> CONTEXT
+    CONTEXT -.-> UI
+    RCA --> GATE
+    SKILL --> GATE
+    GATE --> ACTION
+    ACTION --> TARGET
+    classDef entry fill:#eaf0fb,stroke:#315b95,color:#17324e
+    classDef engine fill:#e7f4f1,stroke:#2c7968,color:#163f36
+    classDef guard fill:#fff3df,stroke:#a86b23,color:#62401b
+    class UI,DAEMON entry
+    class RCA,AGENTS,SKILL,RUNTIME engine
+    class GATE,ACTION guard

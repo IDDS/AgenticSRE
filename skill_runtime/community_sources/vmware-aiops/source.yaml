@@ -1,0 +1,22 @@
+source: vmware-aiops-skill
+name: VMware AIOps Skill
+trust_level: external-reference
+license: unknown
+homepage: https://medium.com/@zhouwei008/goodbye-manual-ops-how-i-built-an-ai-skill-that-lets-30-tools-manage-vmware-with-natural-language-1102d167a77b
+repository: zw008/VMware-AIops
+description: External VMware operations skill reference describing natural-language access to a VMware tool surface. Treat as an infrastructure skill design reference until source, license, and exact tool behavior are reviewed.
+integration_mode: reference_then_manual_mirror
+allowed_use:
+  - Use as a design reference for infrastructure skill boundaries.
+  - Mirror reviewed read-only VMware inventory, health, alarm, and capacity checks into local disabled drafts.
+  - Keep execution behind vSphere CLI/API profiles configured outside skill files.
+blocked_use:
+  - Do not execute VMware write operations from imported content.
+  - Do not store vCenter, ESXi, or SSO credentials in skill manifests or bundled resources.
+  - Do not enable VM power, snapshot, migration, datastore, or network mutation without approval, rollback, and verification.
+security_notes:
+  - Start with read-only inventory and alarm diagnostics.
+  - Split read-only skills from high-risk remediation skills.
+  - Require double confirmation for VM power actions, snapshot deletion, host maintenance, vMotion, and datastore changes.
+  - Record command/API provenance so operator review can audit every generated action.
+tags: [vmware, vcenter, esxi, virtualization, infrastructure, aiops, skill]

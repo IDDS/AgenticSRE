@@ -1,0 +1,761 @@
+version: '2026-08-06'
+description: AgenticSRE self-healing recipe library, externalized from built-in recipes.
+recipes:
+- fault_type: OOMKilled
+  category: 资源
+  risk: medium
+  requires_approval: true
+  description: 容器被 OOMKilled，优先滚动重启或提高 Deployment 内存上限。
+  signals:
+  - OOMKilled
+  - exit code 137
+  - memory limit
+  actions:
+  - step: 滚动重启受影响 Deployment
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+  - step: 查看 Pod 资源使用
+    command: kubectl top pod <pod> -n <namespace>
+    rollback_command: ''
+    risk: low
+- fault_type: PodCrashLoop
+  category: 应用
+  risk: medium
+  requires_approval: true
+  description: Pod 反复崩溃，先采集日志，再重启或回滚 Deployment。
+  signals:
+  - CrashLoopBackOff
+  - Back-off restarting failed container
+  actions:
+  - step: 采集最近容器日志
+    command: kubectl logs <pod> -n <namespace> --tail=120 --previous
+    rollback_command: ''
+    risk: low
+  - step: 回滚 Deployment 到上一版本
+    command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    rollback_command: ''
+    risk: medium
+- fault_type: ImagePullError
+  category: 镜像
+  risk: medium
+  requires_approval: true
+  description: 镜像拉取失败，建议修正镜像 tag 或 imagePullSecret 后触发 rollout。
+  signals:
+  - ImagePullBackOff
+  - ErrImagePull
+  actions:
+  - step: 查看镜像拉取事件
+    command: kubectl describe pod <pod> -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 查看 Deployment 当前镜像并记录回滚信息
+    command: kubectl get deployment <deployment> -n <namespace> -o jsonpath='{.spec.template.spec.containers[*].image}'
+    rollback_command: ''
+    risk: low
+  - step: 恢复到已验证镜像
+    command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    rollback_command: ''
+    risk: medium
+  - step: 重启 Deployment 重新拉取镜像
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+- fault_type: NodeNotReady
+  category: 节点
+  risk: high
+  requires_approval: true
+  manual_only: true
+  auto_recovery_supported: false
+  automation_class: manual_only
+  description: 节点不可用，先 cordon 隔离并检查节点事件，必要时驱逐业务。
+  signals:
+  - NodeNotReady
+  - node is not ready
+  actions:
+  - step: 隔离不可用节点
+    command: kubectl cordon <node>
+    rollback_command: kubectl uncordon <node>
+    risk: high
+  - step: 查看节点详情
+    command: kubectl describe node <node>
+    rollback_command: ''
+    risk: low
+- fault_type: MetricAnomaly
+  category: 指标
+  risk: low
+  requires_approval: false
+  description: 指标异常先做只读确认，避免误修复。
+  signals:
+  - metric
+  - prometheus
+  - anomaly
+  - 指标
+  actions:
+  - step: 查看相关 Pod 资源使用
+    command: kubectl top pod -n <namespace>
+    rollback_command: ''
+    risk: low
+- fault_type: ProbeFailure
+  category: 应用
+  risk: medium
+  requires_approval: true
+  description: Readiness/Liveness 探针失败，先查看事件和 rollout 状态，再执行滚动重启。
+  signals:
+  - Unhealthy
+  - readiness probe failed
+  - liveness probe failed
+  - probe
+  actions:
+  - step: 查看 Pod 事件与探针失败原因
+    command: kubectl describe pod <pod> -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 滚动重启受影响 Deployment
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+- fault_type: PendingScheduling
+  category: 调度
+  risk: low
+  requires_approval: false
+  description: Pod Pending 或 FailedScheduling，优先只读确认资源、污点和调度失败事件。
+  signals:
+  - FailedScheduling
+  - Pending
+  - Insufficient cpu
+  - Insufficient memory
+  actions:
+  - step: 查看 Pod 调度失败详情
+    command: kubectl describe pod <pod> -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 查看节点资源水位
+    command: kubectl top node
+    rollback_command: ''
+    risk: low
+- fault_type: HighCpu
+  category: 资源
+  risk: low
+  requires_approval: false
+  description: CPU 使用率异常，默认只读确认热点 Pod，避免误扩缩容。
+  signals:
+  - cpu
+  - CPU
+  - node_cpu_usage
+  - container_cpu
+  actions:
+  - step: 查看命名空间内 Pod CPU 使用
+    command: kubectl top pod -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 查看 Deployment rollout 状态
+    command: kubectl rollout status deployment/<deployment> -n <namespace>
+    rollback_command: ''
+    risk: low
+- fault_type: HighMemory
+  category: 资源
+  risk: medium
+  requires_approval: true
+  description: 内存使用率异常或接近 OOM，先确认资源水位，再选择滚动重启或扩容。
+  signals:
+  - memory
+  - 内存
+  - node_memory_usage
+  - container_memory
+  actions:
+  - step: 查看命名空间内 Pod 内存使用
+    command: kubectl top pod -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 滚动重启疑似内存泄漏 Deployment
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+- fault_type: HighCPUUsage
+  category: 资源
+  risk: medium
+  requires_approval: true
+  description: CPU 使用率持续高位，参考 agenticSnail 的热点定位、资源调优、滚动恢复三段式策略。
+  signals:
+  - HighCPU
+  - cpu usage
+  - container_cpu
+  - node_cpu_usage
+  actions:
+  - step: 按 CPU 排序定位热点 Pod
+    command: kubectl top pod -n <namespace> --sort-by=cpu
+    rollback_command: ''
+    risk: low
+  - step: 提高 Deployment CPU limit
+    command: kubectl set resources deployment/<deployment> -n <namespace> --requests=cpu=500m
+      --limits=1500m
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+  - step: 滚动重启使 CPU 配置生效
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+- fault_type: HighMemoryUsage
+  category: 资源
+  risk: medium
+  requires_approval: true
+  description: 内存热点或泄漏风险，先定位内存最高 Pod，再提升 limit 或重建异常副本。
+  signals:
+  - HighMemory
+  - memory usage
+  - container_memory
+  - node_memory_usage
+  actions:
+  - step: 按内存排序定位热点 Pod
+    command: kubectl top pod -n <namespace> --sort-by=memory
+    rollback_command: ''
+    risk: low
+  - step: 提高 Deployment memory limit
+    command: kubectl set resources deployment/<deployment> -n <namespace> --requests=memory=512Mi
+      --limits=2Gi
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+  - step: 滚动重启疑似内存泄漏 Deployment
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+- fault_type: DiskPressure
+  category: 节点
+  risk: high
+  requires_approval: true
+  description: 节点 DiskPressure 时先收集节点 Conditions，必要时隔离并迁移工作负载。
+  signals:
+  - DiskPressure
+  - disk pressure
+  - filesystem pressure
+  - disk full
+  actions:
+  - step: 查看节点磁盘压力和驱逐事件
+    command: kubectl describe node <node>
+    rollback_command: ''
+    risk: low
+  - step: 隔离磁盘压力节点
+    command: kubectl cordon <node>
+    rollback_command: kubectl uncordon <node>
+    risk: medium
+  - step: 驱逐节点工作负载释放调度压力
+    command: kubectl drain <node> --ignore-daemonsets --delete-emptydir-data --force
+      --timeout=120s
+    rollback_command: kubectl uncordon <node>
+    risk: high
+- fault_type: DNSResolution
+  category: 网络
+  risk: medium
+  requires_approval: true
+  description: DNS 解析异常时检查 kube-dns 端点，必要时滚动重启 CoreDNS。
+  signals:
+  - dns
+  - coredns
+  - kube-dns
+  - lookup timeout
+  actions:
+  - step: 检查 kube-dns Endpoints
+    command: kubectl get endpoints kube-dns -n kube-system -o wide
+    rollback_command: ''
+    risk: low
+  - step: 滚动重启 CoreDNS
+    command: kubectl rollout restart deployment/coredns -n kube-system
+    rollback_command: ''
+    risk: medium
+  - step: 验证 CoreDNS Pod 状态
+    command: kubectl get pods -n kube-system -l k8s-app=kube-dns -o wide
+    rollback_command: ''
+    risk: low
+- fault_type: KubeProxyUnhealthy
+  category: 网络
+  risk: medium
+  requires_approval: true
+  description: kube-proxy 不健康时检查 DaemonSet 与 Pod，必要时触发 DaemonSet 滚动重启。
+  signals:
+  - kube-proxy
+  - KubeProxyDown
+  - proxy rules
+  actions:
+  - step: 查看 kube-proxy Pod 分布
+    command: kubectl get pods -n kube-system -l k8s-app=kube-proxy -o wide
+    rollback_command: ''
+    risk: low
+  - step: 重启 kube-proxy DaemonSet
+    command: kubectl rollout restart ds/kube-proxy -n kube-system
+    rollback_command: ''
+    risk: medium
+  - step: 等待 kube-proxy 发布完成
+    command: kubectl rollout status ds/kube-proxy -n kube-system
+    rollback_command: ''
+    risk: low
+- fault_type: ApiServerUnhealthy
+  category: 控制面
+  risk: high
+  requires_approval: true
+  manual_only: true
+  auto_recovery_supported: false
+  automation_class: manual_only
+  description: API Server 异常属于控制面高风险故障，只允许在审批后重建异常静态 Pod。
+  signals:
+  - apiserver
+  - kube-apiserver
+  - TargetDown
+  actions:
+  - step: 查看 API Server 静态 Pod
+    command: kubectl get pods -n kube-system -l component=kube-apiserver -o wide
+    rollback_command: ''
+    risk: low
+  - step: 查看 API Server 事件详情
+    command: kubectl describe pod -n kube-system -l component=kube-apiserver
+    rollback_command: ''
+    risk: low
+  - step: 删除异常 API Server Pod 触发 kubelet 重建
+    command: kubectl delete pod -n kube-system -l component=kube-apiserver
+    rollback_command: ''
+    risk: high
+- fault_type: EtcdUnhealthy
+  category: 控制面
+  risk: high
+  requires_approval: true
+  manual_only: true
+  auto_recovery_supported: false
+  automation_class: manual_only
+  description: etcd 异常属于控制面存储高风险故障，默认只诊断，重建动作需审批和风险确认。
+  signals:
+  - etcd
+  - etcdserver
+  - leader changed
+  actions:
+  - step: 查看 etcd 静态 Pod
+    command: kubectl get pods -n kube-system -l component=etcd -o wide
+    rollback_command: ''
+    risk: low
+  - step: 查看 etcd Pod 事件
+    command: kubectl describe pod -n kube-system -l component=etcd
+    rollback_command: ''
+    risk: low
+  - step: 重建异常 etcd Pod
+    command: kubectl delete pod -n kube-system -l component=etcd
+    rollback_command: ''
+    risk: high
+- fault_type: KubeletUnhealthy
+  category: 节点
+  risk: high
+  requires_approval: true
+  description: kubelet 不健康时先隔离节点，必要时迁移工作负载，主机级 kubelet 重启留给人工执行。
+  signals:
+  - kubelet
+  - KubeletDown
+  - node agent
+  actions:
+  - step: 查看节点 Conditions
+    command: kubectl describe node <node>
+    rollback_command: ''
+    risk: low
+  - step: 隔离 kubelet 异常节点
+    command: kubectl cordon <node>
+    rollback_command: kubectl uncordon <node>
+    risk: medium
+  - step: 驱逐节点工作负载
+    command: kubectl drain <node> --ignore-daemonsets --delete-emptydir-data --force
+      --timeout=120s
+    rollback_command: kubectl uncordon <node>
+    risk: high
+- fault_type: VolumeMountFailed
+  category: 存储
+  risk: medium
+  requires_approval: true
+  manual_only: true
+  auto_recovery_supported: false
+  automation_class: manual_only
+  description: 挂载失败时检查 PV/PVC/Pod 事件，必要时重建 Pod 触发 kubelet 重新挂载。
+  signals:
+  - FailedMount
+  - MountVolume
+  - FailedAttachVolume
+  actions:
+  - step: 查看 Pod 挂载失败事件
+    command: kubectl describe pod <pod> -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 查看命名空间 PVC 状态
+    command: kubectl get pvc -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+  - step: 删除挂载异常 Pod 触发重新挂载
+    command: kubectl delete pod <pod> -n <namespace> --grace-period=30
+    rollback_command: ''
+    risk: medium
+- fault_type: ConfigMissing
+  category: 配置
+  risk: medium
+  requires_approval: true
+  manual_only: true
+  auto_recovery_supported: false
+  automation_class: manual_only
+  description: ConfigMap/Secret 缺失时先定位引用关系，不自动生成未知业务配置，仅允许重建 Pod 重新挂载已补齐配置。
+  signals:
+  - configmap not found
+  - secret not found
+  - not registered
+  actions:
+  - step: 查看 Pod 配置引用和事件
+    command: kubectl describe pod <pod> -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 列出命名空间 ConfigMap/Secret
+    command: kubectl get configmap,secret -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 配置补齐后重建 Pod
+    command: kubectl delete pod <pod> -n <namespace> --grace-period=30
+    rollback_command: ''
+    risk: medium
+- fault_type: ConfigKeyMissing
+  category: 配置
+  risk: low
+  requires_approval: true
+  manual_only: true
+  auto_recovery_supported: false
+  automation_class: manual_only
+  description: ConfigMap 已存在但 key 缺失，默认只诊断和触发配置补齐后的重建，避免写入错误默认值。
+  signals:
+  - non-existent config key
+  - references non-existent key
+  actions:
+  - step: 查看 Pod 中缺失 key 的引用
+    command: kubectl describe pod <pod> -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 导出命名空间 ConfigMap 供人工核对
+    command: kubectl get configmap -n <namespace> -o yaml
+    rollback_command: ''
+    risk: low
+  - step: 配置补齐后滚动重启 Deployment
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+- fault_type: SchedulingFailed
+  category: 调度
+  risk: medium
+  requires_approval: true
+  description: 调度失败时检查资源请求、污点、配额，必要时调整副本或资源以恢复可调度性。
+  signals:
+  - FailedScheduling
+  - Unschedulable
+  - Insufficient cpu
+  - Insufficient memory
+  actions:
+  - step: 查看 Pod 调度失败事件
+    command: kubectl describe pod <pod> -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 查看节点资源水位
+    command: kubectl top node
+    rollback_command: ''
+    risk: low
+  - step: 查看命名空间 ResourceQuota
+    command: kubectl describe resourcequota -n <namespace>
+    rollback_command: ''
+    risk: low
+- fault_type: ResourceQuotaExceeded
+  category: 容量
+  risk: medium
+  requires_approval: true
+  description: 命名空间配额不足时先输出配额和使用量，配额调整需人工确认后执行。
+  signals:
+  - exceeded quota
+  - ResourceQuota
+  - 'forbidden: quota'
+  actions:
+  - step: 查看 ResourceQuota 摘要
+    command: kubectl get resourcequota -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 查看 ResourceQuota 明细
+    command: kubectl describe resourcequota -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 查看命名空间资源使用
+    command: kubectl top pod -n <namespace>
+    rollback_command: ''
+    risk: low
+- fault_type: HPAScalingFailed
+  category: 弹性伸缩
+  risk: medium
+  requires_approval: true
+  description: HPA 扩缩容失败时检查 scaleTargetRef、metrics-server 和目标 Deployment，必要时临时固定副本数。
+  signals:
+  - FailedGetScale
+  - FailedGetResourceMetric
+  - FailedComputeMetricsReplicas
+  actions:
+  - step: 查看 HPA 状态
+    command: kubectl get hpa -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+  - step: 查看 metrics APIService
+    command: kubectl get apiservice v1beta1.metrics.k8s.io
+    rollback_command: ''
+    risk: low
+  - step: 临时固定 Deployment 副本数
+    command: kubectl scale deployment/<deployment> -n <namespace> --replicas=1
+    rollback_command: ''
+    risk: medium
+- fault_type: DeploymentUnhealthy
+  category: 应用
+  risk: medium
+  requires_approval: true
+  description: Deployment 副本不健康或探针失败，先确认 rollout 和 endpoints，再重启或回滚。
+  signals:
+  - readiness probe failed
+  - liveness probe failed
+  - replicas unavailable
+  actions:
+  - step: 检查 Deployment 发布状态
+    command: kubectl rollout status deployment/<deployment> -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 检查服务端点
+    command: kubectl get endpoints <service> -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+  - step: 滚动重启 Deployment
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+  - step: 回滚到上一稳定版本
+    command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    rollback_command: ''
+    risk: medium
+- fault_type: NetworkPolicyDeny
+  category: 网络
+  risk: low
+  requires_approval: true
+  description: NetworkPolicy 疑似阻断合法流量时默认只审计策略，不自动删除网络策略。
+  signals:
+  - NetworkPolicy
+  - egress denied
+  - ingress denied
+  - network deny
+  actions:
+  - step: 查看命名空间 NetworkPolicy
+    command: kubectl get networkpolicy -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 查看 NetworkPolicy 明细
+    command: kubectl describe networkpolicy -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 查看服务 Endpoints
+    command: kubectl get endpoints -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+- fault_type: HighLatency
+  category: 性能
+  risk: medium
+  requires_approval: true
+  description: P99 延迟或超时升高时先检查 endpoints 和资源热点，必要时扩容或滚动重启。
+  signals:
+  - latency
+  - timeout
+  - p99
+  - slow
+  actions:
+  - step: 检查服务 Endpoints
+    command: kubectl get endpoints <service> -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+  - step: 查看资源热点
+    command: kubectl top pod -n <namespace> --sort-by=cpu
+    rollback_command: ''
+    risk: low
+  - step: 滚动重启高延迟 Deployment
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+  - step: 临时扩容分摊流量
+    command: kubectl scale deployment/<deployment> -n <namespace> --replicas=2
+    rollback_command: ''
+    risk: medium
+- fault_type: ServiceUnavailable
+  category: 应用
+  risk: medium
+  requires_approval: true
+  description: 服务 5xx 或不可用时检查 Service/Endpoints/Deployment，优先恢复副本可用性。
+  signals:
+  - ServiceUnavailable
+  - 5xx
+  - no endpoints
+  - connection refused
+  actions:
+  - step: 检查 Service Endpoints
+    command: kubectl get endpoints <service> -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+  - step: 检查 Deployment 状态
+    command: kubectl get deployment <deployment> -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+  - step: 恢复 Deployment 至 1 个副本
+    command: kubectl scale deployment/<deployment> -n <namespace> --replicas=1
+    rollback_command: kubectl scale deployment/<deployment> -n <namespace> --replicas=0
+    risk: medium
+  - step: 滚动重启 Deployment
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+- fault_type: LLMGPUResourcePressure
+  category: 智算
+  risk: high
+  requires_approval: true
+  description: vLLM GPU OOM、CUDA OOM、KV Cache 高水位或显存压力，先确认 DCGM/vLLM 指标，再受控重启或限流恢复。
+  signals:
+  - gpu_oom
+  - CUDA out of memory
+  - KV Cache
+  - vllm:gpu_cache_usage_perc
+  - DCGM_FI_DEV_FB_USED
+  actions:
+  - step: 查看 vLLM Pod 分布和重启状态
+    command: kubectl get pods -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+  - step: 查看命名空间资源水位
+    command: kubectl top pod -n <namespace> --sort-by=memory
+    rollback_command: ''
+    risk: low
+  - step: 审批后滚动重启 vLLM Deployment 释放异常显存状态
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+- fault_type: LLMBusinessSLODegraded
+  category: 智算
+  risk: medium
+  requires_approval: true
+  description: vLLM 请求时延、TTFT/TPOT、等待队列或成功率异常，先确认业务 SLO 和端点，再执行受控扩容或重启。
+  signals:
+  - TTFT
+  - TPOT
+  - latency
+  - vllm:num_requests_waiting
+  - request_success
+  actions:
+  - step: 查看 vLLM Pod 和 Service 状态
+    command: kubectl get pods,svc,endpoints -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+  - step: 查看资源热点
+    command: kubectl top pod -n <namespace> --sort-by=cpu
+    rollback_command: ''
+    risk: low
+  - step: 审批后临时扩容 vLLM Deployment
+    command: kubectl scale deployment/<deployment> -n <namespace> --replicas=2
+    rollback_command: kubectl scale deployment/<deployment> -n <namespace> --replicas=1
+    risk: medium
+  - step: 审批后滚动重启高延迟 vLLM Deployment
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+- fault_type: TargetDown
+  category: 监控
+  risk: low
+  requires_approval: false
+  description: Prometheus TargetDown 先做目标发现和 endpoints 只读确认，避免把监控丢失误判为业务故障。
+  signals:
+  - TargetDown
+  - scrape failed
+  - target disappeared
+  actions:
+  - step: 查看命名空间 Service 和 Endpoints
+    command: kubectl get svc,endpoints -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+  - step: 查看相关 Pod 状态
+    command: kubectl get pods -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+- fault_type: LogErrorSpike
+  category: 应用
+  risk: medium
+  requires_approval: true
+  description: 错误日志突增时先采样最近日志，若与发布相关再滚动重启或回滚。
+  signals:
+  - error spike
+  - log error
+  - ERROR rate
+  actions:
+  - step: 采集最近错误日志样本
+    command: kubectl logs <pod> -n <namespace> --tail=500
+    rollback_command: ''
+    risk: low
+  - step: 查看 Deployment 发布历史
+    command: kubectl rollout history deployment/<deployment> -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 回滚疑似问题发布
+    command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    rollback_command: ''
+    risk: medium
+- fault_type: KubeDeploymentReplicasMismatch
+  category: 应用
+  risk: medium
+  requires_approval: true
+  description: Deployment 期望副本和可用副本不一致，检查 ReplicaSet/Events 后滚动恢复。
+  signals:
+  - KubeDeploymentReplicasMismatch
+  - replicas mismatch
+  actions:
+  - step: 查看 Deployment 副本状态
+    command: kubectl get deployment <deployment> -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+  - step: 查看 ReplicaSet 状态
+    command: kubectl get rs -n <namespace> -o wide
+    rollback_command: ''
+    risk: low
+  - step: 滚动重启 Deployment 恢复副本
+    command: kubectl rollout restart deployment/<deployment> -n <namespace>
+    rollback_command: kubectl rollout undo deployment/<deployment> -n <namespace>
+    risk: medium
+- fault_type: NodeClockNotSynchronising
+  category: 节点
+  risk: low
+  requires_approval: false
+  description: 节点时钟不同步会影响证书、日志和控制面选主，当前系统只做 K8s 侧诊断并升级人工处理。
+  signals:
+  - NodeClockNotSynchronising
+  - clock skew
+  - time sync
+  actions:
+  - step: 查看节点 Conditions
+    command: kubectl describe node <node>
+    rollback_command: ''
+    risk: low
+  - step: 查看节点列表和版本
+    command: kubectl get nodes -o wide
+    rollback_command: ''
+    risk: low
+- fault_type: AppArmorProfileUnsupported
+  category: 安全
+  risk: low
+  requires_approval: true
+  manual_only: true
+  auto_recovery_supported: false
+  automation_class: manual_only
+  description: AppArmor/vArmor profile 不兼容导致容器创建失败时，默认只定位安全策略和 Pod 事件，不自动放宽安全边界。
+  signals:
+  - AppArmor
+  - vArmor
+  - CreateContainerError
+  - profile unsupported
+  actions:
+  - step: 查看 Pod 创建失败事件
+    command: kubectl describe pod <pod> -n <namespace>
+    rollback_command: ''
+    risk: low
+  - step: 查看命名空间 Pod 状态
+    command: kubectl get pods -n <namespace> -o wide
+    rollback_command: ''
+    risk: low

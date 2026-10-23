@@ -1,0 +1,32 @@
+id: llm.model_repository_access
+version: 0.1.0
+name: 模型仓库与对象存储访问诊断
+domain: llm
+description: Diagnose model repository, object storage, token, cache, download, checksum, and shard access failures.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, http.read, storage.read, k8s.write.secret]
+tool_dependencies: [kubectl, curl, object-storage-cli]
+tags: [llm, model, repository, object-storage, cache, token, shard]
+icon: archive
+category: 智算模型
+matching:
+  keywords:
+    - model repository
+    - object storage
+    - huggingface token
+    - hf token
+    - model cache
+    - checksum mismatch
+    - shard download
+    - 模型仓库
+    - 对象存储
+    - 分片下载
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.84
+  min_confidence_for_auto_heal: 0.98
+entrypoint: skill.py

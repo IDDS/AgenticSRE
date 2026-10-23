@@ -1,0 +1,17 @@
+id: k8s.scheduling_failed
+version: 0.1.0
+name: K8s Scheduling Failed
+domain: k8s
+description: Detect, diagnose, and propose read-only remediation guidance for Kubernetes scheduling failures caused by resource, taint, or quota constraints.
+stages: [detect, diagnose, verify]
+risk: low
+permissions: [k8s.read]
+tool_dependencies: [kubectl]
+tags: [kubernetes, scheduling, pending, quota, taint]
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.78
+  min_confidence_for_auto_heal: 0.9

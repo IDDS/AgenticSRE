@@ -1,0 +1,230 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vllm-prometheus-config
+  namespace: llm-k8s
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 5s
+      evaluation_interval: 5s
+    scrape_configs:
+      - job_name: vllm-k8s
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - vllm-server.llm-k8s.svc.cluster.local:8000
+            labels:
+              cluster: t4-vllm-k8s
+              service: vllm
+              instance: vllm-server
+      - job_name: gpu-dcgm
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - ${GPU_EXPORTER_NODE_1}:9400
+            labels:
+              cluster: t4-vllm-k8s
+              service: gpu
+              instance: ${GPU_EXPORTER_NODE_1_NAME}
+          - targets:
+              - ${GPU_EXPORTER_NODE_2}:9400
+            labels:
+              cluster: t4-vllm-k8s
+              service: gpu
+              instance: ${GPU_EXPORTER_NODE_2_NAME}
+      - job_name: node-exporter
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - ${GPU_EXPORTER_NODE_1}:9100
+            labels:
+              cluster: t4-vllm-k8s
+              service: node
+              instance: ${GPU_EXPORTER_NODE_1_NAME}
+              node: ${GPU_EXPORTER_NODE_1_NAME}
+          - targets:
+              - ${GPU_EXPORTER_NODE_2}:9100
+            labels:
+              cluster: t4-vllm-k8s
+              service: node
+              instance: ${GPU_EXPORTER_NODE_2_NAME}
+              node: ${GPU_EXPORTER_NODE_2_NAME}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: agenticsre-node-exporter
+  namespace: llm-k8s
+  labels:
+    app: agenticsre-node-exporter
+    app.kubernetes.io/name: agenticsre-node-exporter
+    app.kubernetes.io/part-of: agenticsre
+spec:
+  selector:
+    matchLabels:
+      app: agenticsre-node-exporter
+  template:
+    metadata:
+      labels:
+        app: agenticsre-node-exporter
+        app.kubernetes.io/name: agenticsre-node-exporter
+        app.kubernetes.io/part-of: agenticsre
+    spec:
+      hostNetwork: true
+      hostPID: true
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: node-exporter
+          image: quay.io/prometheus/node-exporter:v1.8.2
+          imagePullPolicy: IfNotPresent
+          args:
+            - --path.procfs=/host/proc
+            - --path.sysfs=/host/sys
+            - --path.rootfs=/host/root
+            - --web.listen-address=:9100
+            - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($|/)
+            - --collector.netdev.device-exclude=^(veth.*|cali.*|flannel.*|docker.*|lo)$
+          ports:
+            - name: metrics
+              containerPort: 9100
+              hostPort: 9100
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+          volumeMounts:
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: root
+              mountPath: /host/root
+              readOnly: true
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: root
+          hostPath:
+            path: /
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agenticsre-node-exporter
+  namespace: llm-k8s
+  labels:
+    app: agenticsre-node-exporter
+    app.kubernetes.io/name: agenticsre-node-exporter
+    app.kubernetes.io/part-of: agenticsre
+spec:
+  clusterIP: None
+  selector:
+    app: agenticsre-node-exporter
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: metrics
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-prometheus
+  namespace: llm-k8s
+  labels:
+    app: vllm-prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-prometheus
+  template:
+    metadata:
+      labels:
+        app: vllm-prometheus
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: ${VLLM_PROMETHEUS_NODE_NAME}
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: prometheus
+          image: quay.io/prometheus/prometheus@sha256:87861b8cf91579109319ebc300f3f1060e6da9c05d6ae8ad15a20c879e84e32e
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=6h
+            - --web.enable-lifecycle
+            - --storage.tsdb.retention.size=512MB
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+              ephemeral-storage: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          ports:
+            - name: web
+              containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: vllm-prometheus-config
+        - name: data
+          emptyDir:
+            sizeLimit: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-prometheus
+  namespace: llm-k8s
+  labels:
+    app: vllm-prometheus
+spec:
+  selector:
+    app: vllm-prometheus
+  type: NodePort
+  ports:
+    - name: web
+      port: 9090
+      targetPort: 9090
+      nodePort: 30090

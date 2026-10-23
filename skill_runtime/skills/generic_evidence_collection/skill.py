@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, List
+from skill_runtime.kubectl_safety import readonly_kubectl_args
+
+
+def _payload(context: Dict[str, Any]) -> Dict[str, Any]:
+    return context.get("payload") or {}
+
+
+def _namespace(payload: Dict[str, Any]) -> str:
+    return str(payload.get("namespace") or "default")
+
+
+def _target_commands(payload: Dict[str, Any]) -> List[str]:
+    namespace = _namespace(payload)
+    service = payload.get("service") or ""
+    deployment = payload.get("deployment") or ""
+    pod = payload.get("pod") or ""
+    supplied = payload.get("investigation_commands")
+    if isinstance(supplied, list) and supplied:
+        return ["kubectl " + command.removeprefix("kubectl ") for command in supplied[:4] if isinstance(command, str)]
+    commands = [f"kubectl get pods -n {namespace} -o wide",
+                f"kubectl get events -n {namespace} --sort-by=.lastTimestamp"]
+    if pod:
+        commands.extend([f"kubectl logs {pod} -n {namespace} --tail=40",
+                         f"kubectl describe pod {pod} -n {namespace}"])
+    elif service:
+        commands.extend([f"kubectl describe svc {service} -n {namespace}",
+                         f"kubectl get endpoints {service} -n {namespace} -o wide"])
+    elif deployment:
+        commands.append(f"kubectl describe deployment {deployment} -n {namespace}")
+    return commands
+
+
+def detect(context: Dict[str, Any]) -> Dict[str, Any]:
+    payload = _payload(context)
+    matched = bool(payload.get("fault_type") or payload.get("message") or payload.get("diagnosis"))
+    return {
+        "status": "matched" if matched else "skipped",
+        "confidence": 0.74 if matched else 0.0,
+        "summary": "生成通用证据采集计划" if matched else "缺少故障上下文，无法生成证据采集计划",
+        "evidence": ["存在故障上下文"] if matched else [],
+    }
+
+
+def diagnose(context: Dict[str, Any]) -> Dict[str, Any]:
+    payload = _payload(context)
+    commands = _target_commands(payload)
+    tool_results = []
+    tools = context.get("tools")
+    if tools and hasattr(tools, "execute"):
+        for command in commands:
+            stripped = command.strip()
+            if not stripped.startswith("kubectl "):
+                continue
+            kubectl_command = stripped[len("kubectl "):]
+            try:
+                args = readonly_kubectl_args(kubectl_command, _namespace(payload))
+            except ValueError:
+                continue
+            if any(a in {"-A", "--all-namespaces"} or a.startswith("--all-namespaces=") for a in args):
+                continue
+            if any(a.startswith(("--raw", "--filename", "--kustomize")) or a in {"-f", "-k"} for a in args):
+                continue
+            if any(resource.split("/")[0].split(".")[0].casefold() in {"secret", "secrets"}
+                   for arg in args for resource in arg.split(",")):
+                continue
+            verb = kubectl_command.split()[0] if kubectl_command.split() else ""
+            if verb not in {"get", "describe", "logs", "top", "events", "cluster-info", "version"}:
+                continue
+            tool_results.append(tools.execute("kubectl", command=kubectl_command, namespace=_namespace(payload)))
+            if len(tool_results) >= 4:
+                break
+        # Model-proposed names/selectors are hypotheses too. Empty selections do
+        # not establish that a workload is absent: discover actual Pod names and
+        # read a bounded set of current logs before giving up.
+        def useful(result):
+            sample = str(result.get("data") or result.get("sample") or "").strip()
+            return result.get("executed") and result.get("success") and sample and not sample.startswith("No resources found")
+
+        if tool_results and not any(useful(result) for result in tool_results):
+            discovery = "get pods -o jsonpath='{.items[*].metadata.name}'"
+            inventory = tools.execute("kubectl", command=discovery, namespace=_namespace(payload))
+            tool_results.append(inventory)
+            if useful(inventory):
+                names = [name for name in str(inventory.get("data") or inventory.get("sample") or "").split()
+                         if re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,252}", name)]
+                target = str(payload.get("pod") or "")
+                names = sorted(set(names), key=lambda name: (name != target, name))
+                for name in names[:3]:
+                    tool_results.append(tools.execute("kubectl", command=f"logs {name} --tail=40", namespace=_namespace(payload)))
+    evidence = ["证据采集命令已生成"]
+    executed = [item for item in tool_results if item.get("executed") and item.get("success")
+                and str(item.get("data") or item.get("sample") or "").strip()
+                and not str(item.get("data") or item.get("sample") or "").startswith("No resources found")]
+    if executed:
+        evidence.append(f"已执行 {len(executed)} 个只读证据采集工具调用")
+    return {
+        "status": "ok",
+        "confidence": 0.76 if executed else 0.68,
+        "summary": f"需要采集 {len(commands)} 类证据，再进入根因诊断。" if not executed else f"已采集 {len(executed)} 个只读证据样本，仍需结合完整证据诊断。",
+        "evidence": evidence,
+        "fault_type": payload.get("fault_type") or "EvidenceCollection",
+        "root_cause": "RCA 前证据不足，需要先采集多源证据",
+        "root_cause_component": payload.get("deployment") or payload.get("service") or _namespace(payload),
+        "commands": commands,
+        "tool_results": tool_results,
+    }

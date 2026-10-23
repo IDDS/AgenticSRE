@@ -32,6 +32,11 @@ class EvolutionSnapshot:
     judge_score: float = 0.0
     paradigm_name: str = ""
     incident_query: str = ""
+    # Stage-2 dimensions — surfaced after the recall/feedback loop was wired end-to-end.
+    rules_recalled_count: int = 0
+    rules_used_count: int = 0
+    avg_rule_quality_score: float = 0.0
+    fault_type: str = ""
 
 
 class EvolutionTracker:
@@ -68,7 +73,11 @@ class EvolutionTracker:
         if self._snapshot_file.exists():
             try:
                 data = json.loads(self._snapshot_file.read_text(encoding="utf-8"))
-                self._snapshots = [EvolutionSnapshot(**s) for s in data[-self._max:]]
+                known = {f for f in EvolutionSnapshot.__dataclass_fields__}
+                self._snapshots = [
+                    EvolutionSnapshot(**{k: v for k, v in s.items() if k in known})
+                    for s in data[-self._max:]
+                ]
             except Exception as e:
                 logger.warning("Failed to load evolution snapshots: %s", e)
 
@@ -107,6 +116,7 @@ class EvolutionTracker:
                 stats = fault_store.stats()
                 snap.rule_count = stats.get("rules_count", 0)
                 snap.fault_context_count = stats.get("faults_count", 0)
+                snap.avg_rule_quality_score = float(stats.get("avg_quality_score", 0) or 0)
             except Exception:
                 pass
 
@@ -130,6 +140,10 @@ class EvolutionTracker:
             snap.rca_latency_s = rca_result.get("metrics", {}).get("latency_s", 0)
             judge = rca_result.get("judge", {})
             snap.judge_score = judge.get("combined_score", 0)
+            snap.fault_type = str(result.get("fault_type", "") or "")[:60]
+            used_ids = result.get("used_rule_ids") or []
+            snap.rules_recalled_count = len(used_ids)
+            snap.rules_used_count = len(used_ids)
 
         snap.paradigm_name = paradigm_name
         snap.incident_query = (incident_query or "")[:200]
@@ -138,15 +152,24 @@ class EvolutionTracker:
         self._save()
 
         logger.info(
-            "[Evolution] Snapshot recorded: rules=%d faults=%d conf=%.2f",
-            snap.rule_count, snap.fault_context_count, snap.rca_confidence,
+            "[Evolution] Snapshot recorded: rules=%d (used=%d avg_q=%.2f) faults=%d conf=%.2f type=%s",
+            snap.rule_count, snap.rules_used_count, snap.avg_rule_quality_score,
+            snap.fault_context_count, snap.rca_confidence, snap.fault_type or "?",
         )
         return asdict(snap)
 
-    def get_evolution_report(self) -> Dict:
-        """Generate a comprehensive evolution report with trends."""
+    def get_evolution_report(self, fault_store=None) -> Dict:
+        """Generate a comprehensive evolution report with trends.
+
+        Pass `fault_store` to enable data-driven recommendations that scan real rule state
+        (never-hit rules, low-quality high-traffic rules, conflicting conclusions).
+        """
         if not self._snapshots:
-            return {"total_snapshots": 0, "summary": "No evolution data yet."}
+            return {
+                "total_snapshots": 0,
+                "summary": "No evolution data yet.",
+                "recommendations": ["Run RCA or paradigm evaluations to create evolution snapshots."],
+            }
 
         first = self._snapshots[0]
         last = self._snapshots[-1]
@@ -168,7 +191,7 @@ class EvolutionTracker:
         else:
             trend = "stable"
 
-        return {
+        report = {
             "total_snapshots": len(self._snapshots),
             "time_range": {
                 "first": time.strftime("%Y-%m-%d %H:%M", time.localtime(first.timestamp)),
@@ -194,13 +217,128 @@ class EvolutionTracker:
                     "average_score": sum(judge_scores) / max(len(judge_scores), 1),
                     "reviews_needed": sum(1 for s in judge_scores if s < 0.65),
                 },
+                "rule_usage": {
+                    "avg_recalled_per_incident": round(
+                        sum(s.rules_recalled_count for s in self._snapshots) / max(len(self._snapshots), 1), 2
+                    ),
+                    "incidents_with_zero_recall": sum(1 for s in self._snapshots if s.rules_recalled_count == 0),
+                    "latest_avg_quality": round(last.avg_rule_quality_score, 3),
+                },
             },
+            "by_fault_type": self._slice_by_fault_type(),
             "summary": (
                 f"System has processed {len(self._snapshots)} incidents over {span_hours:.1f}h. "
                 f"Knowledge base: {last.rule_count} rules, {last.fault_context_count} fault contexts. "
                 f"Confidence trend: {trend}."
             ),
         }
+        report["recommendations"] = self.recommendations(fault_store=fault_store)
+        return report
+
+    def _slice_by_fault_type(self) -> Dict[str, Dict]:
+        """Group snapshots by fault_type and aggregate per-type metrics."""
+        buckets: Dict[str, List[EvolutionSnapshot]] = {}
+        for s in self._snapshots:
+            key = s.fault_type or "unknown"
+            buckets.setdefault(key, []).append(s)
+
+        out: Dict[str, Dict] = {}
+        for ftype, items in buckets.items():
+            confs = [x.rca_confidence for x in items if x.rca_confidence > 0]
+            lats = [x.rca_latency_s for x in items if x.rca_latency_s > 0]
+            judges = [x.judge_score for x in items if x.judge_score > 0]
+            out[ftype] = {
+                "count": len(items),
+                "avg_confidence": round(sum(confs) / max(len(confs), 1), 3) if confs else 0,
+                "avg_latency_s": round(sum(lats) / max(len(lats), 1), 2) if lats else 0,
+                "avg_judge_score": round(sum(judges) / max(len(judges), 1), 3) if judges else 0,
+                "avg_rules_recalled": round(sum(x.rules_recalled_count for x in items) / len(items), 2),
+            }
+        return out
+
+    def recommendations(self, window: int = 20, fault_store=None) -> List[str]:
+        """Generate actionable evolution recommendations.
+
+        When `fault_store` is provided, scans the real rule corpus to surface concrete
+        rule-level actions (never-hit, high-traffic-low-quality, conflicts) instead of
+        only firing on aggregate-threshold heuristics.
+        """
+        recent = self._snapshots[-window:]
+        if not recent:
+            return ["Run RCA or paradigm evaluations to create evolution snapshots."]
+
+        recs: List[str] = []
+
+        # ── Rule-level (data-driven, from fault_store) ──
+        if fault_store is not None:
+            try:
+                rules = fault_store.list_rules(limit=1000)
+                now = time.time()
+                week_ago = now - 7 * 86400
+
+                never_hit = [
+                    r for r in rules
+                    if int(float(r.get("usage_count", 0) or 0)) == 0
+                    and float(r.get("created_at", r.get("timestamp", now)) or now) < week_ago
+                    and r.get("status", "active") == "active"
+                ]
+                if never_hit:
+                    ids = [str(r.get("rule_id", ""))[:14] for r in never_hit[:5]]
+                    recs.append(
+                        f"Retire {len(never_hit)} rules unused for 7+ days: {', '.join(ids)}"
+                        + ("…" if len(never_hit) > 5 else "")
+                    )
+
+                high_traffic_low_q = [
+                    r for r in rules
+                    if int(float(r.get("usage_count", 0) or 0)) >= 5
+                    and float(r.get("quality_score", r.get("confidence", 1)) or 1) < 0.4
+                ]
+                if high_traffic_low_q:
+                    ids = [str(r.get("rule_id", ""))[:14] for r in high_traffic_low_q[:5]]
+                    recs.append(
+                        f"Human-review {len(high_traffic_low_q)} high-traffic rules with quality<0.4: "
+                        f"{', '.join(ids)}" + ("…" if len(high_traffic_low_q) > 5 else "")
+                    )
+
+                if hasattr(fault_store, "governance_report"):
+                    gov = fault_store.governance_report()
+                    conflicts = gov.get("conflicts", [])
+                    if conflicts:
+                        recs.append(
+                            f"Resolve {len(conflicts)} conflicting rule clusters "
+                            f"(same condition, divergent conclusions) — first: "
+                            f"{conflicts[0].get('condition', '')[:80]}"
+                        )
+            except Exception as e:
+                logger.warning("recommendations: fault_store scan failed: %s", e)
+
+        # ── Snapshot-level (aggregate signals from recent runs) ──
+        avg_judge = sum(s.judge_score for s in recent) / max(len(recent), 1)
+        low_quality = sum(1 for s in recent if s.judge_score and s.judge_score < 0.65)
+        avg_conf = sum(s.rca_confidence for s in recent) / max(len(recent), 1)
+        avg_latency = sum(s.rca_latency_s for s in recent) / max(len(recent), 1)
+        zero_recall = sum(1 for s in recent if s.rules_recalled_count == 0)
+
+        if recent[-1].rule_count == 0:
+            recs.append("Seed the memory store with verified RCA rules before running enriched mode.")
+        if low_quality:
+            recs.append(f"Route {low_quality} recent low-quality RCA results through HITL review before auto-learning.")
+        if avg_judge and avg_judge < 0.65:
+            recs.append("Tighten evidence requirements in prompts; judge quality is below the learning threshold.")
+        if avg_conf and avg_conf < 0.55:
+            recs.append("Increase cross-signal evidence collection or add scenario-specific rules for low-confidence incidents.")
+        if avg_latency > 120:
+            recs.append("Reduce max evidence iterations or prefer plan-and-execute for time-sensitive incidents.")
+        if zero_recall >= max(3, len(recent) // 2):
+            recs.append(
+                f"{zero_recall}/{len(recent)} recent incidents had zero rule recall — "
+                "memory may be under-populated or condition phrasing diverges from incident queries."
+            )
+        if len(recent) >= 4 and recent[-1].rule_count <= recent[0].rule_count:
+            recs.append("Review expert feedback coverage; the knowledge base is not growing across recent runs.")
+
+        return recs or ["Evolution is stable; continue collecting reviewed incidents to measure accuracy uplift."]
 
     def get_trend(self, metric_key: str, window: int = 20) -> List[Dict]:
         """Get recent trend data for a specific metric."""

@@ -1,0 +1,31 @@
+id: llm.topology_aware_scheduling
+version: 0.1.0
+name: 智算拓扑感知调度诊断
+domain: llm
+description: Diagnose topology-aware scheduling, NUMA, PCIe/NVLink/RDMA locality, and cross-node placement faults.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, prometheus.read, k8s.write.scheduling]
+tool_dependencies: [kubectl, prometheus, nvidia-smi]
+tags: [llm, topology, scheduler, numa, nvlink, rdma, affinity]
+icon: workflow
+category: 智算调度
+matching:
+  keywords:
+    - topology aware
+    - numa
+    - nvlink locality
+    - rdma locality
+    - cross-node
+    - topology spread
+    - node affinity
+    - 拓扑感知
+    - 跨节点
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.84
+  min_confidence_for_auto_heal: 0.98
+entrypoint: skill.py

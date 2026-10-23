@@ -1,0 +1,33 @@
+id: tool.browser_frontend_validation
+version: 0.1.0
+name: Browser Frontend Validation Tool Skill
+domain: tool
+description: Browser or Playwright based frontend validation skill for AgenticSRE pages, modals, buttons, and demo workflows.
+stages: [detect, diagnose, verify]
+risk: low
+permissions: [browser.read, frontend.read]
+tool_dependencies: [browser, playwright]
+tags: [tool, browser, frontend, validation, demo, ui]
+matching:
+  keywords:
+    - browser
+    - playwright
+    - frontend
+    - 前端
+    - 浏览器
+    - 截图
+    - 弹窗
+    - 点击
+    - 页面没变化
+    - RCA 工作流
+    - Agent+Skill
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 1
+  min_confidence_for_heal: 0.65
+  min_confidence_for_auto_heal: 0.95
+ui:
+  icon: monitor-check
+  category: tool

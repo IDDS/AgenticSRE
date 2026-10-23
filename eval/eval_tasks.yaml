@@ -15,10 +15,10 @@ tasks:
     inject:
       method: kubectl
       commands:
-        - "kubectl run cpu-stress --image=busybox --restart=Never -- /bin/sh -c 'while true; do :; done'"
+        - "kubectl run cpu-stress --image=alpine:3.18 --image-pull-policy=IfNotPresent --restart=Never -- /bin/sh -c 'while true; do :; done'"
       namespace: default
       cleanup:
-        - "kubectl delete pod cpu-stress --force --grace-period=0"
+        - "kubectl delete pod cpu-stress --ignore-not-found=true"
     expected:
       root_cause_contains: ["cpu", "stress", "resource", "throttl"]
       fault_type: "resource_exhaustion"
@@ -37,10 +37,10 @@ tasks:
     inject:
       method: kubectl
       commands:
-        - "kubectl run mem-stress --image=busybox --restart=Never --limits='memory=64Mi' -- /bin/sh -c 'dd if=/dev/zero of=/dev/null bs=1M'"
+        - "kubectl run mem-stress --image=alpine:3.18 --image-pull-policy=IfNotPresent --restart=Never --limits='memory=64Mi' -- /bin/sh -c 'dd if=/dev/zero of=/dev/null bs=1M'"
       namespace: default
       cleanup:
-        - "kubectl delete pod mem-stress --force --grace-period=0"
+        - "kubectl delete pod mem-stress --ignore-not-found=true"
     expected:
       root_cause_contains: ["memory", "oom", "pressure", "limit"]
       fault_type: "resource_exhaustion"
@@ -57,10 +57,10 @@ tasks:
     inject:
       method: kubectl
       commands:
-        - "kubectl run crash-test --image=busybox --restart=Always -- /bin/sh -c 'exit 1'"
+        - "kubectl run crash-test --image=alpine:3.18 --image-pull-policy=IfNotPresent --restart=Always -- /bin/sh -c 'exit 1'"
       namespace: default
       cleanup:
-        - "kubectl delete pod crash-test --force --grace-period=0"
+        - "kubectl delete pod crash-test --ignore-not-found=true"
     expected:
       root_cause_contains: ["crash", "restart", "exit", "backoff"]
       fault_type: "application_crash"
@@ -80,7 +80,7 @@ tasks:
         - "kubectl run bad-image --image=nonexistent-registry.io/fake-image:v999 --restart=Never"
       namespace: default
       cleanup:
-        - "kubectl delete pod bad-image --force --grace-period=0"
+        - "kubectl delete pod bad-image --ignore-not-found=true"
     expected:
       root_cause_contains: ["image", "pull", "registry", "not found"]
       fault_type: "configuration_error"
@@ -131,6 +131,380 @@ tasks:
       max_detection_time_s: 180
       min_confidence: 0.4
 
+  # ── Network Partition (DNS Failure) ──
+  - id: dns-failure-001
+    name: "DNS Resolution Failure"
+    category: network
+    fault_type: dns_failure
+    description: "Corrupt CoreDNS configmap to simulate DNS resolution failures"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl create configmap coredns-test --from-literal=Corefile='.:53 { errors forward . 127.0.0.1 }' -n kube-system --dry-run=client -o yaml | kubectl apply -f -"
+      namespace: kube-system
+      cleanup:
+        - "kubectl rollout restart deployment coredns -n kube-system"
+    expected:
+      root_cause_contains: ["dns", "coredns", "resolution", "name"]
+      fault_type: "network_issue"
+    validation:
+      max_detection_time_s: 120
+      min_confidence: 0.5
+
+  # ── Resource Quota Exceeded ──
+  - id: quota-exceed-001
+    name: "Resource Quota Exceeded"
+    category: resource
+    fault_type: quota_exceeded
+    description: "Create a tight resource quota then deploy pods that exceed it"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl create namespace quota-test"
+        - "kubectl create quota test-quota --hard=pods=2,requests.cpu=100m,requests.memory=64Mi -n quota-test"
+        - "kubectl run quota-pod1 --image=nginx -n quota-test --requests='cpu=50m,memory=32Mi'"
+        - "kubectl run quota-pod2 --image=nginx -n quota-test --requests='cpu=50m,memory=32Mi'"
+        - "kubectl run quota-pod3 --image=nginx -n quota-test --requests='cpu=50m,memory=32Mi'"
+      namespace: quota-test
+      cleanup:
+        - "kubectl delete namespace quota-test --ignore-not-found=true"
+    expected:
+      root_cause_contains: ["quota", "exceeded", "forbidden", "limit"]
+      fault_type: "resource_exhaustion"
+    validation:
+      max_detection_time_s: 60
+      min_confidence: 0.7
+
+  # ── Liveness Probe Failure ──
+  - id: probe-fail-001
+    name: "Liveness Probe Failure"
+    category: application
+    fault_type: probe_failure
+    description: "Deploy a pod with a failing liveness probe that triggers restarts"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl run probe-fail --image=nginx --restart=Always --overrides='{\"spec\":{\"containers\":[{\"name\":\"probe-fail\",\"image\":\"nginx\",\"livenessProbe\":{\"httpGet\":{\"path\":\"/nonexistent\",\"port\":8080},\"initialDelaySeconds\":5,\"periodSeconds\":5}}]}}'"
+      namespace: default
+      cleanup:
+        - "kubectl delete pod probe-fail --ignore-not-found=true"
+    expected:
+      root_cause_contains: ["probe", "liveness", "health", "restart", "unhealthy"]
+      fault_type: "application_crash"
+    validation:
+      max_detection_time_s: 120
+      min_confidence: 0.5
+
+  # ── ConfigMap Mount Error ──
+  - id: configmap-err-001
+    name: "Missing ConfigMap Mount"
+    category: configuration
+    fault_type: config_mount_error
+    description: "Deploy a pod referencing a non-existent configmap"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl run config-fail --image=nginx --restart=Never --overrides='{\"spec\":{\"volumes\":[{\"name\":\"cfg\",\"configMap\":{\"name\":\"nonexistent-config\"}}],\"containers\":[{\"name\":\"config-fail\",\"image\":\"nginx\",\"volumeMounts\":[{\"name\":\"cfg\",\"mountPath\":\"/etc/config\"}]}]}}'"
+      namespace: default
+      cleanup:
+        - "kubectl delete pod config-fail --ignore-not-found=true"
+    expected:
+      root_cause_contains: ["configmap", "mount", "not found", "volume", "config"]
+      fault_type: "configuration_error"
+    validation:
+      max_detection_time_s: 60
+      min_confidence: 0.7
+
+  # ── Pending Pod (Insufficient Resources) ──
+  - id: pending-pod-001
+    name: "Pod Pending - Insufficient Resources"
+    category: resource
+    fault_type: insufficient_resources
+    description: "Deploy a pod requesting more resources than available"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl run resource-hog --image=nginx --restart=Never --requests='cpu=100,memory=1Ti'"
+      namespace: default
+      cleanup:
+        - "kubectl delete pod resource-hog --ignore-not-found=true"
+    expected:
+      root_cause_contains: ["pending", "insufficient", "unschedulable", "resource", "fit"]
+      fault_type: "resource_exhaustion"
+    validation:
+      max_detection_time_s: 60
+      min_confidence: 0.7
+
+  # ── High Latency (Artificial Delay) ──
+  - id: high-latency-001
+    name: "Service High Latency"
+    category: application
+    fault_type: high_latency
+    description: "Break the Service selector so callers experience dependency timeouts without installing tools inside the business container"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl create deployment latency-test --image=nginx --replicas=1"
+        - "kubectl expose deployment latency-test --port=80"
+        - "sleep 10"
+        - "kubectl patch service latency-test -p '{\"spec\":{\"selector\":{\"app\":\"latency-test-blackhole\"}}}'"
+      namespace: default
+      cleanup:
+        - "kubectl delete deployment latency-test"
+        - "kubectl delete service latency-test"
+    expected:
+      root_cause_contains: ["latency", "slow", "timeout", "service", "endpoints"]
+      fault_type: "network_issue"
+    validation:
+      max_detection_time_s: 180
+      min_confidence: 0.4
+
+  # ── OOMKilled ──
+  - id: oom-kill-001
+    name: "OOMKilled Container"
+    category: resource
+    fault_type: oom_killed
+    description: "Deploy a container that allocates memory beyond its limit to trigger OOMKill"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl run oom-test --image=python:3.9-slim --restart=Always --limits='memory=32Mi' -- python -c 'x = [bytearray(1024*1024) for _ in range(100)]'"
+      namespace: default
+      cleanup:
+        - "kubectl delete pod oom-test --ignore-not-found=true"
+    expected:
+      root_cause_contains: ["oom", "killed", "memory", "limit", "out of memory"]
+      fault_type: "resource_exhaustion"
+    validation:
+      max_detection_time_s: 120
+      min_confidence: 0.6
+
+  # ── Secret Mount Failure ──
+  - id: secret-fail-001
+    name: "Missing Secret Reference"
+    category: configuration
+    fault_type: secret_mount_error
+    description: "Deploy a pod referencing a non-existent secret"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl run secret-fail --image=nginx --restart=Never --overrides='{\"spec\":{\"containers\":[{\"name\":\"secret-fail\",\"image\":\"nginx\",\"env\":[{\"name\":\"DB_PASS\",\"valueFrom\":{\"secretKeyRef\":{\"name\":\"nonexistent-secret\",\"key\":\"password\"}}}]}]}}'"
+      namespace: default
+      cleanup:
+        - "kubectl delete pod secret-fail --ignore-not-found=true"
+    expected:
+      root_cause_contains: ["secret", "not found", "mount", "reference"]
+      fault_type: "configuration_error"
+    validation:
+      max_detection_time_s: 60
+      min_confidence: 0.7
+
+  # ── Cascading Failure (Multi-Service) ──
+  - id: cascade-001
+    name: "Cascading Service Failure"
+    category: application
+    fault_type: cascading_failure
+    description: "Scale down a dependency service to trigger cascading failures in dependents"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl create deployment backend-db --image=redis --replicas=1"
+        - "kubectl expose deployment backend-db --port=6379"
+        - "kubectl create deployment backend-api --image=nginx --replicas=2"
+        - "sleep 20"
+        - "kubectl scale deployment backend-db --replicas=0"
+      namespace: default
+      cleanup:
+        - "kubectl delete deployment backend-db backend-api"
+        - "kubectl delete service backend-db"
+    expected:
+      root_cause_contains: ["dependency", "backend", "unavailable", "connection", "scale"]
+      fault_type: "dependency_failure"
+    validation:
+      max_detection_time_s: 180
+      min_confidence: 0.4
+      require_remediation_suggestion: true
+
+  # ── Init Container Failure ──
+  - id: init-fail-001
+    name: "Init Container Failure"
+    category: application
+    fault_type: init_container_failure
+    description: "Deploy a pod with a failing init container that blocks startup"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl run init-fail --image=nginx --restart=Never --overrides='{\"spec\":{\"initContainers\":[{\"name\":\"init-check\",\"image\":\"alpine:3.18\",\"imagePullPolicy\":\"IfNotPresent\",\"command\":[\"sh\",\"-c\",\"exit 1\"]}],\"containers\":[{\"name\":\"init-fail\",\"image\":\"nginx\"}]}}'"
+      namespace: default
+      cleanup:
+        - "kubectl delete pod init-fail --ignore-not-found=true"
+    expected:
+      root_cause_contains: ["init", "container", "failed", "startup", "block"]
+      fault_type: "application_crash"
+    validation:
+      max_detection_time_s: 120
+      min_confidence: 0.5
+
+  # ═══════════════════════════════════
+  #  性能退化 / Performance Degradation
+  # ═══════════════════════════════════
+
+  # ── CPU Throttling (cgroup限制导致性能下降) ──
+  - id: cpu-throttle-001
+    name: "CPU Throttling Performance Degradation"
+    category: performance
+    fault_type: cpu_throttling
+    description: "Deploy a CPU-intensive workload with very low CPU limits to cause severe throttling and performance degradation"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl run cpu-throttle --image=python:3.9-slim --restart=Always --requests='cpu=10m' --limits='cpu=10m' -- python -c 'import hashlib; [hashlib.sha256(str(i).encode()).hexdigest() for i in range(10**8)]'"
+      namespace: default
+      cleanup:
+        - "kubectl delete pod cpu-throttle --ignore-not-found=true"
+    expected:
+      root_cause_contains: ["cpu", "throttl", "limit", "performance", "slow"]
+      fault_type: "resource_exhaustion"
+    validation:
+      max_detection_time_s: 120
+      min_confidence: 0.5
+
+  # ── Network Packet Loss (tc netem丢包) ──
+  - id: packet-loss-001
+    name: "Network Packet Loss"
+    category: performance
+    fault_type: packet_loss
+    description: "Break the Service selector to simulate an unavailable dependency path without container-level network tooling"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl create deployment pktloss-test --image=nginx --replicas=1"
+        - "kubectl expose deployment pktloss-test --port=80"
+        - "sleep 15"
+        - "kubectl patch service pktloss-test -p '{\"spec\":{\"selector\":{\"app\":\"pktloss-test-blackhole\"}}}'"
+      namespace: default
+      cleanup:
+        - "kubectl delete deployment pktloss-test --ignore-not-found=true"
+        - "kubectl delete service pktloss-test --ignore-not-found"
+    expected:
+      root_cause_contains: ["network", "service", "endpoints", "unavailable", "timeout"]
+      fault_type: "network_issue"
+    validation:
+      max_detection_time_s: 180
+      min_confidence: 0.4
+
+  # ── Memory Leak Simulation ──
+  - id: memleak-001
+    name: "Memory Leak Simulation"
+    category: performance
+    fault_type: memory_leak
+    description: "Deploy a container that gradually consumes memory simulating a memory leak, leading to increasing memory pressure and eventual OOM"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl run memleak --image=python:3.9-slim --restart=Always --limits='memory=128Mi' -- python -c 'import time; data = []; [data.append(bytearray(1024*1024)) or time.sleep(2) for _ in range(200)]'"
+      namespace: default
+      cleanup:
+        - "kubectl delete pod memleak --ignore-not-found=true"
+    expected:
+      root_cause_contains: ["memory", "leak", "growing", "oom", "pressure", "limit"]
+      fault_type: "resource_exhaustion"
+    validation:
+      max_detection_time_s: 180
+      min_confidence: 0.4
+
+  # ── Connection Pool Exhaustion (模拟连接耗尽) ──
+  - id: conn-exhaust-001
+    name: "Connection Pool Exhaustion"
+    category: performance
+    fault_type: connection_exhaustion
+    description: "Create many concurrent connections to a service to exhaust connection limits and cause connection refused errors"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl create deployment conn-target --image=nginx --replicas=1"
+        - "kubectl expose deployment conn-target --port=80"
+        - "sleep 10"
+        - "kubectl run conn-flood --image=alpine:3.18 --image-pull-policy=IfNotPresent --restart=Never -- /bin/sh -c 'for i in $(seq 1 500); do wget -q -O /dev/null --timeout=2 http://conn-target/ & done; wait'"
+      namespace: default
+      cleanup:
+        - "kubectl delete pod conn-flood --ignore-not-found=true"
+        - "kubectl delete deployment conn-target --ignore-not-found=true"
+        - "kubectl delete service conn-target --ignore-not-found"
+    expected:
+      root_cause_contains: ["connection", "refuse", "exhaust", "timeout", "overload"]
+      fault_type: "service_disruption"
+    validation:
+      max_detection_time_s: 120
+      min_confidence: 0.4
+
+  # ── IO Pressure (磁盘IO饱和) ──
+  - id: io-pressure-001
+    name: "Disk IO Saturation"
+    category: performance
+    fault_type: io_saturation
+    description: "Generate heavy disk IO to cause IO wait and slow down all pods on the node"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl run io-stress --image=alpine:3.18 --image-pull-policy=IfNotPresent --restart=Never -- /bin/sh -c 'while true; do dd if=/dev/zero of=/tmp/iotest bs=4M count=256 conv=fdatasync; rm /tmp/iotest; done'"
+      namespace: default
+      cleanup:
+        - "kubectl delete pod io-stress --ignore-not-found=true"
+    expected:
+      root_cause_contains: ["io", "disk", "write", "pressure", "wait", "slow"]
+      fault_type: "infrastructure"
+    validation:
+      max_detection_time_s: 120
+      min_confidence: 0.4
+
+  # ── HTTP 5xx Error Spike (应用级性能退化) ──
+  - id: http-error-001
+    name: "HTTP 5xx Error Spike"
+    category: performance
+    fault_type: http_error_spike
+    description: "Deploy a service that returns 500 errors on 50% of requests to simulate application-level degradation"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl run error-svc --image=python:3.9-slim --restart=Always --port=8080 -- python -c 'import http.server,random;h=type(\"H\",(http.server.BaseHTTPRequestHandler,),{\"do_GET\":lambda s:(s.send_response(500),s.end_headers(),s.wfile.write(b\"error\")) if random.random()<0.5 else (s.send_response(200),s.end_headers(),s.wfile.write(b\"ok\"))});http.server.HTTPServer((\"\",8080),h).serve_forever()'"
+        - "kubectl expose pod error-svc --port=8080"
+        - "sleep 10"
+        - "kubectl run loadgen --image=alpine:3.18 --image-pull-policy=IfNotPresent --restart=Never -- /bin/sh -c 'for i in $(seq 1 200); do wget -q -O /dev/null --timeout=2 http://error-svc:8080/ 2>&1; done'"
+      namespace: default
+      cleanup:
+        - "kubectl delete pod error-svc loadgen --ignore-not-found=true"
+        - "kubectl delete service error-svc --ignore-not-found"
+    expected:
+      root_cause_contains: ["error", "500", "http", "failure", "rate", "degradation"]
+      fault_type: "application_crash"
+    validation:
+      max_detection_time_s: 120
+      min_confidence: 0.4
+
+  # ── Node CPU Saturation (节点级CPU争抢) ──
+  - id: node-cpu-sat-001
+    name: "Node CPU Saturation"
+    category: performance
+    fault_type: node_cpu_saturation
+    description: "Run multiple CPU-intensive pods to saturate a node's CPU causing noisy neighbor effects across all pods"
+    inject:
+      method: kubectl
+      commands:
+        - "kubectl run cpu-hog-1 --image=alpine:3.18 --image-pull-policy=IfNotPresent --restart=Never -- /bin/sh -c 'while true; do :; done'"
+        - "kubectl run cpu-hog-2 --image=alpine:3.18 --image-pull-policy=IfNotPresent --restart=Never -- /bin/sh -c 'while true; do :; done'"
+        - "kubectl run cpu-hog-3 --image=alpine:3.18 --image-pull-policy=IfNotPresent --restart=Never -- /bin/sh -c 'while true; do :; done'"
+        - "kubectl run cpu-hog-4 --image=alpine:3.18 --image-pull-policy=IfNotPresent --restart=Never -- /bin/sh -c 'while true; do :; done'"
+      namespace: default
+      cleanup:
+        - "kubectl delete pod cpu-hog-1 cpu-hog-2 cpu-hog-3 cpu-hog-4 --ignore-not-found=true"
+    expected:
+      root_cause_contains: ["cpu", "saturation", "node", "resource", "contention", "noisy"]
+      fault_type: "resource_exhaustion"
+    validation:
+      max_detection_time_s: 120
+      min_confidence: 0.4
+
 # ── Alert Compression Evaluation ──
 alert_compression:
   target_accuracy: 0.80
@@ -139,8 +513,8 @@ alert_compression:
       name: "Multi-source alert compression"
       description: "Verify alert grouping from concurrent failures"
       inject_faults:
-        - "kubectl run ac-cpu --image=busybox --restart=Never -- /bin/sh -c 'while true; do :; done'"
-        - "kubectl run ac-crash --image=busybox --restart=Always -- /bin/sh -c 'exit 1'"
+        - "kubectl run ac-cpu --image=alpine:3.18 --image-pull-policy=IfNotPresent --restart=Never -- /bin/sh -c 'while true; do :; done'"
+        - "kubectl run ac-crash --image=alpine:3.18 --image-pull-policy=IfNotPresent --restart=Always -- /bin/sh -c 'exit 1'"
         - "kubectl run ac-image --image=fake-image:v999 --restart=Never"
       expected_groups: 3
       max_groups: 5

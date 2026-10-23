@@ -66,7 +66,7 @@ class ReActParadigm(ParadigmBase):
         pool = self.pool
 
         # Build unified context and enrich the initial prompt
-        context = pool.build_context(incident_query)
+        context = pool.build_context(incident_query, namespace=namespace)
         enriched_query = incident_query
         if context is not None and pool._context_builder is not None:
             enriched_query = pool._context_builder.enrich_query(

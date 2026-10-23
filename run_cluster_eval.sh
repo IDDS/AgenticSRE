@@ -6,9 +6,13 @@
 set -e
 
 # ── Config ──
-JUMP_HOST="openstack@222.200.180.102"
-TARGET="ubuntu@10.10.3.110"
-REMOTE_DIR="/home/ubuntu/AgenticSRE"
+JUMP_HOST="${AGENTICSRE_DEPLOY_JUMP_HOST:-${K8S_SSH_JUMP:-}}"
+TARGET="${AGENTICSRE_DEPLOY_TARGET:-${K8S_SSH_TARGET:-}}"
+REMOTE_DIR="${AGENTICSRE_REMOTE_DIR:-/home/ubuntu/AgenticSRE}"
+if [ -z "${JUMP_HOST}" ] || [ -z "${TARGET}" ]; then
+    echo "Set AGENTICSRE_DEPLOY_JUMP_HOST/K8S_SSH_JUMP and AGENTICSRE_DEPLOY_TARGET/K8S_SSH_TARGET before running run_cluster_eval.sh" >&2
+    exit 2
+fi
 SSH_CMD="ssh -J ${JUMP_HOST} ${TARGET}"
 SCP_CMD="scp -o ProxyJump=${JUMP_HOST}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -1,0 +1,30 @@
+id: llm.vllm_load_generator
+version: 0.1.0
+name: vLLM 负载生成器诊断
+domain: llm
+description: Diagnose load generator and background traffic for vLLM fault experiments.
+stages: [detect, diagnose, verify]
+risk: medium
+permissions: [http.read, loadgen.run, prometheus.read]
+tool_dependencies: [curl, prometheus, loadgen]
+tags: [llm, vllm, loadgen, traffic, qps, concurrency]
+icon: activity
+category: 智算实验
+matching:
+  keywords:
+    - loadgen
+    - background traffic
+    - traffic_zero
+    - request_rate_zero
+    - no traffic
+    - 负载生成器
+    - 背景流量
+    - 请求为 0
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.78
+  min_confidence_for_auto_heal: 0.95
+entrypoint: skill.py

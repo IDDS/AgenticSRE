@@ -1,0 +1,201 @@
+{
+  "schema": "agenticsre.precision-remote-validation.v1",
+  "date": "2026-07-30",
+  "environment": {
+    "general_compute_cluster": "remote-kubernetes-validation-cluster",
+    "gpu_cluster": "remote-t4-validation-cluster",
+    "execution_policy": "isolated_canary_only",
+    "success_gate": [
+      "target_fault_observed",
+      "control_unaffected",
+      "undo_completed",
+      "recovery_observed",
+      "residue_check_passed"
+    ]
+  },
+  "summary": {
+    "registered": 18,
+    "adapter_ready": 18,
+    "real_passed": 17,
+    "resource_blocked": 1,
+    "failed": 0,
+    "cleanup_passed": 17,
+    "transactional_heal_contract_ready": 18,
+    "transactional_heal_remote_representative_passed": 1
+  },
+  "frontend": {
+    "status": "passed",
+    "integration": "general_fault_lab_precision_tab",
+    "scenario_cards": 18,
+    "action_buttons": 126,
+    "contract_ready": true,
+    "preflight_ready": true,
+    "preview_stages": [
+      "preflight",
+      "baseline",
+      "inject",
+      "effect_verify",
+      "undo",
+      "recovery_verify",
+      "residue_check"
+    ],
+    "real_safe_scenario": "precise-application-failpoint-error",
+    "real_safe_status": "succeeded",
+    "real_safe_cleanup_complete": true,
+    "self_healing_contract_stages": {
+      "detect": "matched",
+      "diagnose": "ok",
+      "heal": "ok",
+      "verify": "ok"
+    },
+    "self_healing_status": "already_recovered",
+    "self_healing_passed": true,
+    "self_healing_semantics": "idempotent_original_undo_replay_after_source_transaction_recovery",
+    "residue_check_passed": true
+  },
+  "scenarios": [
+    {
+      "id": "precise-http-header-delay",
+      "status": "passed",
+      "before": "matching=0.034331s control=0.035228s",
+      "fault": "matching=0.536684s configured_delay=500ms control=0.032958s",
+      "recovery": "matching=0.031266s pod_recreated=false restart_delta=0",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-strace-openat-error",
+      "status": "passed",
+      "fault": "single_pid=3048372 syscall=openat errno=EACCES injected_hits=1",
+      "control": "non_target_iterations_continue",
+      "recovery": "iteration=45 result=ok",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-seccomp-openat-errno",
+      "status": "passed",
+      "fault": "exact_path=/tmp/agenticsre-seccomp-target match=3 injected=1 errno=13",
+      "control": "target_failures=1 control_failures=0 post_hit_recovery=3",
+      "recovery": "filter_absent target_failures=0 control_failures=0",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-ebpf-connect-denial",
+      "status": "passed",
+      "fault": "cgroup_connect4 target=10.105.245.47:18080 failures=3",
+      "control": "port=18081 failures=0 successes=9",
+      "recovery": "target_successes_after_limit=6 program_detached=true",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-jvm-method-latency",
+      "status": "passed",
+      "before": "class=AgenticSREBytecodeProbe method=stableOperation latency=0ms",
+      "fault": "latency=2020ms",
+      "recovery": "latency=0ms pod_recreated=false restart_delta=0",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-gdb-function-return",
+      "status": "passed",
+      "before": "stable_operation result=2",
+      "fault": "single_hit result=-88",
+      "recovery": "result=72 pod_recreated=false restart_delta=0",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-elf-function-return",
+      "status": "passed",
+      "before": "stable_operation result=2",
+      "fault": "call=3 injected=1 return=-77",
+      "recovery": "result=10",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-elf-function-errno",
+      "status": "passed",
+      "before": "stable_operation result=2 errno=0",
+      "fault": "call=4 injected=1 result=-1 errno=5",
+      "recovery": "result=10 errno=0",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-elf-function-delay",
+      "status": "passed",
+      "before": "latency=10ms",
+      "fault": "call=5 injected=1 configured=350ms observed=361ms",
+      "recovery": "latency=10ms",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-network-loss",
+      "status": "passed",
+      "fault": "target_failures=4",
+      "control": "control_failures=0",
+      "recovery": "success",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-dns-error",
+      "status": "passed",
+      "fault": "exact_target_domain_failed=true",
+      "control": "control_domain_ok=true",
+      "recovery": "success",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-container-cpu-stress",
+      "status": "passed",
+      "before": "target=46951usec control=40112usec",
+      "fault": "target=2609583usec control=59122usec",
+      "recovery": "target=69568usec",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-path-io-latency",
+      "status": "passed",
+      "before": "target=2ms control=2ms",
+      "fault": "target=2353ms control=7ms",
+      "recovery": "target=2ms",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-container-time-offset",
+      "status": "passed",
+      "before": "delta=0s",
+      "fault": "delta=300s",
+      "recovery": "delta=0s",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-application-failpoint-error",
+      "status": "passed",
+      "fault": "request=agenticsre-fp-request error=PAYMENT_STATE_WRITE_FAILED max_hits=1",
+      "control": "control_request=ok exhausted_target=ok",
+      "recovery": "disabled_target=ok expired_target=ok",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-cgroup-v2-cpu-quota",
+      "status": "passed",
+      "before": "cpu.max=100000 100000 nr_throttled=1",
+      "fault": "cpu.max=20000 100000 nr_throttled=50 control_cpu.max=100000 100000",
+      "recovery": "cpu.max=100000 100000",
+      "cleanup": "complete"
+    },
+    {
+      "id": "precise-dcgm-pcie-replay",
+      "status": "blocked",
+      "reason": "no_isolated_gpu_available",
+      "capacity": "node=dds-128 allocatable=3 reserved=3",
+      "cleanup": "no_resources_created"
+    },
+    {
+      "id": "precise-dm-flakey-write-error",
+      "status": "passed",
+      "before": "snapshot_sha256=69742c1fe0150107d1a1c7e1137d5ff8222054b6bff592dd46e72f433cd75ec1",
+      "fault": "mapping=agenticsre-flakey-probe error_writes=true control_write=true",
+      "recovery": "mapping_removed=true snapshot_sha256=69742c1fe0150107d1a1c7e1137d5ff8222054b6bff592dd46e72f433cd75ec1",
+      "cleanup": "complete"
+    }
+  ]
+}

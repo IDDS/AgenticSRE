@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-k8s
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-server
+  namespace: llm-k8s
+  labels:
+    app: vllm-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-server
+  template:
+    metadata:
+      labels:
+        app: vllm-server
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: ${VLLM_NODE_NAME}
+      tolerations:
+        - key: node.kubernetes.io/disk-pressure
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: ${VLLM_GPU_UUID}
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"
+          args:
+            - --model
+            - /model
+            - --served-model-name
+            - ${VLLM_SERVED_MODEL_NAME}
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+            - --dtype
+            - half
+            - --max-model-len
+            - "1024"
+            - --gpu-memory-utilization
+            - "0.55"
+            - --enforce-eager
+            - --trust-remote-code
+          ports:
+            - containerPort: 8000
+              name: http
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: model
+              mountPath: /model
+              readOnly: true
+      volumes:
+        - name: model
+          hostPath:
+            path: ${VLLM_MODEL_PATH}
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-server
+  namespace: llm-k8s
+  labels:
+    app: vllm-server
+spec:
+  selector:
+    app: vllm-server
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      nodePort: 30080
+  type: NodePort

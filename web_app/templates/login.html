@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgenticSRE 登录</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=37">
+</head>
+<body class="login-body">
+    <main class="login-shell">
+        <section class="login-panel">
+            <div class="login-brand">
+                <div class="brand-mark login-brand-mark">SRE</div>
+                <div>
+                    <h1>AgenticSRE</h1>
+                    <p>AIOps Control Plane</p>
+                </div>
+            </div>
+            <form class="login-form" id="login-form">
+                <label class="login-field">
+                    <span>用户名</span>
+                    <input id="login-username" name="username" autocomplete="username" value="{{ default_username }}" required>
+                </label>
+                <label class="login-field">
+                    <span>密码</span>
+                    <input id="login-password" name="password" type="password" autocomplete="current-password" required autofocus>
+                </label>
+                <button class="btn btn-primary login-submit" id="login-submit" type="submit">登录</button>
+                <p class="login-error" id="login-error" aria-live="polite"></p>
+            </form>
+            <div class="login-meta">
+                <span>AdminLTE Style</span>
+                <span>Skill Runtime</span>
+                <span>Closed-loop Ops</span>
+            </div>
+        </section>
+    </main>
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const submit = document.getElementById('login-submit');
+            const error = document.getElementById('login-error');
+            submit.disabled = true;
+            error.textContent = '';
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        username: document.getElementById('login-username').value,
+                        password: document.getElementById('login-password').value,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || data.error || '登录失败');
+                window.location.href = '/';
+            } catch (err) {
+                error.textContent = err.message || '登录失败';
+            } finally {
+                submit.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

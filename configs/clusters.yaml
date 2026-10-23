@@ -1,0 +1,158 @@
+# ══════════════════════════════════════════════════════════════════════
+# AgenticSRE  ·  故障注入目标档案 (Fault Targets)
+# ──────────────────────────────────────────────────────────────────────
+# 这个文件定义"通算 / 智算"故障实验可以打到哪些目标：
+#   - k8s_clusters: 通算故障实验 - K8s 集群档案 (kubectl)
+#   - llm_hosts:    智算故障实验 - 裸机 GPU 主机档案 (SSH)
+#
+# 加载顺序:
+#   1) 首次启动: 从本文件 (configs/clusters.yaml) 读入默认值
+#   2) 之后:     UI "管理目标" 写入 data/cluster_profiles.json 覆盖默认值
+#                修改本文件不会影响已有的 cluster_profiles.json (除非删除)
+#
+# 在 UI 中怎么用:
+#   - 通算页 → 顶部"目标集群"下拉 = k8s_clusters[*].name
+#   - 智算页 → 切换"裸机"模式 → 主机下拉 = llm_hosts[*].name
+#   - 任何页面 → 点"管理目标"按钮 = 在浏览器里增删改 (无需重启)
+# ══════════════════════════════════════════════════════════════════════
+
+fault_targets:
+
+  # ─────────────────────────────────────────────────────────────────
+  # K8s 集群档案 (通算故障实验目标)
+  # ─────────────────────────────────────────────────────────────────
+  # 每条档案对应一套 kubectl 上下文，注入时会在 kubectl 命令前自动
+  # 拼接 `KUBECONFIG=<path>` + `--context=<ctx>`。
+  #
+  # 字段说明:
+  #   id                 (必填) 程序内引用 ID，仅 [a-z0-9_-]
+  #   name               (必填) UI 显示名
+  #   kubectl_path       (可选) 容器内 kubectl 可执行文件，默认 kubectl
+  #                              可填 /usr/local/bin/kubectl，但不能带参数
+  #   kubeconfig         (可选) kubeconfig 文件绝对路径
+  #                              空 = 用容器挂载的默认 ~/.kube/config
+  #   context            (可选) kubectl context 名
+  #                              空 = 用 kubeconfig 当前 context
+  #   default_namespace  (可选) 默认 namespace, 注入时 UI 可临时覆盖
+  #   description        (可选) UI 提示文字
+  k8s_clusters:
+
+    - id: default
+      name: "默认集群"
+      kind: "general"
+      kubectl_path: "kubectl"
+      kubeconfig: ""                       # 用容器挂载的 ~/.kube/config
+      context: ""                          # 用当前 context
+      default_namespace: "default"
+      prometheus_url: ""
+      description: "通过 docker-compose 挂载的本机 kubeconfig"
+
+    - id: t4-vllm-k8s
+      name: "T4 vLLM 智算集群"
+      kind: "ai"
+      kubectl_path: "kubectl"
+      kubeconfig: "${LLM_K8S_T4_KUBECONFIG:}"
+      context: "${LLM_K8S_T4_CONTEXT:}"
+      default_namespace: "llm-k8s"
+      prometheus_url: "${LLM_K8S_T4_PROMETHEUS_URL:http://127.0.0.1:30090}"
+      vllm_endpoint: "${LLM_K8S_T4_ENDPOINT:http://127.0.0.1:30080/v1/completions}"
+      model: "${LLM_K8S_T4_MODEL:qwen2.5-coder-3b-k8s}"
+      model_family: "${LLM_K8S_T4_MODEL_FAMILY:qwen}"
+      teller_code_path: "${LLM_K8S_T4_TELLER_CODE_PATH:/opt/teller/TELLER_Code}"
+      teller_code_host_path: "${LLM_K8S_T4_TELLER_CODE_HOST_PATH:/data/dds-data/agenticsre/teller/TELLER_Code}"
+      teller_runtime_trace_root: "${LLM_K8S_T4_TELLER_RUNTIME_TRACE_ROOT:/opt/teller/data}"
+      teller_trace_host_path: "${LLM_K8S_T4_TELLER_TRACE_HOST_PATH:/data/dds-data/agenticsre/teller/data}"
+      teller_cupti_lib_paths: "${LLM_K8S_T4_TELLER_CUPTI_LIB_PATHS:/usr/local/lib/python3.12/dist-packages/nvidia/cuda_cupti/lib:/usr/local/lib/python3.12/dist-packages/nvidia/nvtx/lib:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64}"
+      model_runtime_note: "${LLM_K8S_T4_MODEL_RUNTIME_NOTE:Qwen2.5-Coder-3B is the current validated GPU closed-loop model on the T4 cluster. Gemma 4 12B cache has no local weights; Gemma 3 4B loads on T4 only with an HF runtime and currently produces fp16 NaN logits on GPU, so it is not the default closure target.}"
+      description: "127/128 T4 kubeadm 集群；vLLM NodePort 30080/30081，Prometheus NodePort 30090"
+
+    # ─── 示例: 多集群场景 (按需启用并修改) ───
+    #
+    # - id: social-network
+    #   name: "Social-Network 测试集群"
+    #   kubectl_path: "kubectl"
+    #   kubeconfig: ""
+    #   context: ""
+    #   default_namespace: "test-social-network"
+    #   description: "DeathStarBench social-network 微服务"
+    #
+    # - id: aliyun-prod
+    #   name: "阿里云生产集群"
+    #   kubeconfig: "/root/.kube/aliyun-prod-config"   # 需挂载到容器内
+    #   context: "aliyun-prod"
+    #   default_namespace: "production"
+    #   description: "ACK 生产环境 (慎用)"
+
+  # ─────────────────────────────────────────────────────────────────
+  # 裸机 GPU 主机档案 (智算故障实验目标)
+  # ─────────────────────────────────────────────────────────────────
+  # 用于 vLLM/GPU 不跑在 K8s 内的场景。注入时容器内执行：
+  #     ssh -i <ssh_key_path> -J <jump_host> <ssh_user>@<host> <fault-cmd>
+  # 或在无法部署 SSH key 的临时验证环境中，通过 ssh_password_env /
+  # jump_password_env 指定"环境变量名"。实际密码只从进程环境读取，不写配置。
+  # 容器需要能挂载到 ssh_key_path (docker-compose 已挂载 ~/.ssh:ro)，或安装
+  # sshpass 后使用 runtime-only 密码环境变量。
+  #
+  # 字段说明:
+  #   id            (必填) 程序内引用 ID，仅 [a-z0-9_-]
+  #   name          (必填) UI 显示名
+  #   host          (执行必填) 目标机 IP 或 hostname；可留空保存为待配置模板，
+  #                 未配置地址的主机不会出现在故障执行下拉框中
+  #   ssh_user      (必填) 远程登录用户
+  #   ssh_key_path  (可选) 容器内 SSH 私钥路径
+  #                       空 = ssh-agent 或密码 (不推荐)
+  #   jump_host     (可选) 跳板机, 格式 user@host
+  #                       空 = 直连
+  #   ssh_password_env  (可选) 目标机密码环境变量名，仅运行时读取
+  #   jump_password_env (可选) 跳板机密码环境变量名，仅运行时读取
+  #   prometheus_url    (可选) 部署节点可访问的该智算主机 Prometheus URL
+  #   gpu           (可选) GPU 型号信息, 仅展示用
+  #   role          (可选) 节点角色, 仅展示用
+  llm_hosts:
+
+    - id: t4-127
+      name: "T4-127"
+      host: "${LLM_FAULT_T4_127_HOST:}"
+      ssh_user: "${LLM_FAULT_T4_127_USER:root}"
+      ssh_key_path: "${LLM_FAULT_T4_127_KEY:}"
+      jump_host: "${LLM_FAULT_T4_127_JUMP:}"
+      ssh_password_env: "${LLM_FAULT_T4_127_PASSWORD_ENV:}"
+      jump_password_env: "${LLM_FAULT_T4_127_JUMP_PASSWORD_ENV:}"
+      prometheus_url: "${LLM_FAULT_T4_127_PROMETHEUS_URL:}"
+      gpu: "${LLM_FAULT_T4_127_GPU:NVIDIA T4 x3}"
+      role: "${LLM_FAULT_T4_127_ROLE:vLLM 推理服务 / 负载节点}"
+
+    - id: t4-128
+      name: "T4-128"
+      host: "${LLM_FAULT_T4_128_HOST:}"
+      ssh_user: "${LLM_FAULT_T4_128_USER:root}"
+      ssh_key_path: "${LLM_FAULT_T4_128_KEY:}"
+      jump_host: "${LLM_FAULT_T4_128_JUMP:}"
+      ssh_password_env: "${LLM_FAULT_T4_128_PASSWORD_ENV:}"
+      jump_password_env: "${LLM_FAULT_T4_128_JUMP_PASSWORD_ENV:}"
+      prometheus_url: "${LLM_FAULT_T4_128_PROMETHEUS_URL:}"
+      gpu: "${LLM_FAULT_T4_128_GPU:NVIDIA T4 x3}"
+      role: "${LLM_FAULT_T4_128_ROLE:vLLM 推理服务 / 对照节点}"
+
+    - id: t4-vllm-k8s-worker
+      name: "T4 vLLM K8S Worker"
+      host: "${LLM_K8S_T4_WORKER_HOST:}"
+      ssh_user: "${LLM_K8S_T4_WORKER_USER:root}"
+      ssh_key_path: "${LLM_K8S_T4_WORKER_KEY:}"
+      jump_host: "${LLM_K8S_T4_JUMP:}"
+      ssh_password_env: "${LLM_K8S_T4_WORKER_PASSWORD_ENV:}"
+      jump_password_env: "${LLM_K8S_T4_JUMP_PASSWORD_ENV:}"
+      prometheus_url: "${LLM_K8S_T4_PROMETHEUS_URL:http://127.0.0.1:30090}"
+      gpu: "${LLM_K8S_T4_GPU:NVIDIA T4 x3}"
+      role: "${LLM_K8S_T4_ROLE:K8S vLLM 推理服务 / Prometheus 指标采集}"
+
+    # ─── 示例: 单机直连 (无跳板) ───
+    #
+    # - id: local-a100
+    #   name: "本地 A100"
+    #   host: "10.0.0.50"
+    #   ssh_user: "ubuntu"
+    #   ssh_key_path: "/root/.ssh/id_ed25519"
+    #   jump_host: ""                          # 直连
+    #   gpu: "NVIDIA A100 80G"
+    #   role: "本地推理"

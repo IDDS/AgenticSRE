@@ -38,6 +38,12 @@ Plan principles:
 3. Focus investigation on the most likely hypotheses first
 4. Include specific commands/queries, not vague instructions
 5. Define clear success/failure criteria for each step
+6. Use only the listed investigation agents and tools; this is a pure multi-agent workflow.
+7. Compare the first two active hypotheses. Prefer a read-only observation whose
+   outcomes distinguish them, including an explicit refuting outcome. Do not only
+   collect confirmations of Top1. Collector errors are missing data, not refutations.
+8. Use previous attempt feedback to change sources or questions; repeated unchanged
+   observations do not increase confidence. Tool actions remain host controlled.
 
 Respond in JSON:
 {{
@@ -49,6 +55,8 @@ Respond in JSON:
             "command": "specific command or query",
             "target_hypothesis": "H1",
             "expected_evidence": "what we expect to find",
+            "supports_if": "observable result supporting the target hypothesis",
+            "refutes_if": "observable result contradicting the target hypothesis",
             "priority": "high|medium|low"
         }}
     ],
@@ -85,7 +93,7 @@ Respond in JSON:
                     f"Current Hypotheses:\n{hyp_text}\n\n"
                     f"Available Tools: {tool_summary}\n"
                 )}
-            ])
+            ], max_tokens=1536, thinking=False)
             return result
         except Exception as e:
             logger.error(f"Plan generation failed: {e}")

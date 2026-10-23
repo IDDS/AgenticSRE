@@ -1,0 +1,32 @@
+id: k8s.ingress_gateway_traffic
+version: 0.1.0
+name: Ingress Gateway 流量入口诊断
+domain: k8s
+description: Diagnose Kubernetes Ingress, Gateway, LoadBalancer, route, and upstream failures.
+stages: [detect, diagnose, heal, verify]
+risk: medium
+permissions: [k8s.read, k8s.write.config, http.read]
+tool_dependencies: [kubectl, curl]
+tags: [k8s, ingress, gateway, loadbalancer, traffic, route]
+icon: route
+category: 通算入口
+matching:
+  keywords:
+    - ingress
+    - gateway
+    - httproute
+    - loadbalancer
+    - upstream
+    - 502
+    - 504
+    - 入口
+    - 网关
+    - 路由
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.8
+  min_confidence_for_auto_heal: 0.95
+entrypoint: skill.py

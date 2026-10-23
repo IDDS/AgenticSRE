@@ -1,0 +1,23 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: agenticsre-target-packet-loss
+  namespace: agenticsre-platform-chaos-validation
+spec:
+  action: loss
+  mode: one
+  selector:
+    namespaces: [agenticsre-platform-chaos-validation]
+    labelSelectors:
+      app: agenticsre-network-client
+  direction: to
+  target:
+    mode: one
+    selector:
+      namespaces: [agenticsre-platform-chaos-validation]
+      labelSelectors:
+        app: agenticsre-network-target
+  loss:
+    loss: '100'
+    correlation: '100'
+  duration: 30s

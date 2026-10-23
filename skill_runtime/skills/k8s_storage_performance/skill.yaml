@@ -1,0 +1,32 @@
+id: k8s.storage_performance
+version: 0.1.0
+name: 存储性能退化诊断
+domain: k8s
+description: Diagnose Kubernetes storage latency, disk IO, PVC capacity, filesystem, and iowait issues.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, k8s.write.storage, prometheus.read]
+tool_dependencies: [kubectl, prometheus]
+tags: [k8s, storage, pvc, pv, disk, io, latency]
+icon: hard-drive
+category: 通算存储
+matching:
+  keywords:
+    - storage
+    - pvc
+    - pv
+    - disk io
+    - iowait
+    - fsync
+    - iops
+    - 磁盘
+    - 存储
+    - 延迟
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.98
+entrypoint: skill.py

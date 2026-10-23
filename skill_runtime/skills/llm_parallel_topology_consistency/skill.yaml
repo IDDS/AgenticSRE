@@ -1,0 +1,31 @@
+id: llm.parallel_topology_consistency
+version: 0.1.0
+name: 多卡并行拓扑一致性诊断
+domain: llm
+description: Diagnose vLLM tensor/pipeline parallel topology, GPU count, world size, and model shard mismatches.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, prometheus.read, k8s.write.restart]
+tool_dependencies: [kubectl, prometheus, nvidia-smi]
+tags: [llm, vllm, tensor-parallel, pipeline-parallel, multi-gpu, topology]
+icon: network
+category: 智算拓扑
+matching:
+  keywords:
+    - tensor_parallel_size
+    - pipeline_parallel_size
+    - world_size
+    - rank mismatch
+    - tp_size_mismatch
+    - model shard
+    - 多卡
+    - 张量并行
+    - 流水并行
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.84
+  min_confidence_for_auto_heal: 0.98
+entrypoint: skill.py

@@ -1,19 +1,23 @@
 """
 AgenticSRE Alert Agent
-告警压缩与根因推荐智能体 — SOW核心交付项
-Implements semantic alert compression, temporal-spatial correlation,
-and LLM-based root cause recommendation.
+告警分组与证据保留适配器。
+The public entry uses conservative grouping and unverified relation proposals.
+Legacy private LLM grouping helpers remain for compatibility and are not called.
 """
 
+import asyncio
+import json
 import hashlib
 import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
+from agents.alert_compression import compress_alerts, propose_relations
 
 from tools.base_tool import ToolRegistry, ToolResult
-from tools.llm_client import LLMClient
+from tools.llm_client import LLMClient, run_sync_in_daemon_thread
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,8 @@ class Alert:
     message: str = ""
     fingerprint: str = ""
     group_id: str = ""          # After compression
+    cluster_id: str = ""
+    raw: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if not self.fingerprint:
@@ -67,44 +73,38 @@ class AlertGroup:
 
 
 class AlertAgent:
-    """
-    Alert compression and root cause recommendation agent.
-    
-    SOW Requirement: "告警压缩与根因推荐智能体 — 根因推荐准确率≥80%"
-    
-    Approach:
-    1. Temporal grouping — alerts within time_window are candidates
-    2. Spatial grouping — alerts on same service/node/namespace
-    3. Semantic similarity — LLM-based semantic correlation
-    4. Root cause recommendation — LLM analyzes compressed groups
+    """Collect observations, retain originals, and delegate grouping to alert_compression.
+
+    Root-cause verification belongs to the RCA pipeline, not the grouping model.
     """
 
-    COMPRESSION_PROMPT = """You are an expert SRE alert analyst. Given a list of alerts, group them by root cause.
-For each group:
-1. Identify alerts caused by the same underlying issue
-2. Select the most representative alert
-3. Suggest the root cause
-4. Rate your confidence (0.0-1.0)
+    COMPRESSION_PROMPT = """你是资深 SRE 告警分析专家。请按根因对告警进行压缩分组。
+除告警名、服务名、资源名等机器字段外，所有解释性内容必须使用中文。
+每个分组需要：
+1. 识别由同一底层问题引发的告警
+2. 选择最具代表性的告警
+3. 给出中文根因建议
+4. 给出置信度 (0.0-1.0)
 
 Input alerts:
 {alerts}
 
-Respond in JSON format:
+只返回 JSON：
 {{
     "groups": [
         {{
-            "group_name": "descriptive name",
+            "group_name": "中文分组名称",
             "alert_indices": [0, 2, 5],
-            "root_cause": "explanation of likely root cause",
+            "root_cause": "中文根因解释",
             "confidence": 0.85,
             "affected_services": ["svc1", "svc2"]
         }}
     ],
-    "compression_summary": "brief summary of compression results"
+    "compression_summary": "中文压缩摘要"
 }}"""
 
-    RCA_PROMPT = """You are an expert SRE root cause analyst. Given a compressed alert group, 
-provide a detailed root cause analysis.
+    RCA_PROMPT = """你是资深 SRE 根因分析专家。请基于一个压缩后的告警组，输出详细根因分析。
+除告警名、服务名、资源名、命令等机器字段外，所有解释性内容必须使用中文。
 
 Alert Group: {group_name}
 Alerts ({count}):
@@ -113,18 +113,18 @@ Alerts ({count}):
 Cluster Context:
 {cluster_context}
 
-Analyze the root cause and provide:
-1. Most likely root cause (be specific)
-2. Evidence supporting this conclusion
-3. Recommended investigation steps
-4. Suggested remediation
+请分析并提供：
+1. 最可能根因，要求具体
+2. 支持该结论的证据
+3. 建议的排查步骤
+4. 建议的修复动作
 
-Respond in JSON:
+只返回 JSON：
 {{
-    "root_cause": "specific root cause explanation",
-    "evidence": ["evidence 1", "evidence 2"],
-    "investigation_steps": ["step 1", "step 2"],
-    "remediation": "recommended fix",
+    "root_cause": "中文根因解释",
+    "evidence": ["中文证据 1", "中文证据 2"],
+    "investigation_steps": ["中文步骤 1", "中文步骤 2"],
+    "remediation": "中文修复建议",
     "confidence": 0.85,
     "severity": "critical|high|medium|low"
 }}"""
@@ -134,124 +134,93 @@ Respond in JSON:
         self.registry = registry
         from configs.config_loader import get_config
         cfg = config or get_config()
-        self.offline_mode = bool(
-            getattr(cfg.observability, "offline_mode", False)
-            and getattr(cfg.observability, "backend", "") == "alidata"
-        )
+        self.semantic_timeout_s = max(1, min(180, float(getattr(cfg.alert, "semantic_timeout_s", 60))))
+        self.collection_timeout_s = 20
+        self.collection_status = {}
+        self.cluster_id = getattr(cfg.kubernetes, "cluster_id", "")
         self.time_window = cfg.alert.time_window
         self.similarity_threshold = cfg.alert.similarity_threshold
         self.max_group_size = cfg.alert.max_group_size
 
     async def compress_and_recommend(self, alerts: List[Alert] = None,
-                                      namespace: str = "") -> Dict:
-        """Main entry: fetch alerts, compress, and recommend root causes."""
+                                      namespace: str = "", enrich: bool = True) -> Dict:
+        """Fetch alerts, preserve originals, group repeats and propose unverified relations."""
         
         # Phase 1: Collect alerts from all sources
         if alerts is None:
             alerts = await self._collect_alerts(namespace)
         
-        if not alerts:
-            return {
-                "agent": "alert_agent",
-                "total_alerts": 0,
-                "groups": [],
-                "compression_ratio": 0,
-                "summary": "No alerts found",
-            }
-
-        # Phase 2: Temporal-spatial pre-grouping
-        pre_groups = self._temporal_spatial_group(alerts)
-        
-        # Phase 3: LLM semantic compression
-        final_groups = await self._semantic_compress(pre_groups, alerts)
-        
-        # Phase 4: Root cause recommendation per group
-        for group in final_groups:
-            rca = await self._recommend_root_cause(group)
-            group.root_cause_suggestion = rca.get("root_cause", "")
-            group.confidence = rca.get("confidence", 0.0)
-
-        # Compute compression statistics
-        total = len(alerts)
-        groups_count = len(final_groups)
-        compression_ratio = 1 - (groups_count / total) if total > 0 else 0
-
-        return {
-            "agent": "alert_agent",
-            "total_alerts": total,
-            "compressed_groups": groups_count,
-            "compression_ratio": round(compression_ratio, 3),
-            "groups": [g.summary() for g in final_groups],
-            "summary": f"Compressed {total} alerts into {groups_count} groups "
-                       f"(compression ratio: {compression_ratio:.1%})",
-        }
+        result = compress_alerts([vars(a) for a in alerts], cluster_id=self.cluster_id, namespace=namespace, time_window=self.time_window)
+        if enrich:
+            from agents.alert_semantics import enrich_retrieval, build_scag
+            await enrich_retrieval(result)
+            await propose_relations(result, self.llm, timeout_s=self.semantic_timeout_s)
+            build_scag(result)
+        result["collection"] = dict(self.collection_status)
+        incomplete = [name for name, status in self.collection_status.items() if status != "ok"]
+        if incomplete:
+            result.update(degraded=True, warning="部分来源采集未完成：" + ", ".join(incomplete) + "；当前仅展示成功采集的告警。")
+        return result
 
     async def _collect_alerts(self, namespace: str = "") -> List[Alert]:
-        """Collect alerts from Prometheus, K8s events, and ES."""
+        """Collect sources concurrently; a failed source cannot hide a successful one."""
+        async def collect(name, **kwargs):
+            tool = self.registry.get(name)
+            if tool is None:
+                self.collection_status[name] = "unavailable"
+                return None
+            try:
+                result = await asyncio.wait_for(
+                    run_sync_in_daemon_thread(tool.execute, **kwargs), self.collection_timeout_s)
+                self.collection_status[name] = "ok" if result.success else "error"
+                return result.data if result.success else None
+            except Exception as exc:
+                self.collection_status[name] = type(exc).__name__
+                return None
+
+        prometheus, events = await asyncio.gather(
+            collect("prometheus", query='ALERTS{alertstate="firing"' +
+                    (',namespace='+json.dumps(namespace) if namespace else '') + '}', max_results=5000),
+            collect("kubectl", command="get events --field-selector type=Warning --sort-by='.lastTimestamp' -o json", namespace=namespace),
+        )
         alerts = []
-        if self.offline_mode:
-            from agents.detection_agent import DetectionAgent
-
-            detector = DetectionAgent(self.llm, self.registry)
-            signals = detector.detect(namespace)
-            for signal in signals:
-                alerts.append(Alert(
-                    name=signal.title,
-                    severity=signal.severity,
-                    source=signal.source,
-                    timestamp=signal.timestamp,
-                    labels={
-                        "namespace": signal.namespace,
-                        "service": signal.service,
-                    },
-                    message=signal.description,
-                ))
-            return alerts
-        
-        # Source 1: Prometheus alerts
-        prom = self.registry.get("prometheus")
-        if prom:
-            result = prom.execute(query="ALERTS{alertstate='firing'}")
-            if result.success and result.data:
-                for item in result.data.get("results", []):
+        for source, payload in (('prometheus', prometheus), ('kubectl', events)):
+            if payload is None and self.collection_status.get(source) == 'ok':
+                self.collection_status[source] = 'invalid_response'
+        if prometheus is not None:
+            try:
+                if not isinstance(prometheus, dict) or not isinstance(prometheus.get('results'), list):
+                    raise ValueError('missing Prometheus result vector')
+                if prometheus.get('truncated') or prometheus.get('result_count', len(prometheus['results'])) > len(prometheus['results']) or len(prometheus['results']) > 5000:
+                    self.collection_status['prometheus'] = 'truncated'
+                for item in prometheus['results'][:5000]:
                     metric = item.get("metric", {})
-                    alerts.append(Alert(
-                        name=metric.get("alertname", "unknown"),
-                        severity=metric.get("severity", "warning"),
-                        source="prometheus",
-                        timestamp=time.time(),
-                        labels=metric,
-                        message=metric.get("description", metric.get("summary", "")),
-                    ))
-        
-        # Source 2: K8s Warning events
-        kubectl = self.registry.get("kubectl")
-        if kubectl:
-            result = kubectl.execute(
-                command="get events --field-selector type=Warning --sort-by='.lastTimestamp' -o json",
-                namespace=namespace,
-            )
-            if result.success and result.data:
-                import json
-                try:
-                    data = json.loads(result.data) if isinstance(result.data, str) else result.data
-                    for event in data.get("items", [])[:50]:
-                        obj = event.get("involvedObject", {})
-                        alerts.append(Alert(
-                            name=event.get("reason", "K8sWarning"),
-                            severity="warning",
-                            source="k8s_event",
-                            timestamp=time.time(),
-                            labels={
-                                "kind": obj.get("kind", ""),
-                                "name": obj.get("name", ""),
-                                "namespace": obj.get("namespace", namespace),
-                            },
-                            message=event.get("message", "")[:500],
-                        ))
-                except (json.JSONDecodeError, TypeError):
-                    pass
-
+                    if namespace and metric.get("namespace") != namespace:
+                        continue
+                    alerts.append(Alert(name=metric.get("alertname", "unknown"),
+                        severity=metric.get("severity", "warning"), source="prometheus", timestamp=time.time(),
+                        labels=metric, message=metric.get("description", metric.get("summary", "")), raw=item))
+            except (AttributeError, TypeError, ValueError):
+                self.collection_status["prometheus"] = "invalid_response"
+        if events is not None:
+            try:
+                data = json.loads(events) if isinstance(events, str) else events
+                if not isinstance(data, dict) or not isinstance(data.get('items'), list):
+                    raise ValueError('missing Kubernetes event list')
+                if len(data['items']) > 5000 or (data.get('metadata') or {}).get('continue'):
+                    self.collection_status['kubectl'] = 'truncated'
+                for event in data['items'][:5000]:
+                    obj = event.get("involvedObject", {})
+                    stamp = event.get("lastTimestamp") or event.get("eventTime") or event.get("metadata", {}).get("creationTimestamp")
+                    try:
+                        event_time = datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp()
+                    except ValueError:
+                        event_time = 0
+                    alerts.append(Alert(name=event.get("reason", "K8sWarning"), severity="warning", source="k8s_event",
+                        timestamp=event_time, labels={"kind": obj.get("kind", ""), "name": obj.get("name", ""),
+                        "namespace": obj.get("namespace", namespace)}, message=event.get("message", ""), raw=event))
+            except (AttributeError, TypeError, ValueError):
+                self.collection_status["kubectl"] = "invalid_response"
         return alerts
 
     def _temporal_spatial_group(self, alerts: List[Alert]) -> Dict[str, List[int]]:
@@ -348,7 +317,7 @@ Respond in JSON:
 
         try:
             return self.llm.json_chat([
-                {"role": "system", "content": "You are an SRE root cause analyst."},
+                {"role": "system", "content": "你是资深 SRE 根因分析专家。除机器字段外，输出内容必须使用中文。"},
                 {"role": "user", "content": self.RCA_PROMPT.format(
                     group_name=group.representative.name,
                     count=len(group.alerts),
@@ -358,4 +327,4 @@ Respond in JSON:
             ])
         except Exception as e:
             logger.error(f"RCA recommendation failed: {e}")
-            return {"root_cause": "Analysis failed", "confidence": 0.0}
+            return {"root_cause": "分析失败，未能生成根因建议", "confidence": 0.0}

@@ -1,0 +1,16 @@
+id: k8s.pod_crashloop
+version: 0.1.0
+name: K8s Pod CrashLoop
+domain: k8s
+description: Detect, diagnose, and propose guarded healing for CrashLoopBackOff pods.
+stages: [detect, diagnose, heal, verify]
+risk: medium
+permissions: [k8s.read, k8s.write.rollout]
+tags: [kubernetes, pod, crashloop, logs]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.85
+  min_confidence_for_auto_heal: 0.9

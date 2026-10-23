@@ -1,0 +1,43 @@
+{
+  "at": "2026-10-23T03:48:41.474575+00:00",
+  "effective_business_experiments": 2,
+  "ineffective_experiments_preserved": 1,
+  "networkchaos_absent": true,
+  "target_identity_unchanged": true,
+  "targets": [
+    {
+      "workload": "ts-travel-service",
+      "ready": true,
+      "restart_counts": [
+        0
+      ]
+    },
+    {
+      "workload": "ts-seat-service",
+      "ready": true,
+      "restart_counts": [
+        0
+      ]
+    }
+  ],
+  "controller_network_state_cleared": true,
+  "production": [
+    {
+      "name": "/agenticsre",
+      "health": "healthy"
+    },
+    {
+      "name": "/agenticsre-skill-runtime",
+      "health": "healthy"
+    }
+  ],
+  "production_image_unchanged": true,
+  "automatic_diagnosis_verified": false,
+  "diagnosis_blocker": "provider_payment_required",
+  "full_booking_transaction_verified": false,
+  "private_archive": {
+    "sha256": "c94b9235e0680b81cc2fc519cea9f86dde12829fa365fb12e61e12a86041ba2b",
+    "files_verified": 85,
+    "included_in_repository": false
+  }
+}

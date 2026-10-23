@@ -1,0 +1,14 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: agenticsre-container-time-offset
+  namespace: agenticsre-platform-chaos-validation
+spec:
+  mode: one
+  selector:
+    namespaces: [agenticsre-platform-chaos-validation]
+    labelSelectors:
+      app: agenticsre-time-target
+  timeOffset: -5m
+  clockIds: [CLOCK_REALTIME]
+  duration: 30s

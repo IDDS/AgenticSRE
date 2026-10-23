@@ -68,7 +68,7 @@ class ChainParadigm(ParadigmBase):
         evidence = {}
 
         # Build unified context and enrich the base query
-        context = pool.build_context(incident_query)
+        context = pool.build_context(incident_query, namespace=namespace)
         if context is not None and pool._context_builder is not None:
             base_query = pool._context_builder.enrich_query(
                 incident_query, context, agent_name="event_agent"

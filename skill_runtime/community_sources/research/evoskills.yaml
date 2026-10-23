@@ -1,0 +1,20 @@
+source: evoskills
+name: EvoSkills
+trust_level: research-preprint
+license: unknown
+homepage: https://arxiv.org/html/2604.01687v1
+description: Research reference for automatic skill discovery, generation, and verification. Use as a method guide for skill evolution, not as executable operational content.
+integration_mode: method_reference
+allowed_use:
+  - Guide review-only skill evolution workflows.
+  - Require verifier feedback before publishing generated skills.
+  - Treat skills as multi-file packages with concise entry instructions and progressively disclosed resources.
+blocked_use:
+  - Do not auto-enable generated operational skills.
+  - Do not rely on surrogate verification alone for production self-healing.
+  - Do not publish skills without forward tests on held-out incidents or controlled experiments.
+security_notes:
+  - Generated skills must include evidence requirements, confidence gates, approval policy, rollback, and verification.
+  - Verifier output should be stored as review evidence, not as proof of production safety.
+  - For operations domains, final validation must include dry-run or real-environment controlled execution.
+tags: [research, skill-generation, verifier, evolution, ai-agent, aiops]

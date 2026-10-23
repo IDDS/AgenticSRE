@@ -1,0 +1,32 @@
+id: llm.vllm_scheduler_queue
+version: 0.1.0
+name: vLLM 队列与调度退化
+domain: llm
+description: Diagnose vLLM request queue overflow, continuous batching degradation, and prefill/decode scheduling faults.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [prometheus.read, k8s.read, k8s.write.restart]
+tool_dependencies: [kubectl, curl]
+tags: [llm, vllm, scheduler, queue, batching, ttft, latency]
+icon: list-tree
+category: 智算调度
+matching:
+  keywords:
+    - request_queue_overflow
+    - continuous_batch_disruption
+    - prefill_decode_misclassification
+    - attention_backend_mismatch
+    - waiting_requests
+    - ttft
+    - queue
+    - scheduler
+    - 队列
+    - 调度
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.95
+entrypoint: skill.py

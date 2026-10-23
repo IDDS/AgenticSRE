@@ -1,0 +1,232 @@
+emulator:
+  cases:
+    - name: gpu-xid-error
+      inject:
+        - "aemu submit --node ${NODE} --fault gpu-xid-error --inject"
+        - "nvidia-smi --query-gpu=index,name,uuid,utilization.gpu,memory.used --format=csv"
+      recover:
+        - "aemu submit --node ${NODE} --fault gpu-xid-error --recover"
+        - "kubectl get pods,nodes -A -o wide"
+    - name: gpu-ecc-error
+      inject:
+        - "aemu submit --node ${NODE} --fault gpu-ecc-error --inject"
+        - "nvidia-smi -q -d ECC || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault gpu-ecc-error --recover"
+        - "nvidia-smi --query-gpu=index,ecc.errors.uncorrected.volatile.total --format=csv || true"
+    - name: gpu-memory-leak
+      inject:
+        - "aemu submit --node ${NODE} --fault gpu-memory-leak --inject"
+        - "nvidia-smi --query-gpu=index,memory.used,memory.total --format=csv"
+      recover:
+        - "aemu submit --node ${NODE} --fault gpu-memory-leak --recover"
+        - "kubectl -n ${NAMESPACE} rollout status deployment/${DEPLOYMENT:-vllm-server}"
+    - name: gpu-clock-throttle
+      inject:
+        - "aemu submit --node ${NODE} --fault gpu-clock-throttle --inject"
+        - "nvidia-smi --query-gpu=index,clocks.sm,clocks.mem,power.draw --format=csv"
+      recover:
+        - "aemu submit --node ${NODE} --fault gpu-clock-throttle --recover"
+        - "nvidia-smi --query-gpu=index,clocks.sm,clocks.mem,power.draw --format=csv"
+    - name: gpu-high-temp
+      inject:
+        - "aemu submit --node ${NODE} --fault gpu-high-temp --inject"
+        - "nvidia-smi --query-gpu=index,temperature.gpu,clocks_throttle_reasons.active --format=csv"
+      recover:
+        - "aemu submit --node ${NODE} --fault gpu-high-temp --recover"
+        - "nvidia-smi --query-gpu=index,temperature.gpu --format=csv"
+    - name: cuda-context-corruption
+      inject:
+        - "aemu submit --node ${NODE} --fault cuda-context-corruption --inject"
+        - "kubectl -n ${NAMESPACE} logs deploy/${DEPLOYMENT:-vllm-server} --tail=80"
+      recover:
+        - "aemu submit --node ${NODE} --fault cuda-context-corruption --recover"
+        - "kubectl -n ${NAMESPACE} rollout restart deployment/${DEPLOYMENT:-vllm-server}"
+    - name: nccl-rdma-link-degrade
+      inject:
+        - "aemu submit --node ${NODE} --fault nccl-rdma-link-degrade --inject"
+        - "ibstat || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault nccl-rdma-link-degrade --recover"
+        - "kubectl get events -A --sort-by=.lastTimestamp | tail -80"
+    - name: nccl-timeout
+      inject:
+        - "aemu submit --node ${NODE} --fault nccl-timeout --inject"
+        - "grep -R \"NCCL\" /var/log 2>/dev/null | tail -40 || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault nccl-timeout --recover"
+        - "kubectl get pods -A -o wide"
+    - name: roce-packet-loss
+      inject:
+        - "aemu submit --node ${NODE} --fault roce-packet-loss --inject"
+        - "rdma link show || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault roce-packet-loss --recover"
+        - "rdma link show || true"
+    - name: ib-gid-mismatch
+      inject:
+        - "aemu submit --node ${NODE} --fault ib-gid-mismatch --inject"
+        - "show_gids 2>/dev/null || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault ib-gid-mismatch --recover"
+        - "show_gids 2>/dev/null || true"
+    - name: node-network-packet-loss
+      inject:
+        - "aemu submit --node ${NODE} --fault node-network-packet-loss --inject"
+        - "tc qdisc show dev eth0 || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault node-network-packet-loss --recover"
+        - "tc qdisc show dev eth0 || true"
+    - name: node-network-latency
+      inject:
+        - "aemu submit --node ${NODE} --fault node-network-latency --inject"
+        - "tc qdisc show dev eth0 || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault node-network-latency --recover"
+        - "tc qdisc show dev eth0 || true"
+    - name: dns-resolution-failure
+      inject:
+        - "aemu submit --node ${NODE} --fault dns-resolution-failure --inject"
+        - "kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide"
+      recover:
+        - "aemu submit --node ${NODE} --fault dns-resolution-failure --recover"
+        - "kubectl get events -A --sort-by=.lastTimestamp | tail -60"
+    - name: mtu-mismatch
+      inject:
+        - "aemu submit --node ${NODE} --fault mtu-mismatch --inject"
+        - "ip link show"
+      recover:
+        - "aemu submit --node ${NODE} --fault mtu-mismatch --recover"
+        - "ip link show"
+    - name: vllm-empty-endpoints
+      inject:
+        - "kubectl -n ${NAMESPACE} patch service ${SERVICE:-vllm-server} --type merge -p '{\"spec\":{\"selector\":{\"app\":\"missing-vllm\"}}}'"
+      recover:
+        - "kubectl -n ${NAMESPACE} patch service ${SERVICE:-vllm-server} --type merge -p '{\"spec\":{\"selector\":{\"app\":\"vllm-server\"}}}'"
+        - "kubectl -n ${NAMESPACE} get endpoints ${SERVICE:-vllm-server} -o wide"
+    - name: k8s-node-unschedulable
+      inject:
+        - "kubectl cordon ${NODE}"
+        - "kubectl get nodes -o wide"
+      recover:
+        - "kubectl uncordon ${NODE}"
+        - "kubectl get nodes -o wide"
+    - name: k8s-pod-eviction
+      inject:
+        - "kubectl -n ${NAMESPACE} delete pod -l app=${APP:-vllm-server} --wait=false"
+        - "kubectl -n ${NAMESPACE} get pods -o wide"
+      recover:
+        - "kubectl -n ${NAMESPACE} rollout status deployment/${DEPLOYMENT:-vllm-server}"
+        - "kubectl -n ${NAMESPACE} get endpoints ${SERVICE:-vllm-server} -o wide"
+    - name: k8s-resource-quota-exceeded
+      inject:
+        - "aemu submit --node ${NODE} --fault k8s-resource-quota-exceeded --inject"
+        - "kubectl -n ${NAMESPACE} get quota,limitrange"
+      recover:
+        - "aemu submit --node ${NODE} --fault k8s-resource-quota-exceeded --recover"
+        - "kubectl -n ${NAMESPACE} get events --sort-by=.lastTimestamp | tail -60"
+    - name: gpfs-metadata-latency
+      inject:
+        - "aemu submit --node ${NODE} --fault gpfs-metadata-latency --inject"
+        - "df -hT"
+      recover:
+        - "aemu submit --node ${NODE} --fault gpfs-metadata-latency --recover"
+        - "kubectl get pv,pvc -A"
+    - name: nfs-io-throttle
+      inject:
+        - "aemu submit --node ${NODE} --fault nfs-io-throttle --inject"
+        - "df -hT | grep -E 'nfs|pvc|gpfs' || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault nfs-io-throttle --recover"
+        - "kubectl get pv,pvc -A"
+    - name: nvme-disk-pressure
+      inject:
+        - "aemu submit --node ${NODE} --fault nvme-disk-pressure --inject"
+        - "df -hT && iostat -x 1 3 || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault nvme-disk-pressure --recover"
+        - "df -hT"
+    - name: model-cache-corruption
+      inject:
+        - "aemu submit --node ${NODE} --fault model-cache-corruption --inject"
+        - "find ${MODEL_CACHE:-/data} -maxdepth 3 -type f | head -20"
+      recover:
+        - "aemu submit --node ${NODE} --fault model-cache-corruption --recover"
+        - "kubectl -n ${NAMESPACE} rollout restart deployment/${DEPLOYMENT:-vllm-server}"
+    - name: vllm-process-crash
+      inject:
+        - "aemu submit --node ${NODE} --fault vllm-process-crash --inject"
+        - "kubectl -n ${NAMESPACE} get pods -l app=${APP:-vllm-server} -o wide"
+      recover:
+        - "aemu submit --node ${NODE} --fault vllm-process-crash --recover"
+        - "kubectl -n ${NAMESPACE} rollout status deployment/${DEPLOYMENT:-vllm-server}"
+    - name: python-zombie-process
+      inject:
+        - "aemu submit --node ${NODE} --fault python-zombie-process --inject"
+        - "ps -eo stat,pid,ppid,cmd | awk '$1 ~ /Z/ {print}'"
+      recover:
+        - "aemu submit --node ${NODE} --fault python-zombie-process --recover"
+        - "ps -eo stat,pid,ppid,cmd | awk '$1 ~ /Z/ {print}'"
+    - name: fd-exhaustion
+      inject:
+        - "aemu submit --node ${NODE} --fault fd-exhaustion --inject"
+        - "lsof -p ${PID:-1} 2>/dev/null | wc -l"
+      recover:
+        - "aemu submit --node ${NODE} --fault fd-exhaustion --recover"
+        - "ulimit -n"
+    - name: cpu-powersave-throttle
+      inject:
+        - "aemu submit --node ${NODE} --fault cpu-powersave-throttle --inject"
+        - "cpupower frequency-info 2>/dev/null || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault cpu-powersave-throttle --recover"
+        - "cpupower frequency-info 2>/dev/null || true"
+    - name: memory-pressure
+      inject:
+        - "aemu submit --node ${NODE} --fault memory-pressure --inject"
+        - "free -h"
+      recover:
+        - "aemu submit --node ${NODE} --fault memory-pressure --recover"
+        - "free -h"
+    - name: ssh-login-storm
+      inject:
+        - "aemu submit --node ${NODE} --fault ssh-login-storm --inject"
+        - "ss -tnp | grep ':22' | head -40 || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault ssh-login-storm --recover"
+        - "ss -tnp | grep ':22' | head -40 || true"
+    - name: crypto-mining-process
+      inject:
+        - "aemu submit --node ${NODE} --fault crypto-mining-process --inject"
+        - "ps -eo pid,pcpu,pmem,cmd --sort=-pcpu | head -20"
+      recover:
+        - "aemu submit --node ${NODE} --fault crypto-mining-process --recover"
+        - "ps -eo pid,pcpu,pmem,cmd --sort=-pcpu | head -20"
+    - name: ascend-hccl-timeout
+      inject:
+        - "aemu submit --node ${NODE} --fault ascend-hccl-timeout --inject"
+        - "npu-smi info || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault ascend-hccl-timeout --recover"
+        - "npu-smi info || true"
+    - name: ascend-aicore-error
+      inject:
+        - "aemu submit --node ${NODE} --fault ascend-aicore-error --inject"
+        - "npu-smi info -t usages || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault ascend-aicore-error --recover"
+        - "npu-smi info -t usages || true"
+    - name: biren-gpu-driver-reset
+      inject:
+        - "aemu submit --node ${NODE} --fault biren-gpu-driver-reset --inject"
+        - "brsmi -a 2>/dev/null || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault biren-gpu-driver-reset --recover"
+        - "brsmi -a 2>/dev/null || true"
+    - name: metax-musa-runtime-error
+      inject:
+        - "aemu submit --node ${NODE} --fault metax-musa-runtime-error --inject"
+        - "mthreads-gmi 2>/dev/null || true"
+      recover:
+        - "aemu submit --node ${NODE} --fault metax-musa-runtime-error --recover"
+        - "mthreads-gmi 2>/dev/null || true"

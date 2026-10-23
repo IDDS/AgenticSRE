@@ -1,0 +1,30 @@
+id: llm.gpu_device_plugin_health
+version: 0.1.0
+name: GPU 设备插件与资源暴露诊断
+domain: llm
+description: Diagnose NVIDIA device plugin, GPU allocatable, RuntimeClass, and node registration issues.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, host.read, k8s.write.restart]
+tool_dependencies: [kubectl, nvidia-smi]
+tags: [llm, gpu, nvidia-device-plugin, node, scheduler, runtime]
+icon: cpu
+category: 智算资源
+matching:
+  keywords:
+    - nvidia-device-plugin
+    - nvidia.com/gpu
+    - gpu allocatable
+    - insufficient nvidia.com/gpu
+    - runtimeclass
+    - device plugin
+    - GPU 节点
+    - 设备插件
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.84
+  min_confidence_for_auto_heal: 0.98
+entrypoint: skill.py

@@ -1,0 +1,19 @@
+id: llm.gpu_resource_pressure
+version: 0.1.0
+name: 智算 GPU 资源压力
+domain: llm
+description: 检测、诊断并生成受控恢复建议，用于 GPU OOM、KV Cache 耗尽、显存高水位和 CUDA 资源压力。
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [prometheus.read, k8s.read, k8s.write.restart]
+tool_dependencies: [kubectl, curl]
+tags: [llm, gpu, cuda, oom, kv-cache, vllm, memory]
+icon: gpu
+category: 智算资源
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.95

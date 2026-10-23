@@ -1,0 +1,28 @@
+id: llm.teller_request_trace_diagnosis
+version: 0.1.0
+name: TELLER 请求级 Trace 诊断
+domain: llm
+description: 基于 TELLER 请求级调用路径、CUDA Runtime/Driver/Kernel 事件和 vLLM 请求上下文诊断智算推理瓶颈。
+stages: [detect, diagnose]
+risk: low
+permissions: [observability.read, prometheus.read]
+tool_dependencies: [teller, kubectl, curl]
+tags: [llm, vllm, teller, trace, cuda, kernel, request-path, diagnosis]
+icon: route
+category: 细粒度 Trace
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.72
+  min_confidence_for_auto_heal: 0.92
+matching:
+  domain: llm
+  keywords:
+    - teller
+    - request_context
+    - kernel_p95
+    - cuda
+    - request_span
+    - 请求级

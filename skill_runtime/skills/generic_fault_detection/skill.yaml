@@ -1,0 +1,16 @@
+id: generic.fault_detection
+version: 0.1.0
+name: Generic Fault Detection
+domain: generic
+description: Generic signal matcher for fault text, alerts, metrics, events, and symptoms before scenario-specific skills take over.
+stages: [detect]
+risk: low
+permissions: [observability.read]
+tags: [generic, detection, alert, signal]
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 1
+  min_confidence_for_heal: 0.6
+  min_confidence_for_auto_heal: 0.9

@@ -1,0 +1,379 @@
+schema: agenticsre.real-injection-replay.v1
+frozen_at: "2026-08-11"
+source_artifact: data/validation/precision_fault_injection_remote_20260730.json
+source_semantics: >-
+  Every case below references a source record whose status is passed and whose
+  cleanup is complete. Incident/evidence text contains observed before/fault/
+  recovery effects only; source scenario IDs and injection actions are not sent
+  to the diagnosis model.
+cases:
+  - id: replay-http-header-delay
+    source_record: precise-http-header-delay
+    domain: general
+    incident: One subset of otherwise identical health requests becomes about 500 ms slower while the control subset remains normal.
+    evidence_contract:
+      version: v1
+      required: [metric, trace, event]
+      supporting: [log]
+      inapplicable: []
+      source_fields: [before, fault, recovery]
+      rationale: Selective latency requires a numeric comparison, request-subset scope, and recovery boundary.
+    evidence:
+      - Baseline matching request latency was 0.034331 s and control latency was 0.035228 s.
+      - During the fault window matching latency was 0.536684 s with a configured 500 ms delay; control latency remained 0.032958 s.
+      - After recovery matching latency returned to 0.031266 s without recreating the pod or increasing restart count.
+    ground_truth:
+      label: Header-matched HTTP requests receive a selective 500 ms delay
+      match_groups:
+        - [header, matching request, request subset]
+        - [500 ms, 0.536684, selective delay, latency]
+
+  - id: replay-strace-openat-eacces
+    source_record: precise-strace-openat-error
+    domain: general
+    incident: A single process receives one access-denied error while opening a file, then subsequent operations recover.
+    evidence_contract:
+      version: v1
+      required: [trace, log, event]
+      supporting: []
+      inapplicable: [metric]
+      source_fields: [fault, control, recovery]
+      rationale: The syscall/process target, errno, and later successful iteration establish the one-shot fault.
+    evidence:
+      - The observation is isolated to process 3048372 and syscall openat.
+      - Exactly one call returns errno EACCES and the trace marks one injected hit.
+      - A later iteration completes with result ok.
+    ground_truth:
+      label: One openat syscall is forced to return EACCES for the target process
+      match_groups:
+        - [openat, syscall]
+        - [eacces, access denied, errno]
+        - [single, one call, one hit]
+
+  - id: replay-seccomp-path-errno
+    source_record: precise-seccomp-openat-errno
+    domain: general
+    incident: File opens fail only for one exact path; control paths and later requests remain successful.
+    evidence_contract:
+      version: v1
+      required: [trace, log, event]
+      supporting: [metric]
+      inapplicable: []
+      source_fields: [fault, control, recovery]
+      rationale: Path scope, errno, control-path contrast, and post-filter recovery are required.
+    evidence:
+      - The exact affected path is /tmp/agenticsre-seccomp-target.
+      - Three path matches are observed and exactly one returns errno 13.
+      - After recovery the filter is absent and target/control failure counts are both zero.
+    ground_truth:
+      label: A path-scoped seccomp rule returns errno 13 for one target open
+      match_groups:
+        - [seccomp, filter]
+        - [exact path, path-scoped, agenticsre-seccomp-target]
+        - [errno 13, eacces]
+
+  - id: replay-ebpf-connect-denial
+    source_record: precise-ebpf-connect-denial
+    domain: general
+    incident: One workload cannot establish IPv4 connections to a specific target while recovery occurs without application restart.
+    evidence_contract:
+      version: v1
+      required: [trace, log, event]
+      supporting: [metric]
+      inapplicable: []
+      source_fields: [fault, control, recovery]
+      rationale: The target/cgroup scope, denial observation, and detach/recovery event must be linked.
+    evidence:
+      - cgroup connect4 attempts to 10.105.245.47:18080 fail exactly three times.
+      - Six target connections succeed after the failure limit is reached.
+      - The attached program is then detached.
+    ground_truth:
+      label: cgroup-scoped eBPF connect4 policy denies three target connections
+      match_groups:
+        - [ebpf, connect4, cgroup]
+        - [deny, denial, fail]
+        - [three, 3, target connection]
+
+  - id: replay-jvm-method-latency
+    source_record: precise-jvm-method-latency
+    domain: general
+    incident: A stable JVM method suddenly takes about two seconds and later returns to baseline without pod recreation.
+    evidence_contract:
+      version: v1
+      required: [metric, event]
+      supporting: []
+      inapplicable: [log]
+      source_fields: [before, fault, recovery]
+      rationale: Method identity, latency delta, and no-restart recovery distinguish the injected delay.
+    evidence:
+      - AgenticSREBytecodeProbe.stableOperation baseline latency is 0 ms.
+      - Fault-window latency is 2020 ms.
+      - Recovery latency is 0 ms, pod_recreated=false and restart_delta=0.
+    ground_truth:
+      label: JVM bytecode fault adds about two seconds to stableOperation
+      match_groups:
+        - [jvm, bytecode, stableoperation, method]
+        - [2020 ms, two seconds, latency, delay]
+
+  - id: replay-gdb-function-return
+    source_record: precise-gdb-function-return
+    domain: general
+    incident: A native function returns one abnormal negative value between normal successful calls.
+    evidence_contract:
+      version: v1
+      required: [trace, log, event]
+      supporting: []
+      inapplicable: [metric]
+      source_fields: [before, fault, recovery]
+      rationale: Function identity, abnormal return, and later normal return define the one-shot override.
+    evidence:
+      - stable_operation baseline result is 2.
+      - A single hit returns -88.
+      - A later call returns 72 without pod recreation or restart.
+    ground_truth:
+      label: One native function return is overridden to -88
+      match_groups:
+        - [native function, stable_operation, function return]
+        - [-88, overridden, forced return]
+        - [single hit, one call]
+
+  - id: replay-elf-function-return
+    source_record: precise-elf-function-return
+    domain: general
+    incident: A binary function has one unexpected negative return on a specific call and then behaves normally.
+    evidence_contract:
+      version: v1
+      required: [trace, log, event]
+      supporting: []
+      inapplicable: [metric]
+      source_fields: [before, fault, recovery]
+      rationale: Binary call-site identity, forced return value, and recovery are necessary.
+    evidence:
+      - Baseline stable_operation result is 2.
+      - Call 3 is marked injected=1 and returns -77.
+      - Recovery result is 10.
+    ground_truth:
+      label: ELF call-site override forces call 3 to return -77 once
+      match_groups:
+        - [elf, binary function, call-site, stable_operation]
+        - [call 3, -77, forced return]
+        - [once, single, injected=1, specific call]
+
+  - id: replay-elf-function-errno
+    source_record: precise-elf-function-errno
+    domain: general
+    incident: One native binary call returns failure with errno 5, while earlier and later calls have errno zero.
+    evidence_contract:
+      version: v1
+      required: [trace, log, event]
+      supporting: []
+      inapplicable: [metric]
+      source_fields: [before, fault, recovery]
+      rationale: Call identity, errno/result pair, and before/after contrast are required.
+    evidence:
+      - Baseline result is 2 with errno 0.
+      - Call 4 is marked injected=1, returns -1 and sets errno 5.
+      - Recovery result is 10 with errno 0.
+    ground_truth:
+      label: ELF call 4 is overridden to -1 with errno 5
+      match_groups:
+        - [elf, native binary, call 4]
+        - [errno 5, eio]
+        - [-1, overridden, forced]
+
+  - id: replay-elf-function-delay
+    source_record: precise-elf-function-delay
+    domain: general
+    incident: One binary function invocation is hundreds of milliseconds slower than its normal ten-millisecond runtime.
+    evidence_contract:
+      version: v1
+      required: [metric, trace, event]
+      supporting: []
+      inapplicable: [log]
+      source_fields: [before, fault, recovery]
+      rationale: Invocation identity, measured latency, and one-shot recovery establish the delay.
+    evidence:
+      - Baseline latency is 10 ms.
+      - Call 5 is marked injected=1 with configured 350 ms and observed 361 ms.
+      - Recovery latency returns to 10 ms.
+    ground_truth:
+      label: ELF call 5 receives a one-shot 350 ms function delay
+      match_groups:
+        - [elf, binary function, call 5]
+        - [350 ms, 361 ms, function delay]
+        - [one-shot, injected once, single call, injected=1, specific invocation]
+
+  - id: replay-network-loss
+    source_record: precise-network-loss
+    domain: general
+    incident: A selected network target fails four probes and then becomes reachable again.
+    evidence_contract:
+      version: v1
+      required: [metric, trace, event]
+      supporting: [log]
+      inapplicable: []
+      source_fields: [fault, control, recovery]
+      rationale: Failure count, target/control scope, and restored reachability are the minimum sufficient chain.
+    evidence:
+      - Target failure count during the fault window is 4.
+      - Recovery status is success.
+      - Cleanup is recorded complete in the source transaction.
+    ground_truth:
+      label: Target-scoped network loss causes four failed probes
+      match_groups:
+        - [network loss, packet loss, target-scoped, selected network target, target unreachability]
+        - [four, 4, failed probes, target failures]
+
+  - id: replay-dns-error
+    source_record: precise-dns-error
+    domain: general
+    incident: Resolution fails for one exact domain while the environment later returns to normal.
+    evidence_contract:
+      version: v1
+      required: [event]
+      supporting: [log]
+      inapplicable: [metric, trace]
+      source_fields: [fault, control, recovery]
+      rationale: Exact domain scope, resolution failure, control-domain contrast, and recovery are required.
+    evidence:
+      - exact_target_domain_failed=true during the fault window.
+      - Recovery status is success.
+      - Cleanup is recorded complete in the source transaction.
+    ground_truth:
+      label: Exact-target DNS resolution failure
+      match_groups:
+        - [dns, domain resolution, name resolution, resolution fails, exact_target_domain_failed]
+        - [exact target, one domain, target domain]
+        - [failure, failed]
+
+  - id: replay-container-cpu-stress
+    source_record: precise-container-cpu-stress
+    domain: general
+    incident: CPU time for one container rises sharply while the control container changes only slightly, then the target returns near baseline.
+    evidence_contract:
+      version: v1
+      required: [metric, trace]
+      supporting: [event]
+      inapplicable: [log]
+      source_fields: [before, fault, recovery]
+      rationale: CPU delta and target/control scope are sufficient; recovery strengthens temporal attribution.
+    evidence:
+      - Baseline target CPU is 46951 usec and control is 40112 usec.
+      - Fault-window target CPU reaches 2609583 usec while control is 59122 usec.
+      - Recovery target CPU is 69568 usec.
+    ground_truth:
+      label: Target-container CPU stress creates isolated CPU consumption
+      match_groups:
+        - [cpu stress, cpu consumption, cpu load, cpu time, cpu spike]
+        - [target container, isolated, control]
+        - [2609583, spike, sharply]
+
+  - id: replay-path-io-latency
+    source_record: precise-path-io-latency
+    domain: general
+    incident: I/O to one target path becomes seconds slower while a control path remains near baseline.
+    evidence_contract:
+      version: v1
+      required: [metric, trace]
+      supporting: [event]
+      inapplicable: [log]
+      source_fields: [before, fault, recovery]
+      rationale: Path-specific latency contrast is the minimum sufficient evidence; recovery is supporting.
+    evidence:
+      - Baseline target and control latency are both 2 ms.
+      - Fault-window target latency is 2353 ms while control latency is 7 ms.
+      - Recovery target latency returns to 2 ms.
+    ground_truth:
+      label: Path-scoped I/O delay raises only target latency to about 2.35 seconds
+      match_groups:
+        - [path-scoped, target path, io path, i/o path]
+        - [2353 ms, 2.35 seconds, io delay, i/o delay]
+        - [control, 7 ms]
+
+  - id: replay-container-time-offset
+    source_record: precise-container-time-offset
+    domain: general
+    incident: One container observes a five-minute time shift and later returns to the host reference time.
+    evidence_contract:
+      version: v1
+      required: [metric, event]
+      supporting: []
+      inapplicable: [log]
+      source_fields: [before, fault, recovery]
+      rationale: Offset magnitude, container-local scope, and restoration to host time are required.
+    evidence:
+      - Baseline delta is 0 seconds.
+      - Fault-window delta is 300 seconds.
+      - Recovery delta is 0 seconds.
+    ground_truth:
+      label: Container-local time offset shifts the clock by 300 seconds
+      match_groups:
+        - [time offset, clock offset, time shift]
+        - [container, container-local]
+        - [300 seconds, five-minute, 5 minute]
+
+  - id: replay-application-failpoint
+    source_record: precise-application-failpoint-error
+    domain: general
+    incident: One identified payment-state request fails exactly once, then both disabled and expired paths succeed.
+    evidence_contract:
+      version: v1
+      required: [trace, log, event]
+      supporting: []
+      inapplicable: [metric]
+      source_fields: [fault, control, recovery]
+      rationale: Request identity, exact application error, control-path result, and one-shot recovery are required.
+    evidence:
+      - Request agenticsre-fp-request returns PAYMENT_STATE_WRITE_FAILED with max_hits=1.
+      - After recovery disabled_target=ok and expired_target=ok.
+      - Cleanup is recorded complete in the source transaction.
+    ground_truth:
+      label: One-shot application failpoint returns PAYMENT_STATE_WRITE_FAILED
+      match_groups:
+        - [application failpoint, failpoint, payment-state request, payment state request]
+        - [payment_state_write_failed, payment state write failed]
+        - [one-shot, max_hits=1, once]
+
+  - id: replay-cgroup-cpu-quota
+    source_record: precise-cgroup-v2-cpu-quota
+    domain: general
+    incident: One container is heavily CPU-throttled while its control cgroup retains the original quota.
+    evidence_contract:
+      version: v1
+      required: [metric, trace, event]
+      supporting: []
+      inapplicable: [log]
+      source_fields: [before, fault, recovery]
+      rationale: cpu.max/nr_throttled measurements, target/control cgroup scope, and restored quota are required.
+    evidence:
+      - Baseline cpu.max is 100000 100000 and nr_throttled is 1.
+      - Fault-window cpu.max is 20000 100000 and nr_throttled rises to 50; control cpu.max stays 100000 100000.
+      - Recovery restores cpu.max to 100000 100000.
+    ground_truth:
+      label: cgroup v2 CPU quota reduction causes target throttling
+      match_groups:
+        - [cgroup, cpu.max]
+        - [cpu quota, quota reduction, 20000 100000]
+        - [throttled, nr_throttled, 50]
+
+  - id: replay-dm-flakey-write-error
+    source_record: precise-dm-flakey-write-error
+    domain: general
+    incident: Writes fail through one device-mapper path while a control write succeeds, then the original data checksum is restored.
+    evidence_contract:
+      version: v1
+      required: [trace, event]
+      supporting: [metric, log]
+      inapplicable: []
+      source_fields: [before, fault, recovery]
+      rationale: Mapping/path scope, write-error observation, and checksum-preserving removal establish the fault.
+    evidence:
+      - The active mapping agenticsre-flakey-probe reports error_writes=true and control_write=true.
+      - Recovery records mapping_removed=true.
+      - The recovered snapshot SHA-256 exactly matches the pre-fault checksum.
+    ground_truth:
+      label: dm-flakey mapping injects target write errors while preserving the control path
+      match_groups:
+        - [dm-flakey, device-mapper, flakey mapping]
+        - [write error, error_writes, writes fail]
+        - [control write, control path]

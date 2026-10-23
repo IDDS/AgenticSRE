@@ -1,0 +1,17 @@
+id: k8s.network_policy_deny
+version: 0.1.0
+name: K8s Network Policy Deny
+domain: k8s
+description: Diagnose NetworkPolicy or NetworkChaos traffic blocking without destructive remediation.
+stages: [detect, diagnose, verify]
+risk: medium
+permissions: [k8s.read]
+tool_dependencies: [kubectl]
+tags: [kubernetes, networkpolicy, network, chaos]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.8
+  min_confidence_for_auto_heal: 0.95

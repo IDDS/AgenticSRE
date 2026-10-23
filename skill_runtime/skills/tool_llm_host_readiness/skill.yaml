@@ -1,0 +1,17 @@
+id: tool.llm_host_readiness
+version: 0.1.0
+name: LLM Host Readiness Tool Skill
+domain: llm
+description: Read-only bare-metal GPU and vLLM host readiness inspection tool skill.
+stages: [detect, diagnose, verify]
+risk: low
+permissions: [host.read]
+tool_dependencies: [ssh, nvidia-smi, curl, pgrep]
+tags: [tool, llm, vllm, gpu, host, readiness, metrics]
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 1
+  min_confidence_for_heal: 0.65
+  min_confidence_for_auto_heal: 0.9

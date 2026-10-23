@@ -1,0 +1,30 @@
+id: k8s.prometheus_scrape_target
+version: 0.1.0
+name: Prometheus 抓取目标诊断
+domain: k8s
+description: Diagnose Prometheus TargetDown and Kubernetes scrape target discovery issues.
+stages: [detect, diagnose, heal, verify]
+risk: medium
+permissions: [prometheus.read, k8s.read, k8s.write.config]
+tool_dependencies: [prometheus, kubectl, curl]
+tags: [k8s, prometheus, targetdown, servicemonitor, metrics]
+icon: radio-tower
+category: 通算观测
+matching:
+  keywords:
+    - targetdown
+    - target down
+    - scrape failed
+    - servicemonitor
+    - podmonitor
+    - metrics endpoint
+    - metricsBindAddress
+    - prometheus
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.78
+  min_confidence_for_auto_heal: 0.95
+entrypoint: skill.py

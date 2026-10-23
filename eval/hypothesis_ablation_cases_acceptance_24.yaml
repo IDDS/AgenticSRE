@@ -1,0 +1,410 @@
+version: 1
+description: >-
+  Acceptance-oriented 24-case controlled benchmark. It contains the original eight
+  single-fault fixtures plus sixteen complex, staged, composite, transient, gray,
+  distractor, and observability-blindspot fixtures. Ground truth is used only by the
+  offline evaluator and is never interpolated into model prompts.
+
+cases:
+  - id: general-cpu-contention
+    domain: general_compute
+    incident: >-
+      Post creation latency rose from 80 ms to more than 2 s. The compose-post path
+      reports intermittent 504 responses, while read-only APIs remain mostly healthy.
+    evidence:
+      - compose-post-service CPU usage is 99% and CPU throttling increased sharply after T0.
+      - Other application pods on the same node show normal memory and disk utilization.
+      - Kubernetes events show a new CPU-intensive workload scheduled on the affected node at T0-2m.
+      - Removing that workload returns compose-post latency to its baseline range.
+    ground_truth:
+      label: CPU resource contention affecting compose-post-service
+      match_groups:
+        - [cpu]
+        - [compose-post, compose post]
+        - [contention, pressure, stress, throttling, saturation, 争用, 压力, 饱和]
+
+  - id: general-memory-oom
+    domain: general_compute
+    incident: >-
+      Timeline requests are intermittently unavailable. A workload restarted several
+      times around the alert, but no deployment rollout was recorded.
+    evidence:
+      - The affected container terminated with exit code 137 and reason OOMKilled.
+      - Node memory utilization exceeded 94%; CPU and disk remained below warning thresholds.
+      - Working-set memory grew continuously during the ten minutes before the alert.
+      - The service recovered after memory pressure was removed and the pod restarted.
+    ground_truth:
+      label: Memory pressure causing OOM termination
+      match_groups:
+        - [memory, oom, oomkilled, 内存]
+        - [pressure, exhaustion, limit, killed, oomkill, leak, 压力, 耗尽, 终止, 泄漏]
+
+  - id: general-crashloop
+    domain: general_compute
+    incident: >-
+      A newly created workload never becomes ready. Its restart count rises rapidly and
+      clients receive service-unavailable responses.
+    evidence:
+      - Pod status alternates between Running and CrashLoopBackOff.
+      - The container exits with code 1 within one second of each start.
+      - Image pull, scheduling, node resources and service endpoints are otherwise normal.
+      - Logs end immediately after process initialization with a fatal application error.
+    ground_truth:
+      label: Application process crash causing CrashLoopBackOff
+      match_groups:
+        - [crashloop, crash loop, crash, fatal error, immediate exit, 致命错误, 立即退出, 崩溃]
+        - [exit code 1, exits, process, application, 进程, 应用]
+
+  - id: general-network-partition
+    domain: general_compute
+    incident: >-
+      The frontend proxy begins returning 503 for one downstream route. Backend pods stay
+      Ready and continue serving requests that originate inside their own namespace.
+    evidence:
+      - A NetworkChaos object targeting frontend-proxy to frontend appeared immediately before T0.
+      - Service selectors and endpoints remain populated and all target pods are Ready.
+      - Requests crossing the affected network boundary fail, while direct backend requests return HTTP 200.
+      - Deleting the NetworkChaos object restores the route without restarting either service.
+    ground_truth:
+      label: Network partition introduced by NetworkChaos
+      match_groups:
+        - [networkchaos, network chaos, network partition, 网络分区, 网络隔离]
+        - [frontend-proxy, frontend proxy, proxy]
+
+  - id: general-zero-replica
+    domain: general_compute
+    incident: >-
+      Home timeline requests return 503 and Kubernetes reports no ready endpoints for the
+      home-timeline service. Other social-network APIs are healthy.
+    evidence:
+      - Deployment home-timeline-service has desired replicas 0 and available replicas 0.
+      - An event records the ReplicaSet scaling from one replica to zero shortly before T0.
+      - There are no image pull failures, resource-pressure events or readiness-probe failures.
+      - Scaling the deployment back to one creates an endpoint and clears the 503 response.
+    ground_truth:
+      label: home-timeline-service scaled to zero replicas
+      match_groups:
+        - [home-timeline, home timeline]
+        - [scaled to zero, scaled down to 0, scale down, zero replica, replicas 0, 0 desired replicas, 缩容, 副本为 0, 零副本]
+
+  - id: general-database-dependency
+    domain: general_compute
+    incident: >-
+      New posts cannot be stored and compose-post requests time out. Read paths that do not
+      write post data continue to work.
+    evidence:
+      - post-storage-service spans spend more than 95% of their duration waiting for MongoDB.
+      - The post-storage MongoDB deployment has no available pod or endpoint.
+      - compose-post CPU, memory and network error rates remain near baseline.
+      - Restoring the MongoDB replica clears write latency without changing compose-post.
+    ground_truth:
+      label: post-storage MongoDB dependency unavailable
+      match_groups:
+        - [mongodb, mongo]
+        - [post-storage, post storage]
+        - [unavailable, dependency, endpoint, down, 不可用, 依赖]
+
+  - id: ai-kv-cache-pressure
+    domain: ai_compute
+    incident: >-
+      An inference endpoint develops long time-to-first-token and starts queueing requests
+      during a long-context workload. The model server remains reachable.
+    evidence:
+      - vLLM KV Cache usage reaches 99% and GPU framebuffer memory reaches 98%.
+      - Waiting requests increase from 0 to 12 while running requests stay bounded.
+      - GPU compute utilization is not saturated and the node has no disk-pressure event.
+      - Stopping the additional long-context load reduces KV Cache use and TTFT returns toward baseline.
+    ground_truth:
+      label: vLLM KV Cache exhaustion caused by long-context load
+      match_groups:
+        - [kv cache, kv_cache, kv缓存]
+        - [exhaustion, exhausted, pressure, saturation, capacity, 耗尽, 压力, 饱和, 容量]
+
+  - id: ai-request-queue
+    domain: ai_compute
+    incident: >-
+      Inference throughput is stable but TTFT P95 rises to 8.2 s and user requests wait before
+      decoding begins. GPU errors and model-process restarts are absent.
+    evidence:
+      - vllm:num_requests_waiting is 12 while num_requests_running is 2.
+      - TPOT P95 remains 0.8 s after decoding starts, separating queue delay from token generation.
+      - GPU memory is below the KV Cache warning threshold and no CUDA OOM is present.
+      - Reducing request arrival rate drains the queue and TTFT falls without restarting vLLM.
+    ground_truth:
+      label: Request arrival rate exceeds scheduler capacity and causes queue buildup
+      match_groups:
+        - [queue, queuing, waiting, backlog, 排队, 队列, 积压]
+        - [arrival rate, request rate, concurrency, scheduler capacity, scheduling delay, scheduling queue, scheduler overload, increased load, worker slots, max_num_seqs, concurrent requests limit, execution slots, overload, 到达率, 并发, 调度容量, 过载]
+
+  - id: general-cache-flap-retry-amplification
+    domain: general_compute
+    incident: >-
+      Home timeline latency oscillates every 30 to 60 seconds. The application stays Ready,
+      but request volume observed at the frontend is higher than the client-originated rate.
+    evidence:
+      - home-timeline-redis endpoints disappear for 8 seconds and then return in each cycle.
+      - Client and gateway retry counters rise 4.6 times during each endpoint gap.
+      - CPU, memory and disk on home-timeline-service remain near baseline.
+      - Stabilizing the Redis endpoint stops retries and returns frontend request volume to baseline.
+    ground_truth:
+      label: Transient Redis endpoint flap amplified by client retries
+      match_groups:
+        - [redis]
+        - [flap, intermittent, transient, endpoint, 抖动, 瞬态, 间歇]
+        - [retry, retries, amplification, storm, 重试, 放大]
+
+  - id: general-observability-blindspot-cpu
+    domain: general_compute
+    incident: >-
+      Compose-post latency rises while the central metrics dashboard shows a gap for the affected
+      namespace. Logs from unrelated services remain available.
+    evidence:
+      - The namespace metrics exporter has zero replicas, explaining the missing dashboard series.
+      - Container runtime CPU accounting shows compose-post-service at 98% with sustained throttling.
+      - An unrelated crash-test pod has old Warning events that predate the latency increase by 40 minutes.
+      - Restoring only the exporter restores visibility; removing compose-post CPU pressure restores latency.
+    ground_truth:
+      label: compose-post CPU pressure hidden by an observability exporter outage
+      match_groups:
+        - [compose-post, compose post]
+        - [cpu, throttling, contention, pressure, stress, 争用, 压力]
+        - [exporter, observability, metrics gap, blind spot, telemetry, 可观测, 指标缺失, 盲点]
+
+  - id: general-stale-distractor-database
+    domain: general_compute
+    incident: >-
+      Post writes time out. The event stream contains repeated CrashLoop warnings, while read-only
+      timeline requests continue to succeed.
+    evidence:
+      - CrashLoop warnings belong to rca-distractor-crash and began 55 minutes before the incident.
+      - Current write spans block on post-storage MongoDB and terminate after the dependency timeout.
+      - post-storage MongoDB has zero available replicas and no endpoint.
+      - Restoring MongoDB clears write failures while the distractor pod remains in CrashLoop.
+    ground_truth:
+      label: MongoDB dependency outage; CrashLoop is a stale distractor
+      match_groups:
+        - [mongodb, mongo]
+        - [unavailable, outage, zero replica, no endpoint, dependency, down, 不可用, 依赖]
+        - [stale, distractor, unrelated, old warning, 陈旧, 干扰, 无关]
+
+  - id: general-staged-write-cascade
+    domain: general_compute
+    incident: >-
+      Write latency first increases, then 45 seconds later the compose-post path begins returning
+      5xx at a much higher rate. Read-only endpoints remain mostly healthy.
+    evidence:
+      - At T0, post-storage MongoDB endpoints become empty and storage spans start timing out.
+      - At T0+45s, retry work drives compose-post CPU throttling above 90%.
+      - CPU pressure is absent before the dependency outage and persists only while retries continue.
+      - Restoring MongoDB stops new retries; removing residual CPU pressure returns latency to baseline.
+    ground_truth:
+      label: MongoDB outage triggers retry-driven compose-post CPU cascade
+      match_groups:
+        - [mongodb, mongo]
+        - [retry, retries, 重试]
+        - [compose-post, compose post]
+        - [cpu, throttling, contention, pressure, 争用, 压力]
+
+  - id: general-scaleout-capacity-failure
+    domain: general_compute
+    incident: >-
+      Request demand increases and the deployment requests an additional replica, but latency keeps
+      rising and no new ready endpoint appears.
+    evidence:
+      - The new compose-post pod remains Pending with Insufficient cpu in scheduler events.
+      - Existing compose-post replica is CPU-throttled while serving all traffic.
+      - Image pull, readiness probes, network policy and storage are healthy.
+      - Reducing load and removing the unschedulable replica restores the original stable baseline.
+    ground_truth:
+      label: Scale-out fails due to scheduler CPU capacity while the existing replica remains overloaded
+      match_groups:
+        - [pending, unschedulable, scheduler, insufficient cpu, scheduling, 调度, 资源不足]
+        - [scale-out, scale out, additional replica, new replica, 扩容]
+        - [cpu, overloaded, throttled, saturation, 过载, 节流]
+
+  - id: general-gray-header-latency
+    domain: general_compute
+    incident: >-
+      Only a small subset of requests to the same URL exceed one second. Aggregate service P50 and
+      pod health look normal, and no rollout occurred.
+    evidence:
+      - Slow requests all contain header X-Experiment-Group=gray-a and take about 540 ms extra.
+      - Requests without that header remain near 35 ms on the same pod and connection.
+      - CPU, memory, disk and downstream spans are normal for both groups.
+      - Disabling the request-scoped failpoint removes the latency without restarting the pod.
+    ground_truth:
+      label: Request-scoped gray header failpoint adds latency to gray-a traffic
+      match_groups:
+        - [header, x-experiment-group, gray-a, 灰度]
+        - [request-scoped, subset, selected requests, 请求级, 部分请求]
+        - [latency, delay, slow, 延迟]
+
+  - id: ai-kv-retry-storm
+    domain: ai_compute
+    incident: >-
+      TTFT and request volume climb rapidly during a long-context workload. GPU compute is not fully
+      utilized, and the model process remains healthy.
+    evidence:
+      - KV Cache usage reaches 98%, waiting requests rise from 1 to 28, and running requests stay bounded.
+      - Gateway retry attempts increase 3.8 times after upstream timeouts begin.
+      - A disk warning visible in the dashboard predates T0 by six hours and current iowait is normal.
+      - Disabling retries slows queue growth; stopping long-context load drains waiting requests and restores TTFT.
+    ground_truth:
+      label: Long-context KV Cache pressure amplified by gateway retry storm
+      match_groups:
+        - [kv cache, kv_cache, kv缓存]
+        - [pressure, exhaustion, saturation, capacity, 压力, 耗尽, 饱和]
+        - [retry, retries, storm, amplification, 重试, 放大]
+
+  - id: ai-gpu-oom-coldload
+    domain: ai_compute
+    incident: >-
+      The inference endpoint becomes unavailable, returns briefly, and then remains slow for several
+      minutes although the replacement pod is Running.
+    evidence:
+      - The original vLLM container logs CUDA out of memory and terminates before the restart.
+      - GPU memory falls after termination; the replacement pod then spends 170 seconds loading weights.
+      - Service endpoints are empty during restart and present before the first successful completion.
+      - Removing the GPU pressure prevents further OOM; health and warm completion latency recover after load finishes.
+    ground_truth:
+      label: GPU OOM triggers restart followed by model cold-load recovery delay
+      match_groups:
+        - [gpu oom, cuda out of memory, cuda oom, 显存, gpu memory]
+        - [restart, restarted, pod replacement, 重启]
+        - [cold load, model load, loading weights, cold start, 冷加载, 权重加载, 冷启动]
+
+  - id: ai-tp-packetloss-straggler
+    domain: ai_compute
+    incident: >-
+      Multi-GPU inference shows periodic TPOT spikes. One rank is consistently late while aggregate
+      GPU utilization remains moderately high.
+    evidence:
+      - Packet loss is present only on the interface and destination used by tensor-parallel rank 2.
+      - Rank 2 collective completion time is 5.4 times the median; other ranks wait at the barrier.
+      - No CUDA OOM, model restart or KV Cache saturation is observed.
+      - Removing the precise traffic-control rule normalizes rank timing and TPOT without a model change.
+    ground_truth:
+      label: Tensor-parallel packet loss creates a rank-2 straggler and collective stalls
+      match_groups:
+        - [packet loss, network loss, tc rule, 丢包]
+        - [rank 2, rank-2, straggler, 慢节点, 拖尾]
+        - [tensor parallel, tp, collective, barrier, 张量并行, 集合通信]
+
+  - id: ai-clock-cupti-overhead
+    domain: ai_compute
+    incident: >-
+      Tokens per second drops after a profiling change. Temperature is normal, no request fails, and
+      both kernel duration and host overhead increase.
+    evidence:
+      - GPU application clock is locked 34% below baseline and readback confirms the lower clock.
+      - A CUPTI/nsys profiler process is active and adds measurable launch overhead.
+      - Stopping only the profiler improves latency partially; restoring the GPU clock completes recovery.
+      - Power and thermal limits are not active, excluding thermal throttling.
+    ground_truth:
+      label: GPU clock throttling and CUPTI profiling jointly reduce inference throughput
+      match_groups:
+        - [gpu clock, clock throttling, lower clock, frequency, 降频, 时钟]
+        - [cupti, nsys, profiler, profiling, 采集, 分析器]
+        - [throughput, tokens per second, tokens/s, tpot, 吞吐]
+
+  - id: ai-canary-tokenizer-gray
+    domain: ai_compute
+    incident: >-
+      About 10% of inference requests fail validation after a canary rollout. Stable instances and
+      GPU health metrics remain normal.
+    evidence:
+      - Failed requests are all routed to revision vllm-canary-7 and report tokenizer parse errors.
+      - The canary explicitly loads /models/canary/tokenizer_override.json; stable revision uses the original tokenizer.
+      - Model weights and network connectivity are identical between revisions.
+      - Removing canary traffic and restoring the original tokenizer configuration clears failures.
+    ground_truth:
+      label: Canary tokenizer configuration error causes gray partial-request failures
+      match_groups:
+        - [tokenizer]
+        - [canary, revision vllm-canary-7, gray, 灰度]
+        - [configuration, parse error, invalid, 配置, 解析错误]
+
+  - id: ai-queue-scaleout-capacity
+    domain: ai_compute
+    incident: >-
+      Waiting requests and TTFT continue rising after an attempted vLLM scale-out. No additional
+      serving endpoint appears.
+    evidence:
+      - HPA increases desired replicas, but the new vLLM pod remains Pending with Insufficient nvidia.com/gpu.
+      - Existing vLLM instance has a growing waiting queue and high KV Cache usage but no CUDA error.
+      - The cluster reports all allocatable GPUs already assigned to existing workloads.
+      - Reducing request load drains the queue; removing the unschedulable replica restores the original baseline.
+    ground_truth:
+      label: GPU capacity blocks vLLM scale-out while the existing instance queue remains overloaded
+      match_groups:
+        - [insufficient nvidia.com/gpu, insufficient gpu, no gpu, gpu capacity, gpu 资源不足, gpu 容量]
+        - [scale-out, scale out, hpa, new replica, expansion, 扩容]
+        - [queue, waiting, backlog, overloaded, 排队, 积压, 过载]
+
+  - id: ai-teller-blind-kv
+    domain: ai_compute
+    incident: >-
+      TTFT rises during inference, but request-level traces disappear at the same time. The model
+      endpoint remains reachable and no pod restarts occur.
+    evidence:
+      - TELLER request markers stop because the exporter has zero replicas; CUPTI kernel records are incomplete.
+      - Independent vLLM metrics show KV Cache at 97% and waiting requests rising to 24.
+      - GPU compute is below saturation and disk/network indicators remain normal.
+      - Stopping long-context load restores TTFT; restoring the exporter later restores trace continuity only.
+    ground_truth:
+      label: KV Cache pressure causes latency while a TELLER exporter outage creates an observability blind spot
+      match_groups:
+        - [kv cache, kv_cache, kv缓存]
+        - [pressure, saturation, capacity, exhaustion, 压力, 饱和, 耗尽]
+        - [teller, exporter, trace, observability, blind spot, 可观测, 盲点, 链路缺失]
+
+  - id: ai-model-permission-rollback
+    domain: ai_compute
+    incident: >-
+      A canary vLLM deployment repeatedly alternates between progressing and failed rollout states.
+      Stable production traffic is healthy.
+    evidence:
+      - Canary logs show Permission denied opening one model shard; image pull and GPU allocation succeed.
+      - Deployment revision history shows the controller repeatedly attempting the same faulty canary revision.
+      - The model shard on the canary copy has different read permissions from the stable copy.
+      - Pausing rollout, restoring permissions, and resuming creates a healthy canary without changing the image.
+    ground_truth:
+      label: Canary model-shard permission error causes repeated rollout failure
+      match_groups:
+        - [permission denied, permission, access denied, 权限]
+        - [model shard, model file, weight shard, 模型分片, 权重]
+        - [canary, rollout, revision, 灰度, 发布]
+
+  - id: ai-bandwidth-stale-disk
+    domain: ai_compute
+    incident: >-
+      Streaming responses develop high inter-token latency. A disk-pressure alert is visible, but
+      inference workers do not restart and KV Cache remains below threshold.
+    evidence:
+      - A traffic-control rule limits the vLLM response path to 20 Mbit/s and measured throughput matches the limit.
+      - Packet loss is zero; ITL rises while GPU kernel and TPOT compute time stay near baseline.
+      - The disk-pressure alert is six hours old and current iowait is 1.8%.
+      - Removing the bandwidth rule restores stream rate and ITL without touching storage.
+    ground_truth:
+      label: Response-path bandwidth throttling causes high ITL; disk alert is stale
+      match_groups:
+        - [bandwidth, throttle, traffic control, tc rule, 20 mbit, 限带宽, 带宽]
+        - [itl, inter-token, streaming, stream rate, token latency, token 间隔, 流式]
+        - [stale, old alert, unrelated disk, 陈旧, 无关磁盘]
+
+  - id: ai-multitenant-pcie-noise
+    domain: ai_compute
+    incident: >-
+      A target inference service slows down without errors or configuration changes. Another tenant
+      starts a data-intensive GPU workload on the same node shortly before T0.
+    evidence:
+      - Host-to-device copy time and PCIe utilization rise sharply for both tenants after T0.
+      - Target GPU SM utilization and KV Cache remain below saturation, but TTFT and TPOT both increase.
+      - CPU, disk and network indicators remain near baseline.
+      - Stopping the neighboring copy workload restores PCIe copy time and target inference latency.
+    ground_truth:
+      label: Multi-tenant PCIe copy contention degrades target inference performance
+      match_groups:
+        - [pcie, pci express, host-to-device, h2d]
+        - [contention, interference, noisy neighbor, shared, 争用, 干扰, 邻居]
+        - [tenant, neighboring workload, another tenant, 多租户, 邻居任务]

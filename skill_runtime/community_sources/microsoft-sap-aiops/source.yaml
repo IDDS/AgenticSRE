@@ -1,0 +1,20 @@
+source: microsoft-sap-aiops-agent
+name: Microsoft SAP AIOps Agent Pattern
+trust_level: external-reference
+license: unknown
+homepage: https://techcommunity.microsoft.com/blog/sapapplications/from-observability-to-action-building-an-ai-powered-aiops-agent-for-customer-spe/4515611
+description: Microsoft TechCommunity SAP AIOps agent reference. The page is protected by Azure WAF in automated fetches, so this entry records the source as a review-only method reference rather than a mirrored skill.
+integration_mode: reference_then_pattern_extract
+allowed_use:
+  - Use as a reference for turning observability signals into controlled operational actions.
+  - Extract patterns only after human review of the article content.
+  - Map SAP/Azure operational actions into disabled AgenticSRE drafts with dry-run, approval, rollback, and verification.
+blocked_use:
+  - Do not treat protected webpage content as validated implementation detail until manually reviewed.
+  - Do not execute SAP or Azure resource mutation from imported drafts.
+  - Do not store tenant credentials, connection strings, certificates, or secrets in skill files.
+security_notes:
+  - Observability-to-action workflows must preserve evidence, hypothesis, confidence, action plan, and post-action verification.
+  - Customer-specific runbooks should remain parameterized and tenant-neutral in source control.
+  - Cloud/SAP write actions require environment-scoped credentials and explicit operator approval.
+tags: [microsoft, sap, azure, aiops, observability, runbook, skill]

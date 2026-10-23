@@ -7,6 +7,7 @@ Phase 1 of the 5-phase pipeline.
 import time
 import hashlib
 import logging
+import concurrent.futures
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
@@ -63,20 +64,8 @@ class DetectionAgent:
         self.registry = registry
         from configs.config_loader import get_config
         cfg = config or get_config()
-        self._cfg = cfg
-        self.offline_mode = bool(
-            getattr(cfg.observability, "offline_mode", False)
-            and getattr(cfg.observability, "backend", "") == "alidata"
-        )
         det = cfg.detection
         self.sources_enabled = det.sources_enabled
-        if self.offline_mode:
-            # Offline datasets only contain metrics/logs/traces, so skip live-cluster sources.
-            self.sources_enabled = dict(self.sources_enabled)
-            self.sources_enabled["prometheus"] = False
-            self.sources_enabled["k8s_event"] = False
-            self.sources_enabled["pod_health"] = False
-            self.sources_enabled["node_health"] = False
         self.metric_checks = det.metric_checks or self._default_metric_checks()
         self.critical_event_reasons = set(det.critical_event_reasons)
         self.critical_pod_reasons = set(det.critical_pod_reasons)
@@ -96,23 +85,72 @@ class DetectionAgent:
         """Run one detection cycle across all signal sources."""
         signals = []
 
+        checks = []
         if self.sources_enabled.get("prometheus"):
-            signals.extend(self._check_prometheus_alerts())
-
+            checks.append(("prometheus", self._check_prometheus_alerts, 4))
         if self.sources_enabled.get("k8s_event"):
-            signals.extend(self._check_k8s_events(namespace))
-
+            checks.append(("k8s_event", lambda: self._check_k8s_events(namespace), 6))
         if self.sources_enabled.get("pod_health"):
-            signals.extend(self._check_pod_health(namespace))
-
+            checks.append(("pod_health", lambda: self._check_pod_health(namespace), 6))
         if self.sources_enabled.get("node_health"):
-            signals.extend(self._check_node_health())
-
+            checks.append(("node_health", self._check_node_health, 6))
         if self.sources_enabled.get("metric_anomaly"):
-            signals.extend(self._check_metric_anomalies(namespace))
+            checks.append(("metric_anomaly", lambda: self._check_metric_anomalies(namespace), 4))
+
+        signals.extend(self._run_source_checks(checks))
 
         logger.info(f"Detection cycle: found {len(signals)} signals")
         return signals
+
+    def _run_source_checks(self, checks) -> List[DetectionSignal]:
+        """Run all enabled signal sources concurrently under a bounded wall-clock budget."""
+        if not checks:
+            return []
+        results: List[DetectionSignal] = []
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(checks))
+        future_meta = {
+            executor.submit(fn): (name, timeout_s)
+            for name, fn, timeout_s in checks
+        }
+        global_timeout = max(timeout_s for _, _, timeout_s in checks)
+        try:
+            done, pending = concurrent.futures.wait(
+                future_meta,
+                timeout=global_timeout,
+                return_when=concurrent.futures.ALL_COMPLETED,
+            )
+            for future in done:
+                name, _ = future_meta[future]
+                try:
+                    result = future.result(timeout=0)
+                    if isinstance(result, list):
+                        results.extend(result)
+                except Exception as exc:
+                    logger.warning("Detection source %s failed: %s", name, exc, exc_info=True)
+            for future in pending:
+                name, timeout_s = future_meta[future]
+                logger.warning("Detection source %s timed out after %ss", name, timeout_s)
+                future.cancel()
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+        return results
+
+    def _run_source_check(self, name: str, fn, timeout_s: int) -> List[DetectionSignal]:
+        """Run one signal source with a hard timeout so a bad backend does not block the page."""
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(fn)
+        try:
+            result = future.result(timeout=timeout_s)
+            return result if isinstance(result, list) else []
+        except concurrent.futures.TimeoutError:
+            logger.warning("Detection source %s timed out after %ss", name, timeout_s)
+            future.cancel()
+            return []
+        except Exception as exc:
+            logger.warning("Detection source %s failed: %s", name, exc, exc_info=True)
+            return []
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
     def _check_prometheus_alerts(self) -> List[DetectionSignal]:
         """Check for firing Prometheus alerts."""
@@ -160,7 +198,8 @@ class DetectionAgent:
         import json
         try:
             data = json.loads(result.data) if isinstance(result.data, str) else result.data
-            for event in (data or {}).get("items", [])[:20]:
+            events = (data or {}).get("items", [])
+            for event in events[-20:]:
                 obj = event.get("involvedObject", {})
                 msg = event.get("message", "")
                 reason = event.get("reason", "")
@@ -220,7 +259,7 @@ class DetectionAgent:
         return [
             {
                 "name": "node_cpu_usage",
-                "query": 'avg(rate(node_cpu_seconds_total{mode!="idle"}[5m])) by (instance) * 100',
+                "query": 'avg by(instance)(1 - rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100',
                 "unit": "%", "label_key": "instance", "level": "node",
                 "warn": 85, "crit": 95,
             },
@@ -238,7 +277,7 @@ class DetectionAgent:
             },
             {
                 "name": "container_cpu",
-                "query": 'sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (pod, namespace) '
+                "query": 'sum(rate(container_cpu_usage_seconds_total{container!=""}[1m])) by (pod, namespace) '
                          '/ sum(kube_pod_container_resource_limits{resource="cpu"}) by (pod, namespace) * 100',
                 "unit": "%", "label_key": "pod", "ns_key": "namespace", "level": "container",
                 "warn": 80, "crit": 95,
@@ -264,28 +303,7 @@ class DetectionAgent:
             metric_checks=self.metric_checks,
             detection_cfg=self._detection_cfg,
         )
-        if self.offline_mode:
-            metric_data = self._load_offline_failure_metrics()
-            if not metric_data:
-                return []
-            return detector.detect_offline(metric_data, namespace)
         return detector.detect(namespace)
-
-    def _load_offline_failure_metrics(self) -> Dict[str, Any]:
-        """Load the raw offline failure_metrics.json structure for full-scan detection."""
-        try:
-            from tools.alidata_sdk.utils.local_data_loader import get_local_data_loader
-
-            loader = get_local_data_loader(
-                data_dir=getattr(self._cfg.observability, "offline_data_dir", "")
-            )
-            problem_id = getattr(self._cfg.observability, "offline_problem_id", "")
-            if not problem_id:
-                return {}
-            return loader.load_metrics(problem_id, "failure")
-        except Exception as exc:
-            logger.warning("Failed to load offline failure metrics: %s", exc)
-            return {}
 
     def _check_node_health(self) -> List[DetectionSignal]:
         """Check for unhealthy nodes."""

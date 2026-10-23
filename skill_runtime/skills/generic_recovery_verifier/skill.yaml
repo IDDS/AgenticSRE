@@ -1,0 +1,16 @@
+id: generic.recovery_verifier
+version: 0.1.0
+name: Generic Recovery Verifier
+domain: generic
+description: Generic post-healing verifier for service endpoints, rollout status, latency, error rate, and LLM metrics.
+stages: [verify]
+risk: low
+permissions: [observability.read, k8s.read]
+tags: [generic, verification, recovery, sla]
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 1
+  min_confidence_for_heal: 0.6
+  min_confidence_for_auto_heal: 0.9

@@ -71,11 +71,11 @@ class Pipeline:
     def __init__(self, config=None):
         self.cfg = config or get_config()
         self.registry = build_tool_registry(
-            self.cfg, allow_write=self.cfg.runtime.enable_self_healing
+            self.cfg, allow_write=self.cfg.runtime.enable_self_healing, isolated=True
         )
         self.llm = LLMClient(self.cfg.llm)
         self.detection_agent = DetectionAgent(self.llm, self.registry, self.cfg)
-        self.alert_agent = AlertAgent(self.llm, self.registry)
+        self.alert_agent = AlertAgent(self.llm, self.registry, self.cfg)
         self.metrics = MetricsCollector()
         self.trace_store = TraceStore(self.cfg)
         self.validator = BehaviorValidator(self.trace_store, self.cfg)
@@ -91,6 +91,10 @@ class Pipeline:
         trigger: str,
         namespace: str = "",
         log_callback: Optional[Callable] = None,
+        initial_evidence: Optional[Dict[str, Any]] = None,
+        skill_workflow: Optional[Dict[str, Any]] = None,
+        analysis_phases: Optional[List[str]] = None,
+        trigger_source: str = "manual",
     ) -> PipelineResult:
         """
         Execute the full 5-phase pipeline for a given trigger (incident description).
@@ -118,9 +122,24 @@ class Pipeline:
             log("📡 Phase 1: Alert Compression & Signal Triage")
             if log_callback:
                 log_callback({"event": "phase_start", "phase": 0, "name": "ALERT_COMPRESSION"})
-            alert_result = await self._phase_alert_compression(trigger, namespace, log)
+            payload = (initial_evidence or {}).get("payload", {})
+            if payload.get("source") == "alert_evidence_dossier":
+                alert_result = {"total_alerts": payload["alert_count"], "num_groups": 1, "groups": []}
+                log(f"  Loaded evidence dossier {payload['scan_id']} / {payload['group_id']} revision {payload['revision']}")
+            elif trigger_source == "manual" and getattr(self.cfg.pipeline, "skip_alert_compression_for_manual_rca", True):
+                alert_result = {
+                    "agent": "alert_agent",
+                    "total_alerts": 1,
+                    "num_groups": 1,
+                    "compressed_groups": 1,
+                    "groups": [],
+                    "summary": "Manual RCA trigger; skipped global alert compression.",
+                }
+                log("  Manual RCA trigger detected; skipped global alert compression")
+            else:
+                alert_result = await self._phase_alert_compression(trigger, namespace, log)
             result.alerts_compressed = alert_result.get("total_alerts", 0)
-            result.alert_groups = alert_result.get("num_groups", 0)
+            result.alert_groups = alert_result.get("num_groups", alert_result.get("compressed_groups", 0))
             log(f"  Compressed {result.alerts_compressed} alerts → {result.alert_groups} groups")
             if log_callback:
                 log_callback({"event": "phase_complete", "phase": 0, "name": "ALERT_COMPRESSION", "notes": f"{result.alerts_compressed} alerts → {result.alert_groups} groups"})
@@ -134,6 +153,9 @@ class Pipeline:
                 config=self.cfg,
                 log_callback=log,
                 registry=self.registry,
+                initial_evidence=initial_evidence,
+                skill_workflow=skill_workflow,
+                analysis_phases=analysis_phases,
             )
             result.result = rca_result
             result.status = rca_result.get("status", "unknown")
@@ -179,7 +201,7 @@ class Pipeline:
 
         log(f"  ⚡ {len(signals)} detection signals found!")
         trigger = self._signals_to_trigger(signals)
-        return await self.run(trigger, namespace, log_callback)
+        return await self.run(trigger, namespace, log_callback, trigger_source="detection")
 
     def get_history(self, limit: int = 20) -> List[Dict]:
         """Return recent pipeline execution history."""
@@ -229,10 +251,10 @@ class Pipeline:
 
         enrichment = []
         for g in groups[:3]:  # top 3 alert groups
-            root_cause = g.get("root_cause_recommendation", "")
+            observation = g.get("representative", g.get("common_pattern", ""))
             severity = g.get("severity", "unknown")
             count = g.get("alert_count", 0)
-            enrichment.append(f"[{severity}] {count} alerts — {root_cause}")
+            enrichment.append(f"[{severity}] {count} alerts: {observation}; object={g.get('entity', 'unknown')}; grouping is not a verified root cause")
         
         extra = "\n".join(enrichment)
         return f"{trigger}\n\nAlert context:\n{extra}"

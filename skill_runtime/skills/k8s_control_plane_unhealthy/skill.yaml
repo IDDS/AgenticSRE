@@ -1,0 +1,28 @@
+id: k8s.control_plane_unhealthy
+version: 0.1.0
+name: K8s Control Plane Unhealthy
+domain: k8s
+description: Detect, diagnose, and propose guarded recovery for Kubernetes apiserver, etcd, kube-proxy, and kubelet health incidents.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, k8s.write.control-plane, k8s.write.node]
+tool_dependencies: [kubectl]
+tags: [kubernetes, control-plane, apiserver, etcd, kube-proxy, kubelet]
+matching_keywords:
+  - control_plane_unhealthy
+  - etcdInsufficientMembers
+  - insufficient members
+  - quorum
+  - kube-etcd
+  - etcdserver
+  - kube-apiserver
+  - apiserver
+  - kube-proxy
+  - kubelet
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.98

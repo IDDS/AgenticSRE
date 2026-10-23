@@ -1,0 +1,31 @@
+id: k8s.tls_certificate_expiry
+version: 0.1.0
+name: TLS 证书与握手诊断
+domain: k8s
+description: Diagnose TLS certificate expiration, Secret mismatch, SNI, CA, and handshake failures.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, k8s.write.secret, http.read]
+tool_dependencies: [kubectl, openssl, curl]
+tags: [k8s, tls, certificate, secret, ingress, mtls]
+icon: shield-alert
+category: 通算入口
+matching:
+  keywords:
+    - tls
+    - certificate
+    - cert expired
+    - x509
+    - handshake
+    - secret
+    - sni
+    - 证书
+    - 握手
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.85
+  min_confidence_for_auto_heal: 0.98
+entrypoint: skill.py

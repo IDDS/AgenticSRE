@@ -14,6 +14,7 @@ from tools.hero_analysis import (
 )
 from tools.rca_localization import RCALocalizationTool
 from tools.action_stack import ActionStack, Action
+from tools.skill_runtime_tool import SkillRuntimeWorkflowTool
 
 __all__ = [
     "SRETool", "ToolResult", "ToolRegistry",
@@ -24,29 +25,41 @@ __all__ = [
     "HeroMetricAnalyzer", "HeroLogAnalyzer",
     "HeroTraceAnalyzer", "HeroCrossSignalCorrelator",
     "RCALocalizationTool",
+    "SkillRuntimeWorkflowTool",
     "ActionStack", "Action",
     "build_tool_registry",
 ]
 
 
-def build_tool_registry(config=None, allow_write: bool = False) -> ToolRegistry:
+def build_tool_registry(
+    config=None,
+    allow_write: bool = False,
+    *,
+    isolated: bool = False,
+    include_skill_runtime: bool = False,
+) -> ToolRegistry:
     """
     Build and populate the global ToolRegistry with all tools.
     
     This is the single factory function that wires everything together.
     """
     from configs.config_loader import get_config
+    from pathlib import Path
     cfg = config or get_config()
     
-    registry = ToolRegistry.get_instance()
+    registry = ToolRegistry.isolated() if isolated else ToolRegistry.get_instance()
     registry.reset()  # Clean slate
     
     # ── LLM Client ──
-    llm = LLMClient(cfg.llm)
+    key = str(getattr(cfg.llm, 'api_key', '') or '').strip()
+    configured = bool(key) and not (key.startswith('${') and key.endswith('}')) and key.lower() not in {
+        'sk-your-api-key-here', 'your-api-key', 'change-me'}
+    llm = LLMClient(cfg.llm) if configured else None
 
     # ── K8s Tools ──
     kubectl = KubectlTool(
         kubeconfig=cfg.kubernetes.kubeconfig,
+        context=getattr(cfg.kubernetes, "context", ""),
         namespace=cfg.kubernetes.namespace,
         allow_write=allow_write or cfg.runtime.enable_self_healing,
         use_dry_run=cfg.kubernetes.use_dry_run,
@@ -60,39 +73,34 @@ def build_tool_registry(config=None, allow_write: bool = False) -> ToolRegistry:
     registry.register(K8sHealthTool(kubectl), "kubernetes")
 
     # ── Observability Tools ──
-    if cfg.observability.backend == "alidata":
-        from tools.alidata_observability import (
-            AliDataMetricTool, AliDataLogTool, AliDataTraceTool,
-            create_ali_downloader,
-        )
-        downloader = create_ali_downloader(
-            cfg.observability.alidata_env_file,
-            offline_mode=getattr(cfg.observability, "offline_mode", False),
-            offline_data_dir=getattr(cfg.observability, "offline_data_dir", ""),
-            offline_problem_id=getattr(cfg.observability, "offline_problem_id", ""),
-            offline_data_type=getattr(cfg.observability, "offline_data_type", "auto"),
-        )
-        registry.register(
-            AliDataMetricTool(downloader, llm_client=llm), "observability"
-        )
-        registry.register(AliDataLogTool(downloader), "observability")
-        registry.register(AliDataTraceTool(downloader), "observability")
-    else:
-        registry.register(
-            PrometheusTool(cfg.observability.prometheus_url, llm_client=llm),
-            "observability"
-        )
-        registry.register(
-            ElasticsearchTool(cfg.observability.elasticsearch_url),
-            "observability"
-        )
-        registry.register(
-            JaegerTool(cfg.observability.jaeger_url),
-            "observability"
-        )
+    registry.register(
+        PrometheusTool(cfg.observability.prometheus_url, llm_client=llm),
+        "observability"
+    )
+    registry.register(
+        ElasticsearchTool(cfg.observability.elasticsearch_url),
+        "observability"
+    )
+    registry.register(
+        JaegerTool(cfg.observability.jaeger_url),
+        "observability"
+    )
 
     # ── Analysis Tools ──
     registry.register(AnomalyDetectionTool(), "analysis")
     registry.register(RCALocalizationTool(), "analysis")
+
+    # ── Skill Runtime Tool ──
+    # Explicit capability opt-in; legacy config cannot enable Skills for RCA.
+    if include_skill_runtime:
+        root_dir = Path(__file__).resolve().parents[1]
+        skills_dir = Path(getattr(cfg.pipeline, "skill_runtime_skills_dir", "") or root_dir / "skill_runtime" / "skills")
+        registry.register(
+            SkillRuntimeWorkflowTool(
+                skills_dir=skills_dir,
+                runtime_url=getattr(cfg.pipeline, "skill_runtime_url", ""),
+            ),
+            "skill_runtime",
+        )
 
     return registry

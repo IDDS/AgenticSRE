@@ -1,21 +1,53 @@
-version: "3.8"
-
 services:
   agenticsre:
-    image: agenticsre:latest
+    image: ${AGENTICSRE_IMAGE:-agenticsre:latest}
     container_name: agenticsre
     build:
       context: .
       dockerfile: Dockerfile
     network_mode: host
     restart: unless-stopped
+    env_file:
+      - ${AGENTICSRE_ENV_FILE:-.env}
     environment:
       - PYTHONPATH=/app
+      - VLLM_FAULT_INJECTOR_DIR=/app/vllm_fault_injector
+      - AGENTICSRE_AUTH_ENABLED=${AGENTICSRE_AUTH_ENABLED:-false}
+      - AGENTICSRE_AUTH_USERNAME=${AGENTICSRE_AUTH_USERNAME:-admin}
+      - AGENTICSRE_AUTH_PASSWORD=${AGENTICSRE_AUTH_PASSWORD:-agenticsre}
+      - AGENTICSRE_AUTH_TOKEN=${AGENTICSRE_AUTH_TOKEN:-}
+      - http_proxy=
+      - https_proxy=
+      - ftp_proxy=
+      - all_proxy=
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+      - FTP_PROXY=
+      - ALL_PROXY=
+      - no_proxy=${AGENTICSRE_NO_PROXY:-localhost,127.0.0.1,::1,.svc,.cluster.local}
+      - NO_PROXY=${AGENTICSRE_NO_PROXY:-localhost,127.0.0.1,::1,.svc,.cluster.local}
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-      - ./.env:/app/.env:ro
+      - ./agents:/app/agents:ro
+      - ./configs:/app/configs:ro
+      - ./eval:/app/eval:ro
+      - ./hermes-agent:/app/hermes-agent:ro
+      - ./integrations:/app/integrations:ro
+      - ./memory:/app/memory:ro
+      - ./observability:/app/observability:ro
+      - ./orchestrator:/app/orchestrator:ro
+      - ./paradigms:/app/paradigms:ro
+      - ./skill_runtime:/app/skill_runtime:ro
+      - ./tools:/app/tools:ro
+      - ./web_app:/app/web_app:ro
+      - ./main.py:/app/main.py:ro
+      - ./mcp_server.py:/app/mcp_server.py:ro
+      - ./vllm_fault_injector:/app/vllm_fault_injector:ro
+      # Set these to stable host paths in release deployments so runtime state
+      # survives both container restarts and release-directory replacement.
+      - ${AGENTICSRE_DATA_DIR:-./data}:/app/data
+      - ${AGENTICSRE_LOG_DIR:-./logs}:/app/logs
       - ~/.kube/config:/root/.kube/config:ro
+      - ~/.ssh:/root/.ssh:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s

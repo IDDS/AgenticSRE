@@ -39,6 +39,11 @@ class AgentPool:
     def __init__(self, config: Optional[AppConfig] = None, enrichment_enabled: bool = True):
         self.cfg = config or get_config()
         self.enrichment_enabled = enrichment_enabled
+        # Optional per-incident evidence contract.  Evaluation harnesses and
+        # online callers may set this before running a paradigm; leaving it
+        # unset preserves legacy behavior while allowing Plan-and-Execute to
+        # enforce a minimum sufficient evidence set when one is declared.
+        self.evidence_contract: Optional[Dict[str, Any]] = None
         self.registry: ToolRegistry = build_tool_registry(self.cfg)
         self.llm = LLMClient(self.cfg.llm)
 
@@ -107,14 +112,17 @@ class AgentPool:
                 out[name] = result
         return out
 
-    def build_context(self, incident_query: str) -> Optional[AgentContext]:
+    def build_context(self, incident_query: str, namespace: str = '') -> Optional[AgentContext]:
         """Build unified context from all stores. Returns None if builder unavailable."""
         if not self.enrichment_enabled:
             return None
         if self._context_builder is None:
             return None
         try:
-            self._agent_context = self._context_builder.build_context(incident_query)
+            from memory.memory_scope import MemoryScope
+            self._agent_context = self._context_builder.build_context(incident_query,
+                memory_scope=MemoryScope(cluster_id=str(getattr(self.cfg.kubernetes, 'cluster_id', '') or ''),
+                                         namespace=namespace))
             return self._agent_context
         except Exception as e:
             logger.warning("[AgentPool] build_context failed: %s", e)
@@ -193,6 +201,11 @@ class ParadigmResult:
     remediation_suggestion: str = ""
     metrics: ParadigmMetrics = field(default_factory=ParadigmMetrics)
     raw_output: Dict = field(default_factory=dict)
+    evidence_status: str = "NOT_ASSESSED"
+    evidence_contract: Dict[str, Any] = field(default_factory=dict)
+    evidence_collected: List[str] = field(default_factory=list)
+    evidence_missing: List[str] = field(default_factory=list)
+    evidence_coverage: Dict[str, Any] = field(default_factory=dict)
     status: str = "completed"
     error: Optional[str] = None
 
@@ -206,6 +219,11 @@ class ParadigmResult:
             "evidence_summary": self.evidence_summary,
             "reasoning_chain": self.reasoning_chain,
             "remediation_suggestion": self.remediation_suggestion,
+            "evidence_status": self.evidence_status,
+            "evidence_contract": self.evidence_contract,
+            "evidence_collected": self.evidence_collected,
+            "evidence_missing": self.evidence_missing,
+            "evidence_coverage": self.evidence_coverage,
             "metrics": self.metrics.to_dict(),
             "status": self.status,
             "error": self.error,

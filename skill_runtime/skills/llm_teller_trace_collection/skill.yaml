@@ -1,0 +1,32 @@
+id: llm.teller_trace_collection
+version: 0.1.0
+name: TELLER Trace 持续采集诊断
+domain: llm
+description: Diagnose TELLER trace collection freshness and request-level CUDA/NVTX coverage.
+stages: [detect, diagnose, verify]
+risk: medium
+permissions: [k8s.read, host.read, profiler.configure]
+tool_dependencies: [kubectl, teller]
+tags: [llm, teller, trace, nvtx, cuda, cupti, request-id]
+icon: route
+category: 细粒度追踪
+matching:
+  keywords:
+    - teller_trace_stale
+    - trace_collection_stale
+    - request_context_missing
+    - cuda_trace_missing
+    - nvtx_only
+    - request_id
+    - CUPTI
+    - NVTX
+    - Trace 未更新
+    - 请求路径
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.78
+  min_confidence_for_auto_heal: 0.95
+entrypoint: skill.py

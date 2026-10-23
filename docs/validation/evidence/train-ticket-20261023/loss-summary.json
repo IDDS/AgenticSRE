@@ -1,0 +1,61 @@
+{
+  "at": "2026-10-23T03:46:36.918811+00:00",
+  "created": true,
+  "controller_confirmed_injection": true,
+  "baseline": {
+    "samples": 15,
+    "success_rate": 1,
+    "p95_ms": 338.621,
+    "p99_ms": 338.621,
+    "controls_healthy": true
+  },
+  "fault": {
+    "samples": 6,
+    "success_rate": 0,
+    "p95_ms": 10011.708,
+    "p99_ms": 10011.708,
+    "controls_healthy": true
+  },
+  "recovery_windows": [
+    {
+      "samples": 10,
+      "success_rate": 1,
+      "p95_ms": 288.258,
+      "p99_ms": 288.258,
+      "controls_healthy": true
+    },
+    {
+      "samples": 10,
+      "success_rate": 1,
+      "p95_ms": 295.725,
+      "p99_ms": 295.725,
+      "controls_healthy": true
+    },
+    {
+      "samples": 10,
+      "success_rate": 1,
+      "p95_ms": 275.129,
+      "p99_ms": 275.129,
+      "controls_healthy": true
+    }
+  ],
+  "cleanup_confirmed": true,
+  "business_impact_confirmed": true,
+  "recovery_passed": true,
+  "experiment_accepted": true,
+  "diagnosis_accepted": [
+    {
+      "mode": "multi",
+      "status": "not_started",
+      "reason": "provider_payment_required"
+    },
+    {
+      "mode": "skill",
+      "status": "not_started",
+      "reason": "provider_payment_required"
+    }
+  ],
+  "error": null,
+  "diagnosis_accuracy_verified": false,
+  "booking_transaction_verified": false
+}

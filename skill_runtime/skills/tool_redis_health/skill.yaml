@@ -1,0 +1,30 @@
+id: tool.redis_health
+version: 0.1.0
+name: Redis 健康诊断
+domain: db
+description: Read-only Redis diagnostic skill for connection, memory, eviction, latency, and slowlog issues.
+stages: [detect, diagnose, verify]
+risk: high
+permissions: [redis.read]
+tool_dependencies: [redis-cli, prometheus]
+tags: [tool, redis, cache, connection-pool, memory, latency]
+icon: database
+category: 中间件
+matching:
+  keywords:
+    - redis
+    - cache
+    - evicted_keys
+    - blocked_clients
+    - slowlog
+    - readonly
+    - moved
+    - 缓存
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.98
+entrypoint: skill.py

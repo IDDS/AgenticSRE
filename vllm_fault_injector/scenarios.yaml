@@ -1,0 +1,226 @@
+# vLLM Fault Injection Scenarios
+# Pre-defined fault injection scenarios for testing
+
+scenarios:
+  - id: "sw-001"
+    name: "vLLM Process Crash"
+    layer: "software"
+    fault_type: "process_crash"
+    description: "Kill vLLM main process to test restart behavior"
+    severity: "critical"
+    expected_detection_time_s: 30
+    expected_symptoms:
+      - "Pod restart detected"
+      - "Service unavailable (503)"
+      - "Request timeout spike"
+
+  - id: "sw-002"
+    name: "Model Loading Failure"
+    layer: "software"
+    fault_type: "model_load_failure"
+    description: "Corrupt model path to prevent loading on restart"
+    severity: "critical"
+    expected_detection_time_s: 60
+    expected_symptoms:
+      - "CrashLoopBackOff"
+      - "Model not found error in logs"
+      - "Zero throughput"
+
+  - id: "sw-003"
+    name: "KV Cache Exhaustion"
+    layer: "software"
+    fault_type: "kv_cache_exhaustion"
+    description: "Fill KV cache to trigger memory pressure"
+    severity: "warning"
+    expected_detection_time_s: 30
+    expected_symptoms:
+      - "Increased latency"
+      - "Request rejection"
+      - "GPU memory spike"
+
+  - id: "sw-007"
+    name: "vLLM Process Hang"
+    layer: "software"
+    fault_type: "process_hang"
+    description: "Pause vLLM serving process with SIGSTOP to simulate event-loop or CUDA call hang"
+    severity: "critical"
+    expected_detection_time_s: 15
+    expected_symptoms:
+      - "Health check timeout"
+      - "Requests hang without immediate pod restart"
+      - "GPU utilization may remain stale while throughput drops to zero"
+
+  - id: "sw-008"
+    name: "Model Permission Error"
+    layer: "software"
+    fault_type: "model_permission_error"
+    description: "Remove read permission from a model asset to simulate NFS/hostPath permission regression"
+    severity: "critical"
+    expected_detection_time_s: 45
+    expected_symptoms:
+      - "Permission denied while loading model asset"
+      - "CrashLoopBackOff after restart"
+      - "Model load failure in logs"
+
+  - id: "drv-001"
+    name: "CUDA Device Error"
+    layer: "driver"
+    fault_type: "cuda_error"
+    description: "Set invalid CUDA device to trigger runtime error"
+    severity: "critical"
+    expected_detection_time_s: 30
+    expected_symptoms:
+      - "CUDA error in logs"
+      - "GPU utilization drop to 0"
+      - "All requests fail"
+
+  - id: "drv-002"
+    name: "NCCL Communication Failure"
+    layer: "driver"
+    fault_type: "nccl_failure"
+    description: "Block NCCL ports to disrupt multi-GPU communication"
+    severity: "critical"
+    expected_detection_time_s: 45
+    expected_symptoms:
+      - "NCCL timeout in logs"
+      - "Tensor parallel stall"
+      - "Throughput collapse"
+
+  - id: "net-001"
+    name: "Inference Endpoint Unavailable"
+    layer: "network"
+    fault_type: "endpoint_timeout"
+    description: "Temporarily remove ready Service endpoints to simulate connection timeout or refusal"
+    severity: "warning"
+    expected_detection_time_s: 15
+    expected_symptoms:
+      - "Service endpoints become empty"
+      - "Client connection timeout or refusal"
+      - "Request success rate drops"
+
+  - id: "net-002"
+    name: "gRPC Port Block"
+    layer: "network"
+    fault_type: "grpc_failure"
+    description: "Block gRPC serving port"
+    severity: "critical"
+    expected_detection_time_s: 15
+    expected_symptoms:
+      - "Connection refused errors"
+      - "Service health check failure"
+      - "Zero throughput"
+
+  - id: "net-003"
+    name: "TP Communication Loss"
+    layer: "network"
+    fault_type: "tp_communication_loss"
+    description: "Block tensor parallel inter-node communication"
+    severity: "critical"
+    expected_detection_time_s: 30
+    expected_symptoms:
+      - "NCCL/TP timeout"
+      - "Partial GPU utilization"
+      - "Request failures"
+
+  - id: "net-004"
+    name: "Inference HTTP Port Reject"
+    layer: "network"
+    fault_type: "http_503"
+    description: "Reject OpenAI-compatible HTTP inference port to simulate endpoint unavailable/503"
+    severity: "critical"
+    expected_detection_time_s: 15
+    expected_symptoms:
+      - "Connection refused or HTTP 503"
+      - "Readiness probe failure"
+      - "Zero successful requests"
+
+  - id: "os-001"
+    name: "GPU Memory OOM"
+    layer: "os"
+    fault_type: "gpu_oom"
+    description: "Exhaust GPU memory to trigger OOM"
+    severity: "critical"
+    expected_detection_time_s: 15
+    expected_symptoms:
+      - "CUDA OOM error"
+      - "Process killed by OOM killer"
+      - "Pod restart"
+
+  - id: "os-002"
+    name: "CPU Stress"
+    layer: "os"
+    fault_type: "cpu_stress"
+    description: "Stress CPU to impact preprocessing throughput"
+    severity: "warning"
+    expected_detection_time_s: 30
+    expected_symptoms:
+      - "Increased preprocessing latency"
+      - "CPU utilization spike"
+      - "Request queue growth"
+
+  - id: "os-003"
+    name: "System Memory Pressure"
+    layer: "os"
+    fault_type: "memory_pressure"
+    description: "Consume system memory to create pressure"
+    severity: "warning"
+    expected_detection_time_s: 30
+    expected_symptoms:
+      - "System memory high"
+      - "Swap usage increase"
+      - "Process killed by OOM killer"
+
+  # Teller-inspired cross-layer fault scenarios (Section 6 Case Study)
+
+  - id: "sw-004"
+    name: "Prefill/Decode Misclassification"
+    layer: "software"
+    fault_type: "prefill_decode_misclassification"
+    description: "Force low GPU memory + low max_num_seqs to trigger scheduler misclassification"
+    severity: "critical"
+    expected_detection_time_s: 45
+    reference: "Teller Case Study Section 6"
+    expected_symptoms:
+      - "Wrong kernel execution (selective_state_update instead of selective_scan_fwd_kernel)"
+      - "Decode-stage kernel launched for prefill-stage request"
+      - "Output quality degradation or NaN tokens"
+      - "num_computed_tokens=0 but num_scheduled_tokens=1 in scheduler logs"
+
+  - id: "sw-005"
+    name: "Attention Backend Mismatch"
+    layer: "software"
+    fault_type: "attention_backend_mismatch"
+    description: "Force incompatible attention backend for model architecture"
+    severity: "warning"
+    reference: "Teller cross-layer analysis"
+    expected_detection_time_s: 30
+    expected_symptoms:
+      - "Attention kernel errors in CUDA logs"
+      - "Throughput degradation"
+      - "Increased error rate on inference requests"
+
+  - id: "sw-006"
+    name: "KV Cache State Contamination"
+    layer: "software"
+    fault_type: "state_contamination"
+    description: "Inject NaN values into GPU memory to simulate cross-layer state contamination"
+    severity: "critical"
+    reference: "Teller Case Study — SSM state corruption via stale cache"
+    expected_detection_time_s: 15
+    expected_symptoms:
+      - "NaN in model output tokens"
+      - "Output quality degradation"
+      - "CUDA computation errors"
+
+  - id: "drv-003"
+    name: "CUPTI Profiling Overhead"
+    layer: "driver"
+    fault_type: "cupti_trace_overhead"
+    description: "Enable full CUPTI activity tracing to inject profiling overhead"
+    severity: "warning"
+    reference: "Teller Section 3.2 — non-intrusive tracing overhead"
+    expected_detection_time_s: 30
+    expected_symptoms:
+      - "5-15% increase in kernel launch latency"
+      - "TTFT and TPOT degradation"
+      - "Throughput reduction under profiling load"

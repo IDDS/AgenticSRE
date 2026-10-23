@@ -22,9 +22,14 @@ class RCASession:
     
     # Evidence store (agent_name -> result dict)
     evidence: Dict[str, Dict] = field(default_factory=dict)
+    observation_history: List[Dict[str, Any]] = field(default_factory=list)
+    collection_history: List[Dict[str, Any]] = field(default_factory=list)
     
     # Iteration history
     iterations: List[Dict] = field(default_factory=list)
+    hypothesis_history: List[Dict] = field(default_factory=list)
+    strategy_history: List[Dict] = field(default_factory=list)
+    hypothesis_review_history: List[Dict] = field(default_factory=list)
     current_iteration: int = 0
     
     # Phases
@@ -38,6 +43,26 @@ class RCASession:
     
     # Log for streaming
     log_lines: List[str] = field(default_factory=list)
+
+    # Evolution-loop bookkeeping (rule_ids surfaced from ContextBuilder, etc.)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def record_evidence(self, agent: str, result: Dict[str, Any]) -> None:
+        """Keep each collector attempt even when current reasoning state changes."""
+        import copy
+        import time
+        from operational_ontology import flatten_observations
+        attempt = len(self.collection_history) + 1
+        observed_at = time.time()
+        self.observation_history.extend({**copy.deepcopy(item), "collection_attempt": attempt,
+                                         "iteration": self.current_iteration, "collected_at": observed_at}
+                                        for item in flatten_observations({agent: result}))
+        self.collection_history.append({"agent": agent, "attempt": attempt,
+            "iteration": self.current_iteration, "observed_at": observed_at,
+            "error": result.get("error"), "collection_errors": copy.deepcopy(result.get("collection_errors") or []),
+            "summary": result.get("summary", ""), "status": "failed" if result.get("error") else
+            "partial" if result.get("collection_errors") else "collected"})
+        self.evidence[agent] = result
 
     def log(self, message: str):
         """Add a log line."""
@@ -64,7 +89,7 @@ class RCASession:
     def complete_phase(self, phase_num: int, status: str = "completed", notes: str = ""):
         """Mark a phase as complete."""
         import time
-        for p in self.phases:
+        for p in reversed(self.phases):
             if p["phase"] == phase_num:
                 p["status"] = status
                 p["end_time"] = time.time()
@@ -74,9 +99,10 @@ class RCASession:
 
     def top_hypothesis(self) -> Optional[Hypothesis]:
         """Get the highest-confidence hypothesis."""
-        if not self.hypotheses:
+        active = [h for h in self.hypotheses if str(h.status).lower() != "rejected"]
+        if not active:
             return None
-        return max(self.hypotheses, key=lambda h: h.confidence)
+        return max(active, key=lambda h: h.confidence)
 
     def to_dict(self) -> Dict:
         return {

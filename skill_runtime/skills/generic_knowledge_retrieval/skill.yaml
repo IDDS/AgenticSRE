@@ -1,0 +1,18 @@
+id: generic.knowledge_retrieval
+version: 0.1.0
+name: 知识检索
+domain: generic
+description: 检索相似诊断规则、历史 RCA、专家反馈和恢复结果，为 skill 化诊断提供上下文。
+stages: [diagnose]
+risk: low
+permissions: [knowledge.read, filesystem.read]
+tags: [generic, knowledge, memory, retrieval, history]
+icon: search
+category: 知识检索
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 1
+  min_confidence_for_heal: 0.6
+  min_confidence_for_auto_heal: 0.9

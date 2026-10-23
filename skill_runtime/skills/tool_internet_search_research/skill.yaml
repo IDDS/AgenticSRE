@@ -1,0 +1,36 @@
+id: tool.internet_search_research
+version: 0.1.0
+name: Internet Search Research Tool Skill
+domain: tool
+description: Controlled web search skill for official docs, open-source issues, papers, community skills, and external fault knowledge.
+stages: [diagnose]
+risk: low
+permissions: [internet.read, knowledge.read]
+tool_dependencies: [web_search]
+tags: [tool, internet, search, research, external-knowledge, docs, github, paper]
+matching:
+  keywords:
+    - internet
+    - web search
+    - search
+    - google
+    - github issue
+    - official docs
+    - arxiv
+    - 互联网
+    - 搜索
+    - 检索
+    - 官方文档
+    - 开源社区
+    - 论文
+    - 已知问题
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 1
+  min_confidence_for_heal: 0.65
+  min_confidence_for_auto_heal: 0.95
+ui:
+  icon: search
+  category: tool

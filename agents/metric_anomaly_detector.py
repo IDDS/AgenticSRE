@@ -157,48 +157,6 @@ class MetricAnomalyDetector:
 
         return self._deduplicate(signals)
 
-    def detect_offline(self, metric_data: Dict[str, Any], namespace: str = ""):
-        """Run anomaly detection directly on the full offline failure_metrics.json structure."""
-        signals = []
-        ns = namespace or self.namespace
-        methods = [m for m in self.default_methods if m in SUPPORTED_METHODS]
-        if not methods:
-            methods = ["zscore", "pearson_onset"]
-
-        for series in self._iter_offline_series(metric_data, ns):
-            values = series["values"]
-            timestamps = series["timestamps"]
-            if len(values) < 6:
-                continue
-
-            check = {
-                "name": series["metric_name"],
-                "unit": series["unit"],
-                "level": series["level"],
-                "label_key": series["label_key"],
-            }
-
-            if "threshold" in methods:
-                threshold_signal = self._offline_threshold_signal(series)
-                if threshold_signal:
-                    signals.append(threshold_signal)
-
-            for method in methods:
-                if method == "threshold":
-                    continue
-                sig = self._apply_method(
-                    method,
-                    check,
-                    values,
-                    timestamps,
-                    series["label"],
-                    series["namespace"],
-                )
-                if sig:
-                    signals.append(sig)
-
-        return self._deduplicate(signals)
-
     # ═════════════════════════════════════════════════════════════════
     # Track 2: Built-in Category Detection
     # ═════════════════════════════════════════════════════════════════
@@ -284,7 +242,7 @@ class MetricAnomalyDetector:
         # ContainerCPUSpike — z-score
         signals.extend(self._zscore_check(
             "ContainerCPUSpike",
-            f'sum by(pod, namespace)(rate(container_cpu_usage_seconds_total{{container!=""{ns_filter and ","+ns_filter[1:]}}}[5m]))',
+            f'sum by(pod, namespace)(rate(container_cpu_usage_seconds_total{{container!=""{ns_filter and ","+ns_filter[1:]}}}[1m]))',
             level="container", label_key="pod", ns_key="namespace", ns=ns,
         ))
 
@@ -322,7 +280,7 @@ class MetricAnomalyDetector:
         signals.extend(self._zscore_check(
             "BizServiceCPUSpike",
             f'sum by(pod, namespace)(rate(container_cpu_usage_seconds_total'
-            f'{{pod=~"({svc_regex}).*",container!=""{ns_filter}}}[5m]))',
+            f'{{pod=~"({svc_regex}).*",container!=""{ns_filter}}}[1m]))',
             level="service", label_key="pod", ns_key="namespace", ns=ns,
         ))
 
@@ -342,7 +300,7 @@ class MetricAnomalyDetector:
             signals.extend(self._zscore_check(
                 "NginxQPSProxy",
                 f'sum by(pod, namespace)(rate(container_cpu_usage_seconds_total'
-                f'{{pod=~"nginx-thrift.*",container!=""{ns_filter}}}[5m]))',
+                f'{{pod=~"nginx-thrift.*",container!=""{ns_filter}}}[1m]))',
                 level="service", label_key="pod", ns_key="namespace", ns=ns,
                 bidirectional=True,
             ))
@@ -351,7 +309,7 @@ class MetricAnomalyDetector:
             signals.extend(self._threshold_check(
                 "NginxLatencyProxy",
                 f'sum by(pod, namespace)(rate(container_cpu_usage_seconds_total'
-                f'{{pod=~"nginx-thrift.*",container!=""{ns_filter}}}[5m])) / '
+                f'{{pod=~"nginx-thrift.*",container!=""{ns_filter}}}[1m])) / '
                 f'sum by(pod, namespace)(kube_pod_container_resource_limits'
                 f'{{resource="cpu",pod=~"nginx-thrift.*"{ns_filter}}})',
                 self.thresholds["nginx_latency_warn"], self.thresholds["nginx_latency_crit"],
@@ -400,7 +358,7 @@ class MetricAnomalyDetector:
         signals.extend(self._zscore_check(
             "DBCPUSpike",
             f'sum by(pod, namespace)(rate(container_cpu_usage_seconds_total'
-            f'{{pod=~"({db_regex}).*",container!=""{ns_filter}}}[5m]))',
+            f'{{pod=~"({db_regex}).*",container!=""{ns_filter}}}[1m]))',
             level="database", label_key="pod", ns_key="namespace", ns=ns,
         ))
 
@@ -909,137 +867,6 @@ class MetricAnomalyDetector:
     def _fetch_range(self, check: Dict) -> Optional[List[Dict]]:
         """Range query for lookback_m minutes at 60s step (for user metric_checks)."""
         return self._range_query(check["query"], self.lookback_m)
-
-    def _iter_offline_series(self, metric_data: Dict[str, Any], namespace: str):
-        """Yield all time series from raw offline k8s_metrics + apm_metrics."""
-        k8s = metric_data.get("k8s_metrics", {})
-        for service, pods in k8s.items():
-            if not isinstance(pods, dict):
-                continue
-            for pod, metrics in pods.items():
-                if not isinstance(metrics, dict):
-                    continue
-                for metric_name, series in metrics.items():
-                    if metric_name == "entity_id":
-                        continue
-                    parsed = self._normalize_offline_series(series)
-                    if not parsed:
-                        continue
-                    yield {
-                        "metric_name": metric_name,
-                        "label": pod,
-                        "label_key": "pod",
-                        "level": "pod",
-                        "namespace": namespace,
-                        "service": service,
-                        "unit": self._offline_metric_unit(metric_name),
-                        **parsed,
-                    }
-
-        apm = metric_data.get("apm_metrics", {})
-        for service, metrics in apm.items():
-            if not isinstance(metrics, dict):
-                continue
-            for metric_name, series in metrics.items():
-                if metric_name == "entity_id":
-                    continue
-                parsed = self._normalize_offline_series(series)
-                if not parsed:
-                    continue
-                yield {
-                    "metric_name": metric_name,
-                    "label": service,
-                    "label_key": "service",
-                    "level": "service",
-                    "namespace": namespace,
-                    "service": service,
-                    "unit": self._offline_metric_unit(metric_name),
-                    **parsed,
-                }
-
-    @staticmethod
-    def _normalize_offline_series(series: Any) -> Optional[Dict[str, List[float]]]:
-        """Normalize AliData series payload to float values + timestamps."""
-        if not isinstance(series, dict) or "values" not in series:
-            return None
-
-        raw_values = series.get("values", [])
-        raw_timestamps = series.get("timestamps", [])
-        if not raw_values:
-            return None
-
-        values: List[float] = []
-        timestamps: List[float] = []
-        for idx, raw in enumerate(raw_values):
-            try:
-                values.append(float(raw))
-            except (TypeError, ValueError):
-                continue
-
-            ts = raw_timestamps[idx] if idx < len(raw_timestamps) else idx
-            try:
-                ts_float = float(ts)
-                if ts_float > 1e12:
-                    ts_float /= 1000.0
-                timestamps.append(ts_float)
-            except (TypeError, ValueError):
-                timestamps.append(float(idx))
-
-        if len(values) < 2:
-            return None
-        if len(timestamps) != len(values):
-            timestamps = [float(i) for i in range(len(values))]
-        return {"values": values, "timestamps": timestamps}
-
-    @staticmethod
-    def _offline_metric_unit(metric_name: str) -> str:
-        if "latency" in metric_name:
-            return "s"
-        if "memory" in metric_name and "bytes" in metric_name:
-            return "bytes"
-        if "cpu" in metric_name or metric_name.endswith("_vs_limit") or metric_name.endswith("_vs_request"):
-            return "%"
-        return ""
-
-    def _offline_threshold_signal(self, series: Dict[str, Any]):
-        """Apply heuristic thresholds to offline raw metrics when meaningful."""
-        metric_name = series["metric_name"]
-        latest = series["values"][-1]
-        label = series["label"]
-        namespace = series["namespace"]
-        level = series["level"]
-        unit = series["unit"]
-
-        threshold_map = {
-            "pod_memory_usage_vs_limit": (80.0, 90.0),
-            "pod_memory_usage_vs_request": (80.0, 90.0),
-            "pod_cpu_usage_rate_vs_limit": (80.0, 95.0),
-            "pod_cpu_usage_rate_vs_request": (80.0, 95.0),
-            "pod_cpu_usage_rate": (80.0, 95.0),
-            "avg_request_latency_seconds": (0.5, 1.0),
-        }
-        thresholds = threshold_map.get(metric_name)
-        if not thresholds:
-            return None
-
-        warn, crit = thresholds
-        sev = _threshold_sev(latest, warn, crit)
-        if sev is None:
-            return None
-
-        return self._make_signal(
-            check_name=metric_name,
-            severity=sev,
-            label=label,
-            value=latest,
-            unit=unit,
-            level=level,
-            namespace=namespace,
-            detail=(
-                f"[threshold] offline {metric_name} for {label}: "
-                f"{latest:.3f}{unit} (warn>{warn}, crit>{crit})"
-            ),
-        )
 
     @staticmethod
     def _parse_series(series: Dict) -> Tuple[List[float], List[float], Dict]:

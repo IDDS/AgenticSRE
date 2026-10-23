@@ -1,0 +1,18 @@
+id: k8s.transactional_self_healing
+version: 0.3.0
+name: K8s Transactional Self-Healing
+domain: k8s
+description: Bind an evidence-backed diagnosis to the exact approved fault-transaction Undo and verify checkpoint recovery without inventing commands or expanding scope.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, k8s.fault.write]
+tool_dependencies: [kubectl]
+tags: [kubernetes, self-healing, remediation, undo, transactional, recovery, tnr, agenticsre]
+matching_keywords: [transactional self healing, execute undo, checkpoint restore, 事务式自愈, 执行 undo, 精确回滚]
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.8
+  min_confidence_for_auto_heal: 0.9

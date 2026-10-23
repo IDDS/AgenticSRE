@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Reuse the established AI jump-host settings used by the Prometheus tunnel.
+# The local service endpoint is intentionally 127.0.0.1:30080 because the
+# production cluster profile and AgenticSRE containers use that endpoint.
+source /etc/agenticsre/ai-prometheus-tunnel.env
+
+exec /usr/bin/ssh \
+  -o BatchMode=yes \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -N \
+  -L "127.0.0.1:30080:${AI_PROM_TARGET_HOST}:30080" \
+  "${AI_JUMP_USER}@${AI_JUMP_HOST}"

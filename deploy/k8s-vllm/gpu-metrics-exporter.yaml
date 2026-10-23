@@ -1,0 +1,182 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-metrics-exporter-script
+  namespace: llm-k8s
+data:
+  exporter.py: |
+    import http.server
+    import os
+    import socket
+    import subprocess
+    import time
+
+    QUERY = "index,uuid,name,utilization.gpu,memory.used,memory.total,temperature.gpu"
+
+
+    def label(value):
+        return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+
+    def node_name():
+        return os.environ.get("NODE_NAME") or os.environ.get("HOSTNAME") or socket.gethostname()
+
+
+    def collect():
+        cmd = ["nvidia-smi", f"--query-gpu={QUERY}", "--format=csv,noheader,nounits"]
+        now = int(time.time())
+        host = label(node_name())
+        lines = [
+            "# HELP DCGM_FI_DEV_GPU_UTIL GPU utilization percent.",
+            "# TYPE DCGM_FI_DEV_GPU_UTIL gauge",
+            "# HELP DCGM_FI_DEV_FB_USED Framebuffer memory used in MiB.",
+            "# TYPE DCGM_FI_DEV_FB_USED gauge",
+            "# HELP DCGM_FI_DEV_FB_TOTAL Framebuffer memory total in MiB.",
+            "# TYPE DCGM_FI_DEV_FB_TOTAL gauge",
+            "# HELP DCGM_FI_DEV_GPU_TEMP GPU temperature in Celsius.",
+            "# TYPE DCGM_FI_DEV_GPU_TEMP gauge",
+            "# HELP DCGM_FI_DEV_EXPORTER_UP GPU exporter scrape status.",
+            "# TYPE DCGM_FI_DEV_EXPORTER_UP gauge",
+        ]
+        try:
+            raw = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True, timeout=5)
+            for row in raw.strip().splitlines():
+                parts = [p.strip() for p in row.split(",")]
+                if len(parts) < 7:
+                    continue
+                idx, uuid, name, util, mem_used, mem_total, temp = parts[:7]
+                labels = 'gpu="%s",UUID="%s",device="nvidia%s",modelName="%s",Hostname="%s",node="%s"' % (
+                    label(idx), label(uuid), label(idx), label(name), host, host
+                )
+                lines.append("DCGM_FI_DEV_GPU_UTIL{%s} %s %s000" % (labels, float(util), now))
+                lines.append("DCGM_FI_DEV_FB_USED{%s} %s %s000" % (labels, float(mem_used), now))
+                lines.append("DCGM_FI_DEV_FB_TOTAL{%s} %s %s000" % (labels, float(mem_total), now))
+                lines.append("DCGM_FI_DEV_GPU_TEMP{%s} %s %s000" % (labels, float(temp), now))
+            lines.append('DCGM_FI_DEV_EXPORTER_UP{Hostname="%s",node="%s"} 1 %s000' % (host, host, now))
+        except Exception as exc:
+            safe = label(str(exc))[:200]
+            lines.append('DCGM_FI_DEV_EXPORTER_UP{Hostname="%s",node="%s",error="%s"} 0 %s000' % (host, host, safe, now))
+        return "\n".join(lines) + "\n"
+
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path not in ("/metrics", "/"):
+                self.send_response(404)
+                self.end_headers()
+                return
+            body = collect().encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; version=0.0.4")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, fmt, *args):
+            return
+
+
+    http.server.ThreadingHTTPServer(("0.0.0.0", 9400), Handler).serve_forever()
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-metrics-exporter
+  namespace: llm-k8s
+  labels:
+    app: gpu-metrics-exporter
+spec:
+  selector:
+    matchLabels:
+      app: gpu-metrics-exporter
+  template:
+    metadata:
+      labels:
+        app: gpu-metrics-exporter
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: exporter
+          image: vllm/vllm-openai:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "/opt/gpu-exporter/exporter.py"]
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          ports:
+            - name: metrics
+              containerPort: 9400
+              hostPort: 9400
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: script
+              mountPath: /opt/gpu-exporter
+              readOnly: true
+            - name: nvidia-smi
+              mountPath: /usr/bin/nvidia-smi
+              readOnly: true
+            - name: nvidiactl
+              mountPath: /dev/nvidiactl
+            - name: nvidia0
+              mountPath: /dev/nvidia0
+            - name: nvidia1
+              mountPath: /dev/nvidia1
+            - name: nvidia2
+              mountPath: /dev/nvidia2
+            - name: nvidia-uvm
+              mountPath: /dev/nvidia-uvm
+            - name: nvidia-uvm-tools
+              mountPath: /dev/nvidia-uvm-tools
+      volumes:
+        - name: script
+          configMap:
+            name: gpu-metrics-exporter-script
+        - name: nvidia-smi
+          hostPath:
+            path: /usr/bin/nvidia-smi
+            type: File
+        - name: nvidiactl
+          hostPath:
+            path: /dev/nvidiactl
+            type: CharDevice
+        - name: nvidia0
+          hostPath:
+            path: /dev/nvidia0
+            type: CharDevice
+        - name: nvidia1
+          hostPath:
+            path: /dev/nvidia1
+            type: CharDevice
+        - name: nvidia2
+          hostPath:
+            path: /dev/nvidia2
+            type: CharDevice
+        - name: nvidia-uvm
+          hostPath:
+            path: /dev/nvidia-uvm
+            type: CharDevice
+        - name: nvidia-uvm-tools
+          hostPath:
+            path: /dev/nvidia-uvm-tools
+            type: CharDevice
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpu-metrics-exporter
+  namespace: llm-k8s
+  labels:
+    app: gpu-metrics-exporter
+spec:
+  selector:
+    app: gpu-metrics-exporter
+  ports:
+    - name: metrics
+      port: 9400
+      targetPort: 9400

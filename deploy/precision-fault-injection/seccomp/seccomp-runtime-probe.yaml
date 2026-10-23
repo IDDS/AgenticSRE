@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agenticsre-seccomp-probe
+  namespace: agenticsre-seccomp-runtime
+  labels:
+    app.kubernetes.io/name: agenticsre-seccomp-probe
+    app.kubernetes.io/part-of: agenticsre-reviewed-operation
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: lsy-3
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    seccompProfile:
+      type: Unconfined
+  containers:
+    - name: probe
+      image: opspai/ts-news-service:v1.2.9
+      imagePullPolicy: Never
+      command:
+        - /bin/sh
+        - -ec
+        - |
+          /opt/agenticsre/seccomp-notify-probe --baseline before
+          /opt/agenticsre/seccomp-notify-probe --inject
+          /opt/agenticsre/seccomp-notify-probe --baseline recovery
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      volumeMounts:
+        - name: artifacts
+          mountPath: /opt/agenticsre
+          readOnly: true
+  volumes:
+    - name: artifacts
+      configMap:
+        name: agenticsre-seccomp-artifacts
+        defaultMode: 0555

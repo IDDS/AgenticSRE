@@ -122,6 +122,15 @@ class TraceStore:
                 self.save()
                 return
 
+    def get_trace_by_id(self, pipeline_id: str) -> Optional[PipelineTrace]:
+        """Find a pipeline trace by its id — used by expert_feedback to look up real RCA results."""
+        if not pipeline_id:
+            return None
+        for t in reversed(self._traces):
+            if t.pipeline_id == pipeline_id:
+                return t
+        return None
+
     def get_recent_traces(self, n: int = 10) -> List[Dict]:
         """Get recent pipeline traces."""
         return [

@@ -1,0 +1,16 @@
+id: generic.root_cause_diagnosis
+version: 0.1.0
+name: Generic Root Cause Diagnosis
+domain: generic
+description: Generic root-cause classifier that maps symptoms and evidence to likely infrastructure, application, LLM, or dependency causes.
+stages: [diagnose]
+risk: medium
+permissions: [observability.read]
+tags: [generic, diagnosis, rca, classifier]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.75
+  min_confidence_for_auto_heal: 0.92

@@ -1,0 +1,18 @@
+id: generic.diagnosis_fusion
+version: 0.1.0
+name: 诊断融合
+domain: generic
+description: 融合多个候选诊断并选择主根因，避免风险门禁、恢复验证等辅助 skill 干扰主诊断。
+stages: [diagnose]
+risk: low
+permissions: [observability.read]
+tags: [generic, diagnosis, fusion, confidence, rca]
+icon: fuse
+category: 诊断融合
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.7
+  min_confidence_for_auto_heal: 0.92

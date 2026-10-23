@@ -229,14 +229,16 @@ def run_rca_analysis(query: str, namespace: str = "") -> str:
 # ─────────────────────────────────────────
 
 @mcp.tool()
-def query_historical_context(query: str) -> str:
+def query_historical_context(query: str, namespace: str = "") -> str:
     """Query historical fault context and learned rules from memory.
     Returns similar past incidents and learned diagnostic rules.
     """
     _init()
     from memory import FaultContextStore
     store = FaultContextStore(_cfg)
-    result = store.get_historical_context(query)
+    from memory.memory_scope import MemoryScope
+    result = store.get_historical_context(query, memory_scope=MemoryScope(
+        cluster_id=str(getattr(_cfg.kubernetes, 'cluster_id', '') or ''), namespace=namespace))
     return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 

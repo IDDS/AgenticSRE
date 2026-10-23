@@ -1,0 +1,32 @@
+id: llm.model_hardware_compatibility
+version: 0.1.0
+name: 模型与硬件兼容性诊断
+domain: llm
+description: Diagnose model, dtype, quantization, attention backend, CUDA architecture, and GPU memory compatibility.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, http.read, k8s.write.config]
+tool_dependencies: [kubectl, curl, nvidia-smi]
+tags: [llm, model, hardware, gpu, quantization, dtype, cuda-arch]
+icon: chip
+category: 智算模型
+matching:
+  keywords:
+    - hardware compatibility
+    - compute capability
+    - unsupported dtype
+    - unsupported backend
+    - quantization
+    - flashattention
+    - bf16
+    - gemma
+    - qwen
+    - 兼容性
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.84
+  min_confidence_for_auto_heal: 0.98
+entrypoint: skill.py

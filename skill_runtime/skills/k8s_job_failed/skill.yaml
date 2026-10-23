@@ -1,0 +1,13 @@
+id: k8s.job_failed
+version: 0.1.0
+name: K8s Job Failure
+domain: k8s
+description: Investigate a named Kubernetes Job using current owned container termination evidence; never infer Service endpoint failure from a Job alert.
+stages: [detect, diagnose, verify]
+risk: low
+permissions: [k8s.read]
+tags: [kubernetes, job, batch]
+matching_keywords: [job_failed, job_failure_investigation, BackoffLimitExceeded, KubeJobFailed]
+policy:
+  requires_approval: true
+  safe_auto_execute: false

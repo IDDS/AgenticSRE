@@ -1,0 +1,16 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: agenticsre-container-cpu-load
+  namespace: agenticsre-platform-chaos-validation
+spec:
+  mode: one
+  selector:
+    namespaces: [agenticsre-platform-chaos-validation]
+    labelSelectors:
+      app: agenticsre-stress-target
+  stressors:
+    cpu:
+      workers: 1
+      load: 100
+  duration: 30s

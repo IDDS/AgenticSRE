@@ -1,0 +1,16 @@
+id: generic.risk_gatekeeper
+version: 0.1.0
+name: Generic Risk Gatekeeper
+domain: generic
+description: Generic safety gate for remediation actions, approvals, rollback availability, and dry-run enforcement.
+stages: [diagnose, heal]
+risk: low
+permissions: [policy.read]
+tags: [generic, risk, approval, gatekeeper]
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 1
+  min_confidence_for_heal: 0.6
+  min_confidence_for_auto_heal: 0.9

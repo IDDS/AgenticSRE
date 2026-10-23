@@ -1,0 +1,154 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agenticsre-c-native-validation
+  labels:
+    agenticsre.local/validation: c-native-function-precision
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agenticsre-gdb-probe
+  namespace: agenticsre-c-native-validation
+  labels:
+    app: agenticsre-gdb-probe
+spec:
+  nodeName: lsy-3
+  restartPolicy: Never
+  containers:
+    - name: probe
+      image: opspai/ts-news-service:v1.2.9
+      imagePullPolicy: Never
+      command: ["/opt/agenticsre/probe"]
+      args: ["gdb"]
+      env:
+        - name: LD_LIBRARY_PATH
+          value: /opt/agenticsre
+      volumeMounts:
+        - name: artifacts
+          mountPath: /opt/agenticsre
+          readOnly: true
+  volumes:
+    - name: artifacts
+      configMap:
+        name: agenticsre-c-native-artifacts
+        defaultMode: 365
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agenticsre-binary-probe
+  namespace: agenticsre-c-native-validation
+  labels:
+    app: agenticsre-binary-probe
+spec:
+  nodeName: lsy-3
+  restartPolicy: Never
+  containers:
+    - name: probe
+      image: opspai/ts-news-service:v1.2.9
+      imagePullPolicy: Never
+      command: ["/opt/agenticsre/probe"]
+      args: ["binary"]
+      env:
+        - name: LD_LIBRARY_PATH
+          value: /opt/agenticsre
+        - name: LD_PRELOAD
+          value: /opt/agenticsre/libagenticsre_return_override.so
+        - name: AGENTICSRE_FAULT_HIT
+          value: "3"
+        - name: AGENTICSRE_FAULT_MAX_HITS
+          value: "1"
+        - name: AGENTICSRE_FAULT_ACTION
+          value: return_override
+        - name: AGENTICSRE_FAULT_RETURN
+          value: "-77"
+      volumeMounts:
+        - name: artifacts
+          mountPath: /opt/agenticsre
+          readOnly: true
+  volumes:
+    - name: artifacts
+      configMap:
+        name: agenticsre-c-native-artifacts
+        defaultMode: 365
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agenticsre-binary-errno-probe
+  namespace: agenticsre-c-native-validation
+  labels:
+    app: agenticsre-binary-errno-probe
+spec:
+  nodeName: lsy-3
+  restartPolicy: Never
+  containers:
+    - name: probe
+      image: opspai/ts-news-service:v1.2.9
+      imagePullPolicy: Never
+      command: ["/opt/agenticsre/probe"]
+      args: ["binary-errno"]
+      env:
+        - name: LD_LIBRARY_PATH
+          value: /opt/agenticsre
+        - name: LD_PRELOAD
+          value: /opt/agenticsre/libagenticsre_return_override.so
+        - name: AGENTICSRE_FAULT_ACTION
+          value: errno
+        - name: AGENTICSRE_FAULT_HIT
+          value: "4"
+        - name: AGENTICSRE_FAULT_MAX_HITS
+          value: "1"
+        - name: AGENTICSRE_FAULT_ERRNO
+          value: "5"
+        - name: AGENTICSRE_FAULT_RETURN
+          value: "-1"
+      volumeMounts:
+        - name: artifacts
+          mountPath: /opt/agenticsre
+          readOnly: true
+  volumes:
+    - name: artifacts
+      configMap:
+        name: agenticsre-c-native-artifacts
+        defaultMode: 365
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agenticsre-binary-delay-probe
+  namespace: agenticsre-c-native-validation
+  labels:
+    app: agenticsre-binary-delay-probe
+spec:
+  nodeName: lsy-3
+  restartPolicy: Never
+  containers:
+    - name: probe
+      image: opspai/ts-news-service:v1.2.9
+      imagePullPolicy: Never
+      command: ["/opt/agenticsre/probe"]
+      args: ["binary-delay"]
+      env:
+        - name: LD_LIBRARY_PATH
+          value: /opt/agenticsre
+        - name: LD_PRELOAD
+          value: /opt/agenticsre/libagenticsre_return_override.so
+        - name: AGENTICSRE_FAULT_ACTION
+          value: delay
+        - name: AGENTICSRE_FAULT_HIT
+          value: "5"
+        - name: AGENTICSRE_FAULT_MAX_HITS
+          value: "1"
+        - name: AGENTICSRE_FAULT_DELAY_MS
+          value: "350"
+      volumeMounts:
+        - name: artifacts
+          mountPath: /opt/agenticsre
+          readOnly: true
+  volumes:
+    - name: artifacts
+      configMap:
+        name: agenticsre-c-native-artifacts
+        defaultMode: 365

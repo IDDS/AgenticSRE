@@ -1,0 +1,23 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: JVMChaos
+metadata:
+  name: agenticsre-method-latency
+  namespace: agenticsre-bytecode-validation
+  labels:
+    app.kubernetes.io/managed-by: agenticsre
+    agenticsre.local/validation: bytecode-method-precision
+spec:
+  action: latency
+  mode: one
+  selector:
+    namespaces:
+      - agenticsre-bytecode-validation
+    labelSelectors:
+      app: agenticsre-bytecode-probe
+  containerNames:
+    - probe
+  class: AgenticSREBytecodeProbe
+  method: stableOperation
+  latency: 2000
+  duration: 25s
+  name: agenticsre-method-latency-rule

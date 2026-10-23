@@ -1,0 +1,16 @@
+diff --git a/socialNetwork/helm-chart/socialnetwork/charts/media-frontend/values.yaml b/socialNetwork/helm-chart/socialnetwork/charts/media-frontend/values.yaml
+--- a/socialNetwork/helm-chart/socialnetwork/charts/media-frontend/values.yaml
++++ b/socialNetwork/helm-chart/socialnetwork/charts/media-frontend/values.yaml
+@@ -28,2 +28,3 @@ initContainer:
+-  args: ["-c", "git clone https://github.com/dimoibiehg/DeathStarBench.git /DeathStarBench &&
++  args: ["-c", "git clone https://github.com/delimitrou/DeathStarBench.git /DeathStarBench &&
++            git -C /DeathStarBench checkout 6ecb09706140f8730b5385c08f1386c654c3c526 &&
+             cp -r /DeathStarBench/socialNetwork/media-frontend/lua-scripts/* /lua-scripts/"]
+diff --git a/socialNetwork/helm-chart/socialnetwork/charts/nginx-thrift/values.yaml b/socialNetwork/helm-chart/socialnetwork/charts/nginx-thrift/values.yaml
+--- a/socialNetwork/helm-chart/socialnetwork/charts/nginx-thrift/values.yaml
++++ b/socialNetwork/helm-chart/socialnetwork/charts/nginx-thrift/values.yaml
+@@ -45,2 +45,3 @@ initContainer:
+-  args: ["-c", "git clone https://github.com/dimoibiehg/DeathStarBench.git /DeathStarBench &&
++  args: ["-c", "git clone https://github.com/delimitrou/DeathStarBench.git /DeathStarBench &&
++            git -C /DeathStarBench checkout 6ecb09706140f8730b5385c08f1386c654c3c526 &&
+             cp -r /DeathStarBench/socialNetwork/gen-lua/* /gen-lua/ &&

@@ -1,0 +1,316 @@
+{
+  "trace_coverage": [
+    {
+      "trace_id": "ddf94852118d44bb9390822c35aa8d81",
+      "phase": "baseline",
+      "found": true,
+      "spans": 74
+    },
+    {
+      "trace_id": "932f65d3f01344d5b96b252ef3dccc9f",
+      "phase": "baseline",
+      "found": true,
+      "spans": 74
+    },
+    {
+      "trace_id": "afae6e15eed4426eb98db6186f5afa51",
+      "phase": "fault",
+      "found": true,
+      "spans": 74
+    },
+    {
+      "trace_id": "fa6e4feab4aa4b2fa6c1b8797c1fde50",
+      "phase": "fault",
+      "found": true,
+      "spans": 74
+    },
+    {
+      "trace_id": "54e656a98dd948019daa7c6f44a1154f",
+      "phase": "recovery",
+      "found": true,
+      "spans": 74
+    },
+    {
+      "trace_id": "691b90a1afeb4e7ab741418749ca1fdf",
+      "phase": "recovery",
+      "found": true,
+      "spans": 41
+    }
+  ],
+  "observed_edges": [
+    {
+      "source": "ts-travel-service",
+      "destination": "ts-seat-service",
+      "phases": {
+        "baseline": {
+          "samples": 4,
+          "client_median_ms": 41.27,
+          "server_median_ms": 38.558,
+          "trace_ids": [
+            "932f65d3f01344d5b96b252ef3dccc9f",
+            "ddf94852118d44bb9390822c35aa8d81"
+          ]
+        },
+        "fault": {
+          "samples": 4,
+          "client_median_ms": 304.37,
+          "server_median_ms": 52.539,
+          "trace_ids": [
+            "afae6e15eed4426eb98db6186f5afa51",
+            "fa6e4feab4aa4b2fa6c1b8797c1fde50"
+          ]
+        },
+        "recovery": {
+          "samples": 2,
+          "client_median_ms": 52.57,
+          "server_median_ms": 50.198,
+          "trace_ids": [
+            "54e656a98dd948019daa7c6f44a1154f"
+          ]
+        }
+      },
+      "observed_client_delta_ms": 263.1
+    },
+    {
+      "source": "ts-seat-service",
+      "destination": "ts-order-service",
+      "phases": {
+        "baseline": {
+          "samples": 4,
+          "client_median_ms": 13.762,
+          "server_median_ms": 12.029,
+          "trace_ids": [
+            "932f65d3f01344d5b96b252ef3dccc9f",
+            "ddf94852118d44bb9390822c35aa8d81"
+          ]
+        },
+        "fault": {
+          "samples": 4,
+          "client_median_ms": 21.603,
+          "server_median_ms": 20.024,
+          "trace_ids": [
+            "afae6e15eed4426eb98db6186f5afa51",
+            "fa6e4feab4aa4b2fa6c1b8797c1fde50"
+          ]
+        },
+        "recovery": {
+          "samples": 2,
+          "client_median_ms": 18.328,
+          "server_median_ms": 16.407,
+          "trace_ids": [
+            "54e656a98dd948019daa7c6f44a1154f"
+          ]
+        }
+      },
+      "observed_client_delta_ms": 7.841
+    },
+    {
+      "source": "ts-seat-service",
+      "destination": "ts-config-service",
+      "phases": {
+        "baseline": {
+          "samples": 4,
+          "client_median_ms": 15.303,
+          "server_median_ms": 15.628,
+          "trace_ids": [
+            "932f65d3f01344d5b96b252ef3dccc9f",
+            "ddf94852118d44bb9390822c35aa8d81"
+          ]
+        },
+        "fault": {
+          "samples": 4,
+          "client_median_ms": 16.991,
+          "server_median_ms": 16.099,
+          "trace_ids": [
+            "afae6e15eed4426eb98db6186f5afa51",
+            "fa6e4feab4aa4b2fa6c1b8797c1fde50"
+          ]
+        },
+        "recovery": {
+          "samples": 2,
+          "client_median_ms": 12.907,
+          "server_median_ms": 12.053,
+          "trace_ids": [
+            "54e656a98dd948019daa7c6f44a1154f"
+          ]
+        }
+      },
+      "observed_client_delta_ms": 1.688
+    },
+    {
+      "source": "ts-basic-service",
+      "destination": "ts-train-service",
+      "phases": {
+        "baseline": {
+          "samples": 2,
+          "client_median_ms": 10.688,
+          "server_median_ms": 9.65,
+          "trace_ids": [
+            "932f65d3f01344d5b96b252ef3dccc9f",
+            "ddf94852118d44bb9390822c35aa8d81"
+          ]
+        },
+        "fault": {
+          "samples": 2,
+          "client_median_ms": 10.968,
+          "server_median_ms": 10.145,
+          "trace_ids": [
+            "afae6e15eed4426eb98db6186f5afa51",
+            "fa6e4feab4aa4b2fa6c1b8797c1fde50"
+          ]
+        },
+        "recovery": {
+          "samples": 1,
+          "client_median_ms": 9.781,
+          "server_median_ms": 9.608,
+          "trace_ids": [
+            "54e656a98dd948019daa7c6f44a1154f"
+          ]
+        }
+      },
+      "observed_client_delta_ms": 0.28
+    },
+    {
+      "source": "ts-travel-service",
+      "destination": "ts-basic-service",
+      "phases": {
+        "baseline": {
+          "samples": 2,
+          "client_median_ms": 95.755,
+          "server_median_ms": 95.458,
+          "trace_ids": [
+            "932f65d3f01344d5b96b252ef3dccc9f",
+            "ddf94852118d44bb9390822c35aa8d81"
+          ]
+        },
+        "fault": {
+          "samples": 2,
+          "client_median_ms": 96.007,
+          "server_median_ms": 94.688,
+          "trace_ids": [
+            "afae6e15eed4426eb98db6186f5afa51",
+            "fa6e4feab4aa4b2fa6c1b8797c1fde50"
+          ]
+        },
+        "recovery": {
+          "samples": 1,
+          "client_median_ms": 100.596,
+          "server_median_ms": 98.91,
+          "trace_ids": [
+            "54e656a98dd948019daa7c6f44a1154f"
+          ]
+        }
+      },
+      "observed_client_delta_ms": 0.252
+    },
+    {
+      "source": "ts-basic-service",
+      "destination": "ts-route-service",
+      "phases": {
+        "baseline": {
+          "samples": 2,
+          "client_median_ms": 30.836,
+          "server_median_ms": 29.377,
+          "trace_ids": [
+            "932f65d3f01344d5b96b252ef3dccc9f",
+            "ddf94852118d44bb9390822c35aa8d81"
+          ]
+        },
+        "fault": {
+          "samples": 2,
+          "client_median_ms": 30.97,
+          "server_median_ms": 29.652,
+          "trace_ids": [
+            "afae6e15eed4426eb98db6186f5afa51",
+            "fa6e4feab4aa4b2fa6c1b8797c1fde50"
+          ]
+        },
+        "recovery": {
+          "samples": 2,
+          "client_median_ms": 30.979,
+          "server_median_ms": 29.525,
+          "trace_ids": [
+            "54e656a98dd948019daa7c6f44a1154f",
+            "691b90a1afeb4e7ab741418749ca1fdf"
+          ]
+        }
+      },
+      "observed_client_delta_ms": 0.134
+    },
+    {
+      "source": "ts-basic-service",
+      "destination": "ts-price-service",
+      "phases": {
+        "baseline": {
+          "samples": 2,
+          "client_median_ms": 13.538,
+          "server_median_ms": 11.914,
+          "trace_ids": [
+            "932f65d3f01344d5b96b252ef3dccc9f",
+            "ddf94852118d44bb9390822c35aa8d81"
+          ]
+        },
+        "fault": {
+          "samples": 2,
+          "client_median_ms": 13.593,
+          "server_median_ms": 13.023,
+          "trace_ids": [
+            "afae6e15eed4426eb98db6186f5afa51",
+            "fa6e4feab4aa4b2fa6c1b8797c1fde50"
+          ]
+        },
+        "recovery": {
+          "samples": 2,
+          "client_median_ms": 12.462,
+          "server_median_ms": 11.093,
+          "trace_ids": [
+            "54e656a98dd948019daa7c6f44a1154f",
+            "691b90a1afeb4e7ab741418749ca1fdf"
+          ]
+        }
+      },
+      "observed_client_delta_ms": 0.055
+    },
+    {
+      "source": "ts-basic-service",
+      "destination": "ts-station-service",
+      "phases": {
+        "baseline": {
+          "samples": 2,
+          "client_median_ms": 9.464,
+          "server_median_ms": 7.421,
+          "trace_ids": [
+            "932f65d3f01344d5b96b252ef3dccc9f",
+            "ddf94852118d44bb9390822c35aa8d81"
+          ]
+        },
+        "fault": {
+          "samples": 2,
+          "client_median_ms": 9.378,
+          "server_median_ms": 7.1,
+          "trace_ids": [
+            "afae6e15eed4426eb98db6186f5afa51",
+            "fa6e4feab4aa4b2fa6c1b8797c1fde50"
+          ]
+        },
+        "recovery": {
+          "samples": 2,
+          "client_median_ms": 11,
+          "server_median_ms": 9.476,
+          "trace_ids": [
+            "54e656a98dd948019daa7c6f44a1154f",
+            "691b90a1afeb4e7ab741418749ca1fdf"
+          ]
+        }
+      },
+      "observed_client_delta_ms": -0.086
+    }
+  ],
+  "semantics": {
+    "uses_injection_truth": false,
+    "model_diagnosis": false,
+    "statistical_significance_claimed": false,
+    "timing": "Individual span durations only; cross-node wall clocks are not compared.",
+    "limitations": "Only first/last sampled trace per phase; incomplete traces may omit failed or timed-out edges."
+  }
+}

@@ -1,0 +1,23 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: agenticsre-request-header-delay
+  namespace: agenticsre-http-validation
+  labels:
+    app.kubernetes.io/managed-by: agenticsre
+    agenticsre.local/validation: request-header-precision
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - agenticsre-http-validation
+    labelSelectors:
+      app: agenticsre-http-probe
+  target: Request
+  port: 18080
+  method: GET
+  path: /healthz
+  request_headers:
+    x-agenticsre-fault: delay
+  delay: 500ms
+  duration: 15s

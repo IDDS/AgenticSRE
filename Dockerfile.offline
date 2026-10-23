@@ -1,0 +1,92 @@
+# AgenticSRE self-contained offline image.
+#
+# The customer host only mounts persistent state and credentials. Application
+# source, Python dependencies, kubectl, the Skill Runtime and Hermes Agent are
+# all baked into this image on a connected build machine.
+
+ARG PYTHON_BASE_IMAGE=python:3.12-slim-bookworm
+FROM ${PYTHON_BASE_IMAGE}
+
+ARG KUBECTL_VERSION=v1.35.0
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_TRUSTED_HOST=pypi.org
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+        dnsutils \
+        iproute2 \
+        iputils-ping \
+        jq \
+        netcat-openbsd \
+        openssl \
+        openssh-client \
+        procps \
+        postgresql-client \
+        default-mysql-client \
+        redis-tools \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ARG TARGETARCH
+RUN set -eux; \
+    case "${TARGETARCH}" in amd64|arm64) ;; *) echo "unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; esac; \
+    curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl"; \
+    curl -fsSLo /tmp/kubectl.sha256 "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl.sha256"; \
+    echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum --check; \
+    chmod 0755 /usr/local/bin/kubectl; \
+    rm -f /tmp/kubectl.sha256
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --timeout 120 --retries 5 \
+    --index-url "${PIP_INDEX_URL}" \
+    --trusted-host "${PIP_TRUSTED_HOST}" \
+    -r requirements.txt
+
+# ChromaDB lazily downloads its default ONNX embedding model on first use.
+# Warm it while the build machine is connected so first customer-site writes
+# never attempt network access.
+RUN python -c "from chromadb.utils.embedding_functions import DefaultEmbeddingFunction; f=DefaultEmbeddingFunction(); assert len(f(['offline dependency probe'])) == 1; print('ChromaDB embedding model cached')"
+
+# Hermes is an AgenticSRE runtime component in the customer delivery. Install
+# its dependencies while the build machine still has network access.
+COPY hermes-agent/ ./hermes-agent/
+RUN pip install --no-cache-dir --timeout 120 --retries 5 \
+    --index-url "${PIP_INDEX_URL}" \
+    --trusted-host "${PIP_TRUSTED_HOST}" \
+    ./hermes-agent
+RUN cd /app/hermes-agent && python -c "from run_agent import AIAgent"
+
+COPY agents/ ./agents/
+COPY configs/ ./configs/
+COPY eval/ ./eval/
+COPY integrations/ ./integrations/
+COPY memory/ ./memory/
+COPY observability/ ./observability/
+COPY orchestrator/ ./orchestrator/
+COPY paradigms/ ./paradigms/
+COPY skill_runtime/ ./skill_runtime/
+COPY tools/ ./tools/
+COPY scripts/validate_persistent_data.py ./scripts/validate_persistent_data.py
+COPY vllm_fault_injector/ ./vllm_fault_injector/
+COPY web_app/ ./web_app/
+COPY main.py mcp_server.py confidence_statistics.py remediation_history.py ./
+COPY README.md USER_MANUAL.md AGENTS.md ./
+
+RUN python -m compileall -q /app \
+    && python -c "import fastapi, kubernetes, openai, pandas, sqlite3; import chromadb, web_app.app; print('AgenticSRE offline image verified')" \
+    && for tool in curl dig ip jq mysql nc openssl pgrep ping psql redis-cli ssh kubectl; do command -v "$tool" >/dev/null; done \
+    && python /app/scripts/validate_persistent_data.py --path /app/data --allow-missing
+
+VOLUME ["/app/data", "/app/logs"]
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    SKILL_RUNTIME_URL=http://127.0.0.1:8090
+
+EXPOSE 8080 8090
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
+    CMD curl -f http://127.0.0.1:8080/api/health || exit 1
+
+CMD ["python", "-m", "uvicorn", "web_app.app:app", "--host", "0.0.0.0", "--port", "8080"]

@@ -1,0 +1,32 @@
+id: llm.model_serving_endpoint
+version: 0.1.0
+name: 模型服务入口诊断
+domain: llm
+description: Diagnose vLLM OpenAI-compatible endpoint and model request errors.
+stages: [detect, diagnose, heal, verify]
+risk: medium
+permissions: [http.read, k8s.read, config.write]
+tool_dependencies: [curl, kubectl]
+tags: [llm, vllm, endpoint, openai-api, model, loadgen]
+icon: plug-zap
+category: 模型服务
+matching:
+  keywords:
+    - model_not_found
+    - openai_api_error
+    - http_400
+    - http_404
+    - bad_request
+    - /v1/models
+    - /v1/completions
+    - chat/completions
+    - 模型名
+    - 请求参数
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.78
+  min_confidence_for_auto_heal: 0.95
+entrypoint: skill.py

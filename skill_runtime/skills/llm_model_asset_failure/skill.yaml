@@ -1,0 +1,22 @@
+id: llm.model_asset_failure
+version: 0.1.0
+name: 模型资产与 Tokenizer 故障
+domain: llm
+description: Diagnose model loading, permission, tokenizer, and weight corruption faults for vLLM workloads.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, k8s.write.restart, filesystem.read]
+tool_dependencies: [kubectl]
+tags: [llm, model, tokenizer, weights, permission, vllm]
+icon: file-warning
+category: 智算模型
+matching:
+  keywords: [model_load_failure, model_permission_error, tokenizer_error, weight_corruption, model asset, tokenizer, weights, 权重, 模型加载, 模型权限]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.95
+entrypoint: skill.py

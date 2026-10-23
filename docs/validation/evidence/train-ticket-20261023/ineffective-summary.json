@@ -1,0 +1,59 @@
+{
+  "at": "2026-10-23T03:38:34.366736+00:00",
+  "created": true,
+  "controller_confirmed_injection": true,
+  "baseline": {
+    "samples": 15,
+    "success_rate": 1,
+    "p95_ms": 718.232,
+    "p99_ms": 718.232,
+    "controls_healthy": true
+  },
+  "fault": {
+    "samples": 51,
+    "success_rate": 1,
+    "p95_ms": 336.82,
+    "p99_ms": 361.088,
+    "controls_healthy": true
+  },
+  "recovery_windows": [
+    {
+      "samples": 10,
+      "success_rate": 1,
+      "p95_ms": 306.332,
+      "p99_ms": 306.332,
+      "controls_healthy": true
+    },
+    {
+      "samples": 10,
+      "success_rate": 1,
+      "p95_ms": 300.301,
+      "p99_ms": 300.301,
+      "controls_healthy": true
+    },
+    {
+      "samples": 10,
+      "success_rate": 1,
+      "p95_ms": 301.031,
+      "p99_ms": 301.031,
+      "controls_healthy": true
+    }
+  ],
+  "cleanup_confirmed": true,
+  "business_impact_confirmed": false,
+  "recovery_passed": true,
+  "experiment_accepted": false,
+  "diagnosis_accepted": [
+    {
+      "mode": "multi",
+      "run_id": "rca-8de08a97"
+    },
+    {
+      "mode": "skill",
+      "run_id": "rca-c9c520bf"
+    }
+  ],
+  "error": null,
+  "diagnosis_accuracy_verified": false,
+  "booking_transaction_verified": false
+}

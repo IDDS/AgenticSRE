@@ -1,0 +1,17 @@
+id: llm.k8s_vllm_observability
+version: 0.1.0
+name: K8s vLLM Observability
+domain: llm
+description: Detect, diagnose, and propose guarded recovery for Kubernetes-hosted vLLM inference outages and latency anomalies.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, k8s.write.restart, prometheus.read]
+tool_dependencies: [kubectl, curl]
+tags: [llm, vllm, kubernetes, prometheus, inference, observability]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.95
