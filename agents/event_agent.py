@@ -13,6 +13,7 @@ from tools.base_tool import ToolRegistry, ToolResult
 from tools.llm_client import LLMClient
 from agents.evidence import make_evidence_item
 from agents.pod_state_evidence import MESSAGE_LIMIT, problem_containers, pod_spec_checks
+from skill_runtime.service_topology import MAX_RESOURCES, project_resource
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,9 @@ evidence explicitly; the complete observations remain available separately."""
             "workload_state": workload_state,
             "network_objects": network_objects,
             "evidence_items": evidence_items,
+            "collection_errors": [dict(source=source, error_code=status.get('error_code', 'topology_collection_partial'))
+                for source, status in workload_state.get('topology_collection', {}).items()
+                if status.get('status') in {'failed', 'partial'}],
             "summary": summary,
             "summary_error": summary_error,
             "summary_status": "not_requested" if not self.summarize else "unavailable" if summary_error else "complete",
@@ -261,10 +265,20 @@ evidence explicitly; the complete observations remain available separately."""
                 "summary": str(result.data or "")[:3000],
             }
 
-        state: Dict[str, Any] = {"deployments": [], "services": [], "endpoints": []}
+        if not isinstance(data, dict) or not isinstance(data.get('items'), list):
+            return {'deployments': [], 'services': [], 'endpoints': [],
+                    'summary': 'workload state collection returned no valid resource list',
+                    'topology_collection': {'workload_resources': {
+                        'status': 'failed', 'error_code': 'topology_collection_invalid'}}}
+        state: Dict[str, Any] = {"deployments": [], "services": [], "endpoints": [],
+                                "topology_resources": [], "topology_collection": {}}
+        metadata = data.get('metadata') if isinstance(data.get('metadata'), dict) else {}
+        state['topology_collection']['workload_resources'] = {'status': 'partial' if
+            metadata.get('continue') or len(data.get('items') or []) > MAX_RESOURCES else 'complete'}
         lines: List[str] = []
         for item in (data or {}).get("items", []):
             if not isinstance(item, dict):
+                state['topology_collection']['workload_resources']['status'] = 'partial'
                 continue
             kind = str(item.get("kind") or "")
             meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
@@ -272,6 +286,13 @@ evidence explicitly; the complete observations remain available separately."""
             status = item.get("status") if isinstance(item.get("status"), dict) else {}
             name = str(meta.get("name") or "")
             ns = str(meta.get("namespace") or namespace or "default")
+            projected = project_resource(item)
+            if projected is None or not projected['topology_fields_complete']:
+                state['topology_collection']['workload_resources']['status'] = 'partial'
+            if projected and len(state['topology_resources']) < MAX_RESOURCES:
+                projected['observed_at'] = datetime.now(timezone.utc).isoformat()
+                projected['topology_source'] = 'kubectl get deployment,service,endpoints -o json'
+                state['topology_resources'].append(projected)
             if kind == "Deployment":
                 record = {
                     "kind": kind, "uid": meta.get("uid", ""),
@@ -313,6 +334,34 @@ evidence explicitly; the complete observations remain available separately."""
                 }
                 state["endpoints"].append(record)
                 lines.append(f"Endpoints/{name} ready_addresses={ready} not_ready_addresses={not_ready}")
+        # Preserve the old collector when legacy responses have no identities.
+        # Healthy Pods and ReplicaSets are required to verify a Service binding;
+        # problem-Pod summaries alone cannot represent a healthy control.
+        if any(r['kind'] == 'Service' and r['metadata'].get('uid') for r in state['topology_resources']):
+            for source, command in (
+                    ('pods_and_controllers', 'get pods,replicasets -o json'),
+                    ('endpoint_slices', 'get endpointslices.discovery.k8s.io -o json')):
+                try:
+                    result = kubectl.execute(command=command, namespace=namespace or '', timeout=10)
+                    payload = json.loads(result.data) if result.success and isinstance(result.data, str) else result.data
+                    if not result.success or not isinstance(payload, dict) or not isinstance(payload.get('items'), list):
+                        state['topology_collection'][source] = {'status': 'failed', 'error_code': 'topology_collection_unavailable'}
+                        continue
+                    remaining = max(0, MAX_RESOURCES - len(state['topology_resources']))
+                    partial = bool((payload.get('metadata') or {}).get('continue')) or len(payload['items']) > remaining
+                    for row in payload['items'][:remaining]:
+                        projected = project_resource(row)
+                        if projected is None:
+                            partial = True
+                            continue
+                        if not projected['topology_fields_complete']:
+                            partial = True
+                        projected['observed_at'] = datetime.now(timezone.utc).isoformat()
+                        projected['topology_source'] = 'kubectl ' + command
+                        state['topology_resources'].append(projected)
+                    state['topology_collection'][source] = {'status': 'partial' if partial else 'complete'}
+                except Exception:
+                    state['topology_collection'][source] = {'status': 'failed', 'error_code': 'topology_collection_invalid'}
         state["summary"] = "\n".join(lines)
         return state
 
@@ -356,6 +405,15 @@ evidence explicitly; the complete observations remain available separately."""
                     severity="critical",
                     raw_ref=endpoint,
                 ))
+        for resource in workload_state.get('topology_resources') or []:
+            meta = resource['metadata']
+            if not meta.get('uid'):
+                continue
+            items.append(make_evidence_item('resource_topology_observed',
+                f"{resource['kind']}/{meta['name']} observed identity and topology projection; "
+                "selectors and endpoint readiness do not prove business health or causation.",
+                service=meta['name'], source=resource.get('topology_source', 'kubectl structured read'),
+                timestamp=resource.get('observed_at', ''), raw_ref=resource))
         spec_seen=set()
         for pod in problem_pods:
             reason = str(pod.get("reason") or pod.get("phase") or "")

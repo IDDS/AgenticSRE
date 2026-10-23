@@ -43,7 +43,7 @@ AgenticSRE 将告警压缩、假设驱动诊断、运维对象建模、受控处
 
 两条诊断链路共享部分工具、数据契约和存储能力，但不具备完全相同的审核覆盖。多智能体链路已有竞争假设的独立角色复核；Agent+Skill 尚缺等价独立 Judge 时，相关真实对象动作保持阻断。独立角色可以使用同一模型，不能理解为独立模型或已知真值。独立 Skill Runtime 未启动时可使用本进程桥接 fallback，事件会记录实际运行方式，详见 [Agent+Skill 集成](skill_runtime/README.md#agentskill-集成)。
 
-Ontology 借鉴“对象—关系—动作”的组织思想：同一调查中，Pod、Service、控制器等对象以集群、namespace、UID 等身份关联观测；候选假设引用观测，动作引用服务端保存的调查与对象版本。它让页面、诊断和执行使用一致的对象语义，当前仍是**单次调查视图**，尚不是跨调查历史 CMDB，也没有完成外部 Git、镜像注册表和 CI/CD 事实核验。详见 [运维 Ontology 与对象动作](docs/operational-ontology.md)。
+Ontology 借鉴“对象—关系—动作”的组织思想：同一调查中，Pod、Service、控制器等对象以集群、namespace、UID 等身份关联观测；候选假设引用观测，动作引用服务端保存的调查与对象版本。Service 后端关系核对实际 selector、ownerReference 和 EndpointSlice targetRef，保留缺口及两端证据，不把结构关联当作故障因果。它让页面、诊断和执行使用一致的对象语义，当前仍是**单次调查视图**，尚不是跨调查历史 CMDB，也没有完成外部 Git、镜像注册表和 CI/CD 事实核验。详见 [运维 Ontology 与对象动作](docs/operational-ontology.md)。
 
 ## 五阶段 Pipeline
 
@@ -226,7 +226,7 @@ python main.py rca "pod CrashLoopBackOff" -n default
 | [docs/OFFLINE_DEPLOYMENT.md](docs/OFFLINE_DEPLOYMENT.md) | **交付/运维** — 无网络客户现场的完整容器化一键部署 |
 | [docs/OFFLINE_E2E_ACCEPTANCE.md](docs/OFFLINE_E2E_ACCEPTANCE.md) | **验收** — 断网靶机的真实安装、备份恢复与重启结果 |
 | [skill_runtime/README.md](skill_runtime/README.md) | **开发/运维** — Skill Runtime、Skill 格式、Agent+Skill 工作流、诊断/自愈闭环 |
-| [docs/confidence_calibration.md](docs/confidence_calibration.md) | **AMS/评审/开发** — 六因子置信度、大模型/规则边界、动态 cap 与审计口径 |
+| [docs/confidence_calibration.md](docs/confidence_calibration.md) | **评审/开发** — 六因子置信度、大模型/规则边界、动态 cap 与审计口径 |
 | [docs/alert-compression.md](docs/alert-compression.md) | **使用者/开发** — 告警保真、资源实例隔离、编辑与审核恢复的版本契约 |
 | [docs/diagnostic-strategy.md](docs/diagnostic-strategy.md) | **使用者/评审/开发** — 假设引用、独立角色复核、有界补证与模型失败弃答 |
 | [docs/history-retrieval.md](docs/history-retrieval.md) | **使用者/开发** — 历史读取预算、失败与空结果区分、超时降级 |
@@ -235,6 +235,7 @@ python main.py rca "pod CrashLoopBackOff" -n default
 | [docs/memory-candidates.md](docs/memory-candidates.md) | **使用者/开发** — 候选隔离、实际新增收据、人工版本审核、编辑后重审与停用历史 |
 | [docs/feedback-retraction.md](docs/feedback-retraction.md) | **使用者/开发** — 反馈版本撤销、迟到学习防覆盖、直接来源和规则票据隔离 |
 | [docs/operational-ontology.md](docs/operational-ontology.md) | **使用者/开发** — 调查对象、观测、谱系与动作门禁；链接相关调研 |
+| [docs/research/ontology-construction-20261023.md](docs/research/ontology-construction-20261023.md) | **评审/开发** — Ontology 构建方法、当前代码边界与尚未实施的后续建议 |
 | [docs/testbeds/README.md](docs/testbeds/README.md) | **测试/部署** — 通算与智算被测对象部署、验收、详细故障类型和恢复边界 |
 | [docs/testbeds/precision-fault-injection-status.md](docs/testbeds/precision-fault-injection-status.md) | **故障实验** — 18 个固定适配器，17 个远端 F5 通过、1 个 GPU 容量阻塞；前端集成“细粒度注入”页签 |
 | [deploy/k8s-vllm/README.md](deploy/k8s-vllm/README.md) | **智算实验** — K8S vLLM、Prometheus、GPU exporter、负载生成 |
@@ -299,6 +300,7 @@ AgenticSRE/
 ├── skill_runtime/           # Skill Runtime 与 SKILL.md/skill.py 技能目录
 │   ├── app.py               # 独立 Skill Runtime API
 │   ├── workflow.py          # detect/diagnose/heal/verify 编排与主 Skill 选择
+│   ├── service_topology.py  # 两条链路共享的拓扑投影与有证据的 Service 关系
 │   └── skills/              # K8s、LLM、DB、工具类 Skills
 ├── observability/           # 智能体可观测性
 │   ├── tracer.py            # 执行追踪器
@@ -315,4 +317,4 @@ AgenticSRE/
 
 ## 版本与验证
 
-最近已上线的 2026-10-22 版本见[发布核验](docs/validation/agentic-sre-release-20261022.md)，不等同于当前 GitHub 源码快照。最近一次远端离线全量回归 **2,023 项通过**，后续图文与展示措辞更新另做静态核验；这些结果不能替代真实模型诊断准确率或记忆收益验收。
+最近已上线的 2026-10-22 版本见[发布核验](docs/validation/agentic-sre-release-20261022.md)，不等同于当前 GitHub 源码快照。当前 Service 拓扑发布候选已在远端禁网容器中通过 **37 项专项与 2,060 项完整回归**，并通过应用 COPY 层导入检查；尚未替换生产服务。这些结果不能替代真实模型诊断准确率或记忆收益验收。

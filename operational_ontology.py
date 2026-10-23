@@ -12,13 +12,14 @@ import shlex
 import copy
 import yaml
 from typing import Any
+from skill_runtime.service_topology import project_resource, topology_relations
 
 
 SCHEMA_VERSION = "operational-ontology/v1"
 CLUSTER_SCOPED = {"Node", "Namespace", "PersistentVolume", "Cluster", "Image"}
 KINDS = {k.lower(): k for k in (
     "Pod", "Node", "Deployment", "ReplicaSet", "StatefulSet", "DaemonSet",
-    "Service", "Endpoints", "Job", "CronJob", "Namespace", "PersistentVolume",
+    "Service", "Endpoints", "EndpointSlice", "Job", "CronJob", "Namespace", "PersistentVolume",
     "PersistentVolumeClaim", "Cluster", "Image", "Host", "Application",
 )}
 
@@ -28,7 +29,13 @@ def ontology_schema() -> dict:
     return {"schema_version": SCHEMA_VERSION, "object_types": sorted(set(KINDS.values())),
             "identity_fields": ["cluster_id", "namespace", "kind", "name", "uid"],
             "relation_types": {"owned_by": {"source": "metadata.ownerReferences"},
-                               "scheduled_on": {"source": "spec.nodeName"}},
+                               "scheduled_on": {"source": "spec.nodeName"},
+                               "controlled_by": {"source": "controller ownerReference and observed target UID"},
+                               "selects_pod": {"source": "Service selector and observed Pod labels"},
+                               "matches_workload_template": {"source": "Service selector and workload template labels"},
+                               "has_endpoint_slice": {"source": "service-name label and Service owner UID"},
+                               "endpoint_slice_label_association": {"source": "service-name label; incarnation unverified"},
+                               "endpoint_targets_pod": {"source": "EndpointSlice targetRef and observed Pod UID"}},
             "action_types": [
                 {"id": "scale", "object_types": ["Deployment"], "parameter": "replicas"},
                 {"id": "restart", "object_types": ["Deployment"]},
@@ -205,10 +212,13 @@ def _command_observations(call: dict) -> list[dict]:
             "spec": {k: spec[k] for k in ("nodeName", "nodeSelector", "replicas", "selector") if k in spec},
             "status": {k: _dict(row.get("status"))[k] for k in ("phase", "readyReplicas", "availableReplicas", "containerStatuses")
                        if k in _dict(row.get("status"))}}
+        # The common bounded projection preserves routing identities for Skill
+        # results without copying containers/env or arbitrary annotations.
+        projected = project_resource(row) or projected
         observations.append({"signal_type": "resource_observed", "source": call.get("command") or call.get("tool"),
              "source_agent": "skill_agent", "observation": json.dumps(projected, ensure_ascii=False, sort_keys=True),
              "timestamp": call.get("timestamp", ""), "observation_truncated": True,
-             "raw_ref": {**projected, "projection": "identity_topology_status", "cluster_id": call.get("cluster_id", ""),
+             "raw_ref": {**projected, "projection": projected.get('projection', 'identity_topology_status'), "cluster_id": call.get("cluster_id", ""),
                          "observed_at": call.get("timestamp", "")}})
     return observations
 
@@ -335,6 +345,9 @@ def build_investigation(run: dict) -> dict:
                              "status": "resolved" if matches else "unresolved"})
     if any(link["status"] == "unresolved" for link in review_links):
         gaps.append("review_citation_unresolved")
+    service_links, service_gaps = topology_relations(objects, observations)
+    links.extend(service_links)
+    gaps.extend(service_gaps)
     for link in links:
         for side in ("source", "target"):
             obj = objects[link[f"{side}_id"]]
