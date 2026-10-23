@@ -522,7 +522,7 @@ function switchView(viewId) {
         traces: '分布式链路和服务级执行路径',
         daemon: '后台检测守护进程和实时运维信号',
         knowledge: '故障知识、专家反馈和记忆治理',
-        evolution: 'SOW 对齐、人工评审队列和智能体演化遥测',
+        evolution: '系统能力、人工评审队列和智能体演化遥测',
         configcenter: '大模型、异常检测和自愈策略运行时配置',
         healcenter: '自愈知识库、建议、Dry-run 执行和回滚记录',
         skillops: 'Skill 匹配、执行结果和运行审计',
@@ -7549,7 +7549,7 @@ async function loadKnowledge() {
 }
 
 // ─────────────────────────────────────────
-// Evolution / HITL / SOW Alignment
+// Evolution / HITL / Capability Alignment
 // ─────────────────────────────────────────
 
 async function loadEvolution() {
