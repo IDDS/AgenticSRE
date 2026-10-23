@@ -1,0 +1,17 @@
+id: tool.db_connection_pool
+version: 0.1.0
+name: DB Connection Pool Diagnostic Tool Skill
+domain: db
+description: Read-only database connection pool diagnostic tool skill for saturation, timeout, and lock symptoms.
+stages: [detect, diagnose, verify]
+risk: medium
+permissions: [db.read]
+tool_dependencies: [psql, mysql-client]
+tags: [tool, database, connection-pool, timeout, locks]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.8
+  min_confidence_for_auto_heal: 0.92

@@ -1,0 +1,17 @@
+id: k8s.deployment_unhealthy
+version: 0.1.0
+name: K8s Deployment Unhealthy
+domain: k8s
+description: Detect, diagnose, and propose guarded recovery for unhealthy Kubernetes deployments with failed probes or unavailable replicas.
+stages: [detect, diagnose, heal, verify]
+risk: medium
+permissions: [k8s.read, k8s.write.restart]
+tool_dependencies: [kubectl]
+tags: [kubernetes, deployment, readiness, liveness, rollout]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.84
+  min_confidence_for_auto_heal: 0.95

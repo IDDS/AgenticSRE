@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agenticsre-ebpf-validation
+  labels:
+    app.kubernetes.io/managed-by: agenticsre
+    agenticsre.local/validation: ebpf-network-precision
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenticsre-ebpf-client
+  namespace: agenticsre-ebpf-validation
+data:
+  client.py: |
+    import errno
+    import socket
+    import time
+
+    host = "agenticsre-ebpf-server"
+    ports = (18080, 18081)
+
+    while True:
+        for port in ports:
+            started_at = time.monotonic()
+            try:
+                connection = socket.create_connection((host, port), timeout=1.0)
+                connection.close()
+                latency_ms = int((time.monotonic() - started_at) * 1000)
+                print(f"result=ok port={port} latency_ms={latency_ms}", flush=True)
+            except OSError as error:
+                latency_ms = int((time.monotonic() - started_at) * 1000)
+                error_name = errno.errorcode.get(error.errno, "UNKNOWN")
+                print(
+                    f"result=fault port={port} latency_ms={latency_ms} "
+                    f"errno={error.errno} name={error_name}",
+                    flush=True,
+                )
+        time.sleep(0.25)
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agenticsre-ebpf-server
+  namespace: agenticsre-ebpf-validation
+  labels:
+    app: agenticsre-ebpf-server
+spec:
+  nodeName: lsy-3
+  restartPolicy: Never
+  containers:
+    - name: server
+      image: 10.10.3.146:5001/online-boutique/recommendationservice@sha256:8c40a3dd88153a08139ec3c3e4c28e53e407a02f8ebf5c27cccdf537fd45fa22
+      imagePullPolicy: IfNotPresent
+      command:
+        - /bin/sh
+        - -c
+        - |
+          python3 -m http.server 18080 --bind 0.0.0.0 >/tmp/server-18080.log 2>&1 &
+          server_18080_pid=$!
+          python3 -m http.server 18081 --bind 0.0.0.0 >/tmp/server-18081.log 2>&1 &
+          server_18081_pid=$!
+          trap 'kill "$server_18080_pid" "$server_18081_pid" 2>/dev/null || true' TERM INT
+          wait
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 96Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agenticsre-ebpf-server
+  namespace: agenticsre-ebpf-validation
+spec:
+  selector:
+    app: agenticsre-ebpf-server
+  ports:
+    - name: target
+      port: 18080
+      targetPort: 18080
+    - name: control
+      port: 18081
+      targetPort: 18081
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agenticsre-ebpf-client
+  namespace: agenticsre-ebpf-validation
+  labels:
+    app: agenticsre-ebpf-client
+spec:
+  nodeName: lsy-3
+  restartPolicy: Never
+  containers:
+    - name: client
+      image: 10.10.3.146:5001/online-boutique/recommendationservice@sha256:8c40a3dd88153a08139ec3c3e4c28e53e407a02f8ebf5c27cccdf537fd45fa22
+      imagePullPolicy: IfNotPresent
+      command:
+        - /usr/local/bin/python3
+        - -u
+        - /opt/agenticsre/client.py
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 96Mi
+      volumeMounts:
+        - name: client-source
+          mountPath: /opt/agenticsre
+          readOnly: true
+  volumes:
+    - name: client-source
+      configMap:
+        name: agenticsre-ebpf-client

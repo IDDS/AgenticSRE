@@ -1,0 +1,17 @@
+id: k8s.legacy_recipe_bridge
+version: 0.1.0
+name: K8s Legacy Recipe Bridge
+domain: k8s
+description: Bridge uncovered Kubernetes fault types to the reviewed self-healing recipe library while dedicated skills are being migrated.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, k8s.write.bridge]
+tool_dependencies: [kubectl]
+tags: [kubernetes, bridge, legacy-recipes, migration]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 1
+  min_confidence_for_heal: 0.75
+  min_confidence_for_auto_heal: 0.95

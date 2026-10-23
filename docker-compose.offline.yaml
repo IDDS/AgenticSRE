@@ -1,0 +1,73 @@
+services:
+  dashboard:
+    image: ${AGENTICSRE_IMAGE:?AGENTICSRE_IMAGE is required}
+    pull_policy: never
+    container_name: agenticsre
+    init: true
+    network_mode: host
+    restart: unless-stopped
+    env_file:
+      - ${AGENTICSRE_ENV_FILE:?AGENTICSRE_ENV_FILE is required}
+    environment:
+      AGENTICSRE_OFFLINE_MODE: "true"
+      PYTHONPATH: /app
+      SKILL_RUNTIME_URL: http://127.0.0.1:${SKILL_RUNTIME_PORT:-8090}
+      VLLM_FAULT_INJECTOR_DIR: /app/vllm_fault_injector
+      http_proxy: ""
+      https_proxy: ""
+      ftp_proxy: ""
+      all_proxy: ""
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      FTP_PROXY: ""
+      ALL_PROXY: ""
+      no_proxy: ${AGENTICSRE_NO_PROXY:-localhost,127.0.0.1,::1,.svc,.cluster.local}
+      NO_PROXY: ${AGENTICSRE_NO_PROXY:-localhost,127.0.0.1,::1,.svc,.cluster.local}
+    volumes:
+      - ${AGENTICSRE_DATA_DIR:?AGENTICSRE_DATA_DIR is required}:/app/data:z
+      - ${AGENTICSRE_LOG_DIR:?AGENTICSRE_LOG_DIR is required}:/app/logs:z
+      - ${AGENTICSRE_KUBECONFIG_FILE:?AGENTICSRE_KUBECONFIG_FILE is required}:/root/.kube/config:ro,z
+      - ${AGENTICSRE_SSH_DIR:?AGENTICSRE_SSH_DIR is required}:/root/.ssh:ro,z
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 8
+
+  skill-runtime:
+    image: ${AGENTICSRE_IMAGE:?AGENTICSRE_IMAGE is required}
+    pull_policy: never
+    container_name: agenticsre-skill-runtime
+    init: true
+    network_mode: host
+    restart: unless-stopped
+    env_file:
+      - ${AGENTICSRE_ENV_FILE:?AGENTICSRE_ENV_FILE is required}
+    environment:
+      AGENTICSRE_OFFLINE_MODE: "true"
+      PYTHONPATH: /app
+      SKILL_RUNTIME_HOST: 0.0.0.0
+      SKILL_RUNTIME_PORT: ${SKILL_RUNTIME_PORT:-8090}
+      http_proxy: ""
+      https_proxy: ""
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      no_proxy: ${AGENTICSRE_NO_PROXY:-localhost,127.0.0.1,::1,.svc,.cluster.local}
+      NO_PROXY: ${AGENTICSRE_NO_PROXY:-localhost,127.0.0.1,::1,.svc,.cluster.local}
+    command: ["bash", "/app/skill_runtime/run.sh"]
+    volumes:
+      - ${AGENTICSRE_DATA_DIR:?AGENTICSRE_DATA_DIR is required}:/app/data:z
+      - ${AGENTICSRE_LOG_DIR:?AGENTICSRE_LOG_DIR is required}:/app/logs:z
+      - ${AGENTICSRE_KUBECONFIG_FILE:?AGENTICSRE_KUBECONFIG_FILE is required}:/root/.kube/config:ro,z
+      - ${AGENTICSRE_SSH_DIR:?AGENTICSRE_SSH_DIR is required}:/root/.ssh:ro,z
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json,os,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('SKILL_RUNTIME_PORT','8090')+'/api/health', timeout=3)); assert d.get('status') == 'ok'"
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 8

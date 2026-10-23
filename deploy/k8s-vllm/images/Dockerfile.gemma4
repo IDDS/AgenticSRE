@@ -1,0 +1,26 @@
+ARG VLLM_BASE_IMAGE=vllm/vllm-openai:latest
+FROM ${VLLM_BASE_IMAGE}
+
+ARG TRANSFORMERS_VERSION
+ARG ACCELERATE_VERSION
+
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
+    if [ -n "${TRANSFORMERS_VERSION}" ]; then \
+      python3 -m pip install --no-cache-dir --upgrade "transformers==${TRANSFORMERS_VERSION}"; \
+    else \
+      python3 -m pip install --no-cache-dir --upgrade transformers; \
+    fi && \
+    if [ -n "${ACCELERATE_VERSION}" ]; then \
+      python3 -m pip install --no-cache-dir --upgrade "accelerate==${ACCELERATE_VERSION}"; \
+    else \
+      python3 -m pip install --no-cache-dir --upgrade accelerate; \
+    fi && \
+    python3 - <<'PY'
+import transformers
+from transformers import AutoConfig
+
+cfg = AutoConfig.from_pretrained("google/gemma-4-12B-it", trust_remote_code=True)
+print("transformers", transformers.__version__)
+print("model_type", getattr(cfg, "model_type", None))
+print("architectures", getattr(cfg, "architectures", None))
+PY

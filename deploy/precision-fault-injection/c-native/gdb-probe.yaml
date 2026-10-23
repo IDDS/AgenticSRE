@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agenticsre-gdb-probe
+  namespace: agenticsre-c-native-validation
+  labels:
+    app: agenticsre-gdb-probe
+spec:
+  nodeName: lsy-3
+  restartPolicy: Never
+  containers:
+  - name: probe
+    image: opspai/ts-news-service:v1.2.9
+    imagePullPolicy: Never
+    command:
+    - /opt/agenticsre/probe
+    args:
+    - gdb
+    env:
+    - name: LD_LIBRARY_PATH
+      value: /opt/agenticsre
+    volumeMounts:
+    - name: artifacts
+      mountPath: /opt/agenticsre
+      readOnly: true
+  volumes:
+  - name: artifacts
+    configMap:
+      name: agenticsre-c-native-artifacts
+      defaultMode: 365

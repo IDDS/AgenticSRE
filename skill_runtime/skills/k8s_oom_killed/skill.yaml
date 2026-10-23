@@ -1,0 +1,17 @@
+id: k8s.oom_killed
+version: 0.1.0
+name: K8s OOMKilled
+domain: k8s
+description: Detect, diagnose, and propose guarded recovery for Kubernetes containers terminated by OOMKilled or exit code 137.
+stages: [detect, diagnose, heal, verify]
+risk: medium
+permissions: [k8s.read, k8s.write.restart]
+tool_dependencies: [kubectl]
+tags: [kubernetes, oom, memory, pod, deployment]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.95

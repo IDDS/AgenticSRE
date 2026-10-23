@@ -1,0 +1,17 @@
+id: k8s.observability_signal
+version: 0.1.0
+name: K8s Observability Signal
+domain: k8s
+description: Detect, diagnose, and propose guarded investigation for metric anomalies, TargetDown, latency, and log error spikes.
+stages: [detect, diagnose, verify]
+risk: medium
+permissions: [k8s.read, k8s.write.restart]
+tool_dependencies: [kubectl]
+tags: [kubernetes, metrics, prometheus, logs, latency, targetdown]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 1
+  min_confidence_for_heal: 0.72
+  min_confidence_for_auto_heal: 0.95

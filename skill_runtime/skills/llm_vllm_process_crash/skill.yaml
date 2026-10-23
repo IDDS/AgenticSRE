@@ -1,0 +1,16 @@
+id: llm.vllm_process_crash
+version: 0.1.0
+name: vLLM Process Crash
+domain: llm
+description: Detect, diagnose, and propose recovery for vLLM inference process crashes.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [host.read, host.process.restart, k8s.read, k8s.write.restart]
+tags: [llm, vllm, gpu, inference]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.85
+  min_confidence_for_auto_heal: 0.9

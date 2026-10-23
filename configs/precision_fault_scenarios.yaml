@@ -1,0 +1,288 @@
+version: agenticsre.precision-catalog.v2
+execution_mode: approval_gated_transactional_execution
+validation_status: remote_real_validation_17_passed_1_gpu_capacity_blocked
+scenarios:
+  - id: precise-http-header-delay
+    name: HTTP Header Matched Delay
+    category: request
+    fault_type: http_header_delay
+    description: Delay only requests carrying one exact experiment header on one registered route.
+    target_entity_ids: [service/agenticsre-http-probe]
+    precision:
+      method: request
+      match: {route: /healthz, http_method: GET, header: x-agenticsre-fault=delay}
+      fault: {action: delay, delay_ms: 500}
+    safety: &default_safety {duration_s: 15, max_injections: 1, auto_cleanup: true}
+    blast_radius_budget: &default_budget {max_affected_entities: 1, max_duration_s: 30, max_injections: 1, max_request_sample_rate: 0.05}
+
+  - id: precise-strace-openat-error
+    name: Process Syscall Error
+    category: syscall
+    fault_type: syscall_error
+    description: Return EACCES for one bounded openat hit in a single registered probe process.
+    target_entity_ids: [pod/agenticsre-strace-probe]
+    precision:
+      method: strace
+      scope: {pod: agenticsre-strace-probe, container: probe}
+      fault: {syscalls: [openat], behavior: error, errno: EACCES, trigger: {hit_count: 1, max_hits: 1}}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-seccomp-openat-errno
+    name: Seccomp Exact Path Errno
+    category: syscall
+    fault_type: seccomp_openat_errno
+    description: Reject one exact openat path hit in a process-start seccomp user-notification profile.
+    target_entity_ids: [pod/agenticsre-seccomp-probe]
+    precision:
+      method: seccomp
+      scope: {pod: agenticsre-seccomp-probe, container: probe}
+      match: {path: /tmp/agenticsre-seccomp-target}
+      fault: {syscalls: [openat], action: errno, errno: 13, trigger: {hit_count: 3, max_hits: 1}}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-ebpf-connect-denial
+    name: eBPF Destination Port Denial
+    category: network
+    fault_type: ebpf_connect_denial
+    description: Deny a bounded number of connects from one cgroup to one exact IP and port.
+    target_entity_ids: [pod/agenticsre-ebpf-client]
+    precision:
+      method: ebpf
+      scope: {pod: agenticsre-ebpf-client, container: client}
+      match: {destination_ip: 10.0.0.10, destination_port: 18080}
+      fault: {attach_point: cgroup/connect4, trigger: {hit_count: 3, max_hits: 3}}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-jvm-method-latency
+    name: JVM Method Latency
+    category: bytecode
+    fault_type: jvm_method_latency
+    description: Add bounded latency to one exact class method in one registered JVM container.
+    target_entity_ids: [pod/agenticsre-jvm-probe]
+    precision:
+      method: bytecode
+      scope: {pod: agenticsre-jvm-probe, container: probe}
+      fault:
+        runtime: java
+        class: AgenticSREBytecodeProbe
+        method: stableOperation
+        delay_ms: 2000
+        trigger: {hit_count: 1, max_hits: 1}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-gdb-function-return
+    name: Native Function Return Override
+    category: native-function
+    fault_type: gdb_function_return
+    description: Override one reviewed native function return for one hit, then detach.
+    target_entity_ids: [pod/agenticsre-native-probe]
+    precision:
+      method: gdb
+      scope: {pod: agenticsre-native-probe, container: probe}
+      fault:
+        binary_path: /opt/agenticsre/probes/native-probe
+        abi_profile: int32_int32
+        symbol: stable_operation
+        action: return_override
+        return_value: -88
+        trigger: {hit_count: 1, max_hits: 1}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-elf-function-return
+    name: ELF Function Return Override
+    category: native-function
+    fault_type: elf_function_return
+    description: Apply one bounded reviewed ELF interposition return override.
+    target_entity_ids: [pod/agenticsre-native-probe]
+    precision: &elf_return
+      method: binary
+      scope: {pod: agenticsre-native-probe, container: probe}
+      fault:
+        provider: ld_preload
+        instrumentation_artifact_id: agenticsre.native.int32.v1
+        binary_path: /opt/agenticsre/probes/native-probe
+        abi_profile: int32_int32
+        symbol: stable_operation
+        action: return_override
+        return_value: -77
+        trigger: {hit_count: 3, max_hits: 1}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-elf-function-errno
+    name: ELF Function Errno
+    category: native-function
+    fault_type: elf_function_errno
+    description: Apply one bounded reviewed ELF errno result.
+    target_entity_ids: [pod/agenticsre-native-probe]
+    precision:
+      <<: *elf_return
+      fault:
+        provider: ld_preload
+        instrumentation_artifact_id: agenticsre.native.int32.v1
+        binary_path: /opt/agenticsre/probes/native-probe
+        abi_profile: int32_int32
+        symbol: stable_operation
+        action: errno
+        errno: 5
+        return_value: -1
+        trigger: {hit_count: 4, max_hits: 1}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-elf-function-delay
+    name: ELF Function Delay
+    category: native-function
+    fault_type: elf_function_delay
+    description: Delay one reviewed native function hit without changing later calls.
+    target_entity_ids: [pod/agenticsre-native-probe]
+    precision:
+      <<: *elf_return
+      fault:
+        provider: ld_preload
+        instrumentation_artifact_id: agenticsre.native.int32.v1
+        binary_path: /opt/agenticsre/probes/native-probe
+        abi_profile: int32_int32
+        symbol: stable_operation
+        action: delay
+        delay_ms: 350
+        trigger: {hit_count: 5, max_hits: 1}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-network-loss
+    name: Directed Pod Network Loss
+    category: platform-native
+    fault_type: network_loss
+    description: Apply packet loss from one source Pod to one exact destination Pod.
+    target_entity_ids: [pod/agenticsre-network-client]
+    precision:
+      method: platform_native
+      scope: {pod: agenticsre-network-client, container: client}
+      match: {destination_entity_ids: [pod/agenticsre-network-target]}
+      fault: {kind: network_loss, loss_percent: 100}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-dns-error
+    name: Exact DNS Name Error
+    category: platform-native
+    fault_type: dns_error
+    description: Fail one exact service FQDN while retaining a control lookup.
+    target_entity_ids: [pod/agenticsre-dns-client]
+    precision:
+      method: platform_native
+      scope: {pod: agenticsre-dns-client, container: client}
+      match: {dns_patterns: [agenticsre-target.default.svc.cluster.local]}
+      fault: {kind: dns_error}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-container-cpu-stress
+    name: Single Container CPU Stress
+    category: platform-native
+    fault_type: cpu_stress
+    description: Apply a bounded CPU load to one container only.
+    target_entity_ids: [pod/agenticsre-resource-probe]
+    precision:
+      method: platform_native
+      scope: {pod: agenticsre-resource-probe, container: probe}
+      fault: {kind: cpu_stress, workers: 1, load_percent: 80}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-path-io-latency
+    name: Single Path I/O Latency
+    category: platform-native
+    fault_type: io_latency
+    description: Add latency to one path inside a disposable mounted volume.
+    target_entity_ids: [pod/agenticsre-io-probe]
+    precision:
+      method: platform_native
+      scope: {pod: agenticsre-io-probe, container: probe}
+      fault: {kind: io_latency, volume_path: /data, path: /data/fault-probe, delay_ms: 250}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-container-time-offset
+    name: Single Container Time Offset
+    category: platform-native
+    fault_type: time_offset
+    description: Offset CLOCK_REALTIME in one container for a bounded interval.
+    target_entity_ids: [pod/agenticsre-time-probe]
+    precision:
+      method: platform_native
+      scope: {pod: agenticsre-time-probe, container: probe}
+      fault: {kind: time_offset, offset: -5m, clock_ids: [CLOCK_REALTIME]}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-application-failpoint-error
+    name: Application Failpoint Error
+    category: application
+    fault_type: application_failpoint_error
+    description: Activate one reviewed failpoint for one exact request and one bounded hit.
+    target_entity_ids: [service/agenticsre-failpoint-probe]
+    precision:
+      method: failpoint
+      scope: {service: agenticsre-failpoint-probe}
+      match: {request_id: agenticsre-fp-request}
+      fault:
+        failpoint_id: checkout.payment.after_capture
+        action: error
+        error_code: PAYMENT_STATE_WRITE_FAILED
+        trigger: {hit_count: 1, max_hits: 1}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-cgroup-v2-cpu-quota
+    name: cgroup v2 CPU Quota
+    category: kernel-resource
+    fault_type: cgroup_v2_resource_throttle
+    description: Temporarily change one non-root cgroup controller and restore its captured value.
+    target_entity_ids: [pod/agenticsre-cgroup-probe]
+    precision:
+      method: cgroup_v2
+      scope:
+        pod: agenticsre-cgroup-probe
+        container: probe
+        cgroup_path: /sys/fs/cgroup/kubepods/agenticsre-cgroup-probe
+      fault: {kind: cpu_quota, quota_us: 20000, period_us: 100000}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-dcgm-pcie-replay
+    name: DCGM PCIe Replay Metric
+    category: gpu
+    fault_type: dcgm_metric_error
+    description: Simulate one allowlisted DCGM field on one GPU; this is not a physical hardware fault.
+    target_entity_ids: [gpu/isolated-gpu-0]
+    precision:
+      method: dcgm
+      scope: {gpu_id: 0}
+      fault: {kind: pcie_replay, value: 100}
+    safety: *default_safety
+    blast_radius_budget: *default_budget
+
+  - id: precise-dm-flakey-write-error
+    name: Disposable Volume Write Error
+    category: storage
+    fault_type: storage_write_error
+    description: Return bounded write errors on one disposable loop-backed volume with a reviewed snapshot.
+    target_entity_ids: [volume/agenticsre-flakey-probe]
+    precision:
+      method: dm_flakey
+      scope:
+        mapping_name: agenticsre-flakey-probe
+        backing_device: /dev/loop-auto
+        mount_path: /tmp/agenticsre-fault-volume
+        snapshot_id: agenticsre.flakey.snapshot.v1
+        disposable_volume: true
+      fault: {mode: error_writes, up_interval_s: 10, down_interval_s: 5}
+    safety: *default_safety
+    blast_radius_budget: *default_budget

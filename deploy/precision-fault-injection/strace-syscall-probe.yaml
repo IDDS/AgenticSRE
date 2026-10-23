@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agenticsre-strace-validation
+  labels:
+    app.kubernetes.io/managed-by: agenticsre
+    agenticsre.local/validation: strace-syscall-precision
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenticsre-strace-probe
+  namespace: agenticsre-strace-validation
+data:
+  probe.py: |
+    import ctypes
+    import errno
+    import os
+    import platform
+    import time
+
+    target = "/tmp/agenticsre-strace-target"
+    target_bytes = target.encode("utf-8")
+    syscall_openat = {
+        "x86_64": 257,
+        "aarch64": 56,
+    }[platform.machine()]
+    at_fdcwd = -100
+    open_flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+    libc = ctypes.CDLL(None, use_errno=True)
+    iteration = 0
+
+    while True:
+        iteration += 1
+        ctypes.set_errno(0)
+        descriptor = libc.syscall(
+            ctypes.c_long(syscall_openat),
+            ctypes.c_int(at_fdcwd),
+            ctypes.c_char_p(target_bytes),
+            ctypes.c_int(open_flags),
+            ctypes.c_int(0o600),
+        )
+        if descriptor >= 0:
+            os.write(descriptor, f"{iteration}\n".encode("utf-8"))
+            os.close(descriptor)
+            print(f"result=ok iteration={iteration}", flush=True)
+        else:
+            error_number = ctypes.get_errno()
+            error_name = errno.errorcode.get(error_number, "UNKNOWN")
+            print(
+                f"result=fault iteration={iteration} errno={error_number} name={error_name}",
+                flush=True,
+            )
+        time.sleep(0.25)
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agenticsre-strace-probe
+  namespace: agenticsre-strace-validation
+  labels:
+    app: agenticsre-strace-probe
+    app.kubernetes.io/managed-by: agenticsre
+spec:
+  nodeName: lsy-3
+  restartPolicy: Never
+  containers:
+    - name: probe
+      image: 10.10.3.146:5001/online-boutique/recommendationservice@sha256:8c40a3dd88153a08139ec3c3e4c28e53e407a02f8ebf5c27cccdf537fd45fa22
+      imagePullPolicy: IfNotPresent
+      command:
+        - /usr/local/bin/python3
+        - -u
+        - /opt/agenticsre/probe.py
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 96Mi
+      volumeMounts:
+        - name: probe-source
+          mountPath: /opt/agenticsre
+          readOnly: true
+  volumes:
+    - name: probe-source
+      configMap:
+        name: agenticsre-strace-probe

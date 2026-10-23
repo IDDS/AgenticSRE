@@ -33,6 +33,7 @@ class AgentContext:
     domain_hints: Dict[str, str] = field(default_factory=dict)
     recent_traces: List[Dict] = field(default_factory=list)
     performance_stats: Dict = field(default_factory=dict)
+    history_retrieval: Dict = field(default_factory=dict)
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -90,6 +91,21 @@ class AgentContext:
             and not self.recent_traces
         )
 
+    def get_used_rule_ids(self) -> List[str]:
+        """rule_id list of historical rules surfaced into the prompt — feeds record_rule_usage()."""
+        return [
+            r["rule_id"]
+            for r in self.historical_rules[:5]
+            if isinstance(r, dict) and r.get("rule_id")
+        ]
+
+    def get_recalled_rule_refs(self) -> List[Dict]:
+        """Content identities for context exposure, not causal contributions."""
+        from memory.fault_context_store import FaultContextStore
+        return [{"rule_id": rule["rule_id"], "revision": FaultContextStore.rule_revision(rule)}
+                for rule in self.historical_rules[:5]
+                if isinstance(rule, dict) and rule.get("rule_id")]
+
 
 class ContextBuilder:
     """
@@ -127,7 +143,7 @@ class ContextBuilder:
         self._n_feedback = n_feedback
         self._n_traces = n_traces
 
-    def build_context(self, incident_query: str, agent_name: str = "") -> AgentContext:
+    def build_context(self, incident_query: str, agent_name: str = "", historical_context=None, memory_scope=None) -> AgentContext:
         """
         Build an AgentContext by querying all available stores.
 
@@ -138,27 +154,35 @@ class ContextBuilder:
         """
         ctx = AgentContext()
 
-        # Historical rules + similar faults
-        if self._fault_store is not None:
-            try:
-                ctx.historical_rules = self._fault_store.query_similar_rules(
-                    incident_query, n=self._n_rules
-                )
-            except Exception as e:
-                logger.debug("[ContextBuilder] Rule query failed: %s", e)
-
-            try:
-                ctx.similar_faults = self._fault_store.query_similar_faults(
-                    incident_query, n=self._n_faults
-                )
-            except Exception as e:
-                logger.debug("[ContextBuilder] Fault query failed: %s", e)
+        # A pipeline supplies its one immutable retrieval snapshot for reuse.
+        if historical_context is None and self._fault_store is not None:
+            from memory.history_retrieval import retrieve_history
+            historical_context = retrieve_history(lambda: self._fault_store, incident_query,
+                n_rules=self._n_rules, n_faults=self._n_faults, memory_scope=memory_scope).context
+        if historical_context is not None:
+            from copy import deepcopy
+            ctx.historical_rules = deepcopy(historical_context.get('rules', []))[:self._n_rules]
+            ctx.similar_faults = deepcopy(historical_context.get('faults', []))[:self._n_faults]
+            ctx.history_retrieval = deepcopy(historical_context.get('retrieval', {}))
+            if memory_scope is not None:
+                from memory.memory_scope import filter_memory
+                # Revalidate supplied detached snapshots too; callers cannot
+                # inject an unscoped precomputed top-k into the diagnosis.
+                ctx.historical_rules, rule_audit = filter_memory(
+                    deepcopy(historical_context.get('rules', [])), memory_scope, 'rules')
+                ctx.similar_faults, fault_audit = filter_memory(
+                    deepcopy(historical_context.get('faults', [])), memory_scope, 'faults')
+                ctx.historical_rules = ctx.historical_rules[:self._n_rules]
+                ctx.similar_faults = ctx.similar_faults[:self._n_faults]
+                ctx.history_retrieval.update(scope=memory_scope.to_dict(),
+                    admission={'rules': rule_audit, 'faults': fault_audit})
 
         # Expert feedback
         if self._feedback_store is not None:
             try:
+                options = {'memory_scope': memory_scope} if memory_scope is not None else {}
                 ctx.expert_feedback = self._feedback_store.get_recent_feedback(
-                    n=self._n_feedback
+                    n=self._n_feedback, for_context=True, **options
                 )
             except Exception as e:
                 logger.debug("[ContextBuilder] Feedback query failed: %s", e)
@@ -174,12 +198,14 @@ class ContextBuilder:
         # Execution traces
         if self._trace_store is not None:
             try:
-                ctx.recent_traces = self._trace_store.get_recent_traces(n=self._n_traces)
+                if memory_scope is None:
+                    ctx.recent_traces = self._trace_store.get_recent_traces(n=self._n_traces)
             except Exception as e:
                 logger.debug("[ContextBuilder] Trace query failed: %s", e)
 
             try:
-                ctx.performance_stats = self._trace_store.get_performance_stats()
+                if memory_scope is None:
+                    ctx.performance_stats = self._trace_store.get_performance_stats()
             except Exception as e:
                 logger.debug("[ContextBuilder] Performance stats failed: %s", e)
 

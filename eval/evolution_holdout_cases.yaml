@@ -1,0 +1,463 @@
+schema: agenticsre.evolution-holdout.v2
+# v2 scopes exclusion rubrics separately from positive root-cause evidence.
+frozen_at: "2026-08-11"
+purpose: >-
+  Independent truth-isolated holdout for the R0/R4 evolution gate. These cases
+  were authored after the development prompt was frozen and must not be used to
+  tune the adjudication rules.
+cases:
+  - id: holdout-general-envoy-cpu-quota
+    domain: general
+    complexity: complex
+    incident: >-
+      Checkout latency rises only for calls traversing one gateway pod. An older
+      application GC alert is still visible on the dashboard.
+    evidence:
+      - The application container remains below 35% CPU and shows no new GC pause in the incident window.
+      - The Envoy sidecar in the affected pod has cpu.cfs_throttled_seconds_total rising sharply and a 50m CPU limit.
+      - Requests bypassing the sidecar remain fast; raising only the sidecar CPU limit restores latency.
+      - The GC alert ended 40 minutes before the current latency event.
+    ground_truth:
+      label: Envoy sidecar CPU quota throttling causes gateway latency; GC alert is stale
+      match_groups:
+        - [envoy, sidecar]
+        - [cpu quota, cpu limit, cfs throttling, throttled]
+        - scope: distractor
+          terms: [stale, old alert, unrelated gc, ended 40 minutes]
+
+  - id: holdout-general-dns-negative-cache
+    domain: general
+    complexity: complex
+    incident: >-
+      A worker continues returning dependency-name resolution errors after the
+      dependency Service and endpoints have already recovered.
+    evidence:
+      - CoreDNS is healthy and resolves the dependency correctly from newly started pods.
+      - The affected long-lived worker still returns cached NXDOMAIN without issuing a new DNS query.
+      - Restarting only the worker clears the error; no DNS or network configuration changes are made.
+      - Other workloads on the same node resolve the name normally.
+    ground_truth:
+      label: Application resolver negative-caches NXDOMAIN after dependency recovery
+      match_groups:
+        - [negative cache, cached nxdomain, nxdomain cache]
+        - [resolver, application, worker]
+        - [restart, long-lived]
+
+  - id: holdout-general-clock-tls
+    domain: general
+    complexity: fine_grained
+    incident: >-
+      One node's workloads fail TLS handshakes with certificate-not-yet-valid
+      errors while the same certificate works from every other node.
+    evidence:
+      - chronyc reports the affected node clock is 421 seconds behind the cluster reference.
+      - Certificate validity dates and trust chain are correct.
+      - Synchronizing the node clock immediately restores TLS handshakes without certificate rotation.
+    ground_truth:
+      label: Node clock drift makes a valid TLS certificate appear not yet valid
+      match_groups:
+        - [clock drift, time offset, clock is behind, time skew]
+        - [tls, certificate, not yet valid]
+
+  - id: holdout-general-db-pool-leak
+    domain: general
+    complexity: fine_grained
+    incident: >-
+      API write latency increases over several hours, but database query latency
+      and CPU remain normal.
+    evidence:
+      - Client pool active connections stay at the configured maximum while idle remains zero.
+      - Thread dumps show requests waiting in connection checkout; several completed transactions never return their handles.
+      - Restarting the API temporarily restores service and the same saturation pattern then grows again.
+    ground_truth:
+      label: Leaked database handles exhaust the API connection pool
+      match_groups:
+        - [connection pool, db pool]
+        - [leak, not return, exhausted, saturation]
+        - [checkout, waiting]
+
+  - id: holdout-general-readonly-storage
+    domain: general
+    complexity: complex
+    incident: >-
+      A document service starts failing writes with EROFS while an unrelated
+      latency warning remains active for a downstream search service.
+    evidence:
+      - Kernel logs show an I/O error followed by remounting /data read-only.
+      - The underlying dm-flakey test mapping reports error_writes=true for the affected device.
+      - Search-service latency returns to normal before document writes recover.
+      - Removing the flakey mapping and remounting /data read-write restores writes.
+    ground_truth:
+      label: Device write errors force /data read-only; search latency is unrelated
+      match_groups:
+        - [read-only, readonly, erofs, remount]
+        - [dm-flakey, device write error, io error, i/o error]
+        - scope: distractor
+          terms: [unrelated, independent, search latency]
+
+  - id: holdout-general-kafka-leader
+    domain: general
+    complexity: complex
+    incident: >-
+      Order events accumulate in a consumer group while a host CPU warning from
+      another broker appears in the same alert bundle.
+    evidence:
+      - Partition 17 has no elected leader and producers receive NOT_LEADER_OR_FOLLOWER.
+      - Consumer lag grows only for partition 17; other partitions continue normally.
+      - The CPU warning belongs to broker-4, which does not host partition 17.
+      - Completing leader election drains lag without changing broker-4 CPU load.
+    ground_truth:
+      label: Missing Kafka partition leader causes isolated lag; broker CPU alert is unrelated
+      match_groups:
+        - [partition leader, no leader, leader election]
+        - [kafka, partition 17, consumer lag]
+        - scope: distractor
+          terms: [unrelated cpu, broker-4, does not host]
+
+  - id: holdout-general-egress-retry-cascade
+    domain: general
+    complexity: complex
+    incident: >-
+      Checkout failures spread into frontend latency after a namespace policy
+      update, even though frontend resource usage is initially normal.
+    evidence:
+      - The new NetworkPolicy denies only egress from checkout to payment-service.
+      - Checkout records connection timeouts and retries each payment call five times.
+      - Retry traffic later exhausts frontend worker slots, producing a second latency spike.
+      - Restoring payment egress stops retries first; frontend latency recovers as the retry backlog drains.
+    ground_truth:
+      label: Payment egress denial triggers checkout retries that later exhaust frontend workers
+      match_groups:
+        - [networkpolicy, egress denial, egress blocked, payment egress]
+        - [retry, retries, five times]
+        - [frontend worker, worker slots, backlog, cascade]
+
+  - id: holdout-general-secret-gray-auth
+    domain: general
+    complexity: complex
+    incident: >-
+      About 20% of authentication requests return 401 after secret rotation; the
+      remaining requests succeed and the identity provider is healthy.
+    evidence:
+      - One old pod has not restarted and still exposes the previous secret version in its mounted volume.
+      - All new pods use the rotated secret and authenticate successfully.
+      - Requests routed to the old pod fail signature validation; deleting only that pod removes the gray failure.
+    ground_truth:
+      label: One stale pod retains the old secret and causes gray authentication failures
+      match_groups:
+        - [old secret, previous secret, stale pod, secret version]
+        - [one pod, old pod, 20%, gray]
+        - [signature, authentication, 401]
+
+  - id: holdout-general-quota-scaleout-queue
+    domain: general
+    complexity: complex
+    incident: >-
+      HPA increases the desired replicas for a recommendation service, but queue
+      depth and request latency continue rising.
+    evidence:
+      - New pods remain Pending with exceeded quota: requests.cpu.
+      - Existing replicas are healthy but saturated and the work queue grows continuously.
+      - Increasing the namespace CPU quota allows new replicas to schedule and the queue drains.
+      - Node CPU has spare capacity, so physical cluster CPU is not exhausted.
+    ground_truth:
+      label: Namespace CPU quota blocks scale-out and leaves existing replicas overloaded
+      match_groups:
+        - [namespace quota, cpu quota, exceeded quota, requests.cpu]
+        - [scale-out, hpa, new replicas, pending]
+        - [queue, overloaded, saturation, drains]
+
+  - id: holdout-general-inode-exhaustion
+    domain: general
+    complexity: fine_grained
+    incident: >-
+      A logging service reports no space left on device even though df shows 47%
+      of disk bytes free.
+    evidence:
+      - df -i reports 100% inode use on /var/log.
+      - Millions of zero-byte rotated files are present; block utilization is below 55%.
+      - Removing expired files frees inodes and log creation succeeds immediately.
+    ground_truth:
+      label: Inode exhaustion prevents new log files despite free disk bytes
+      match_groups:
+        - [inode, inodes]
+        - [exhaustion, 100%, no space]
+        - [free disk, disk bytes, zero-byte files]
+
+  - id: holdout-general-memory-high-throttle
+    domain: general
+    complexity: complex
+    incident: >-
+      A container becomes slow under a large working set but is never OOMKilled
+      and has no restart during the incident.
+    evidence:
+      - memory.events shows high increasing rapidly while oom and oom_kill stay zero.
+      - PSI memory stall time correlates with request latency; CPU and disk remain normal.
+      - Restarting temporarily reduces the working set, but latency returns as memory grows.
+      - Raising memory.high removes stalls without changing memory.max.
+    ground_truth:
+      label: cgroup memory.high reclaim throttling causes latency without OOM
+      match_groups:
+        - [memory.high, memory high]
+        - [reclaim, throttle, psi, stall]
+        - [no oom, oom stays zero, without oom]
+
+  - id: holdout-general-conntrack-exhaustion
+    domain: general
+    complexity: complex
+    incident: >-
+      New outbound connections intermittently reset across several pods on one
+      node while established connections and application CPU remain healthy.
+    evidence:
+      - nf_conntrack_count equals nf_conntrack_max and kernel logs report table full, dropping packet.
+      - Packet loss begins only for new flows on the affected node.
+      - Expiring stale conntrack entries restores new connections without restarting applications.
+    ground_truth:
+      label: Node conntrack table exhaustion drops new flows
+      match_groups:
+        - [conntrack, nf_conntrack]
+        - [table full, exhaustion, conntrack_max]
+        - [new flow, new connection, dropping packet]
+
+  - id: holdout-ai-nccl-ib-straggler
+    domain: ai_inference
+    complexity: complex
+    incident: >-
+      Tensor-parallel inference stalls in collective operations while a stale GPU
+      temperature warning points at a different rank.
+    evidence:
+      - Rank 3 reports NCCL timeout and its InfiniBand port counter symbol_error increases sharply.
+      - Other ranks wait in all-reduce; GPU temperatures remain below the throttle threshold during the incident.
+      - Switching the job to TCP avoids the stall; repairing rank 3's IB link restores normal NCCL performance.
+      - The temperature warning ended two hours earlier on rank 1.
+    ground_truth:
+      label: Rank 3 InfiniBand errors create an NCCL all-reduce straggler; temperature alert is stale
+      match_groups:
+        - [rank 3, infiniband, ib link, symbol_error]
+        - [nccl, all-reduce, collective, straggler]
+        - scope: distractor
+          terms: [stale, two hours earlier, unrelated temperature]
+
+  - id: holdout-ai-quant-kernel-arch
+    domain: ai_inference
+    complexity: fine_grained
+    incident: >-
+      A newly quantized model starts on A100 but fails during the first request on
+      an older GPU pool with invalid device function.
+    evidence:
+      - The quantization package selected a kernel binary compiled only for sm_80.
+      - Failing nodes expose sm_75 GPUs; model files and CUDA driver versions are otherwise identical.
+      - Selecting the generic sm_75-compatible kernel restores inference without changing weights.
+    ground_truth:
+      label: Quantized kernel binary is incompatible with the sm_75 GPU architecture
+      match_groups:
+        - [quantized kernel, quantization kernel, kernel binary]
+        - [sm_75, gpu architecture, architecture mismatch, incompatible]
+        - [invalid device function]
+
+  - id: holdout-ai-tokenizer-revision-skew
+    domain: ai_inference
+    complexity: complex
+    incident: >-
+      Only requests routed through one gateway revision fail validation after an
+      inference rollout; backend model weights are identical.
+    evidence:
+      - The affected gateway uses tokenizer revision v18 while the vLLM backend uses v19.
+      - Prompt token counts differ for the same Unicode input and failures occur only on inputs containing the changed token.
+      - Updating the gateway tokenizer to v19 removes the gray 400 errors without backend changes.
+    ground_truth:
+      label: Gateway/backend tokenizer revision skew causes gray validation failures
+      match_groups:
+        - [tokenizer revision, tokenizer skew, v18, v19]
+        - [gateway, backend, vllm]
+        - [gray, subset, unicode, token counts]
+
+  - id: holdout-ai-kv-fragmentation
+    domain: ai_inference
+    complexity: complex
+    incident: >-
+      New long-context requests fail KV allocation even though aggregate KV Cache
+      free capacity is still reported above 25%.
+    evidence:
+      - Allocation logs require a contiguous 512-block region but the largest free extent is 96 blocks.
+      - Total free blocks are distributed across many small extents; GPU compute and request arrival rate are normal.
+      - Draining and restarting the worker compacts the allocator and the same request succeeds at the same total capacity.
+    ground_truth:
+      label: KV Cache fragmentation prevents a large contiguous allocation despite free capacity
+      match_groups:
+        - [kv cache, kv allocation]
+        - [fragmentation, fragmented, small extents, contiguous]
+        - [free capacity, free blocks, 25%]
+
+  - id: holdout-ai-weight-shard-corruption
+    domain: ai_inference
+    complexity: complex
+    incident: >-
+      One of four inference replicas crashes while loading a model shard; the same
+      image and configuration work on the other replicas.
+    evidence:
+      - Replica 3 reports checksum mismatch for model-00017-of-00032.safetensors.
+      - Object-store metadata and the local file size differ only on replica 3's cached copy.
+      - Purging the cached shard and downloading it again restores replica 3 without configuration changes.
+    ground_truth:
+      label: Corrupted cached model shard on replica 3 causes checksum failure
+      match_groups:
+        - [model shard, safetensors, shard 17]
+        - [corrupt, checksum mismatch, corrupted cache]
+        - [replica 3, cached copy, redownload]
+
+  - id: holdout-ai-speculative-draft-skew
+    domain: ai_inference
+    complexity: complex
+    incident: >-
+      Token throughput falls after speculative decoding is enabled, while target
+      model kernel time and GPU utilization remain below saturation.
+    evidence:
+      - Draft-token acceptance rate is near zero and the draft model uses a tokenizer revision different from the target model.
+      - Each rejected draft forces target-model verification and regeneration, increasing work per accepted token.
+      - Disabling speculative decoding immediately restores throughput; aligning the tokenizer restores acceptance.
+    ground_truth:
+      label: Draft/target tokenizer skew collapses speculative acceptance and adds verification overhead
+      match_groups:
+        - [draft, target, speculative]
+        - [tokenizer skew, tokenizer revision, different tokenizer]
+        - [acceptance, near zero, verification, regeneration]
+
+  - id: holdout-ai-gpu-power-cap
+    domain: ai_inference
+    complexity: fine_grained
+    incident: >-
+      Inference throughput drops on one GPU although temperature, memory use and
+      SM occupancy remain within their normal ranges.
+    evidence:
+      - nvidia-smi reports the enforced power limit changed from 300 W to 165 W at the incident start.
+      - Application clock falls in step with the power cap and no thermal throttle reason is active.
+      - Restoring the 300 W power limit restores clock and tokens/s without restarting the server.
+    ground_truth:
+      label: Reduced GPU power limit lowers application clock and inference throughput
+      match_groups:
+        - [power limit, power cap, 165 w]
+        - [gpu clock, application clock]
+        - [throughput, tokens/s]
+
+  - id: holdout-ai-retry-slow-replica-cascade
+    domain: ai_inference
+    complexity: complex
+    incident: >-
+      vLLM queue depth grows rapidly after one replica becomes slow; gateway request
+      volume rises to more than twice the client arrival rate.
+    evidence:
+      - Replica 2 has a model-loading filesystem stall and returns intermittent 503 responses.
+      - The gateway retries each 503 twice without a retry budget, amplifying load on all replicas.
+      - Removing replica 2 reduces errors but the queue drains slowly; disabling retries drains it immediately.
+      - GPU memory and compute on healthy replicas were below saturation before retry amplification.
+    ground_truth:
+      label: Slow replica 2 triggers unbounded gateway retries that amplify load and queueing
+      match_groups:
+        - [replica 2, slow replica, filesystem stall, 503]
+        - [gateway retry, retries, retry amplification, no retry budget]
+        - [queue, amplified load, twice the client]
+
+  - id: holdout-ai-multimodal-preprocess-cpu
+    domain: ai_inference
+    complexity: complex
+    incident: >-
+      Multimodal TTFT rises while decode TPOT and GPU utilization stay normal; text-
+      only requests remain fast.
+    evidence:
+      - The image preprocessor worker pool is fully occupied and its cgroup CPU is throttled.
+      - Requests wait before entering the vLLM engine; vLLM num_requests_waiting remains near zero.
+      - Increasing preprocessor CPU and worker count restores multimodal TTFT without GPU changes.
+    ground_truth:
+      label: CPU-throttled image preprocessing pool delays multimodal requests before vLLM
+      match_groups:
+        - [image preprocessor, preprocessing pool, multimodal preprocessor]
+        - [cpu throttled, cpu limit, worker pool]
+        - [before vllm, before entering, ttft]
+
+  - id: holdout-ai-weight-offload-pagecache
+    domain: ai_inference
+    complexity: complex
+    incident: >-
+      First-token latency oscillates during weight offload while an old network-loss
+      warning remains on the incident board.
+    evidence:
+      - Major page faults and disk reads spike whenever offloaded layers are reloaded; network retransmits remain at baseline.
+      - Another process repeatedly scans a file larger than RAM, evicting model pages from the page cache.
+      - Stopping the scan stabilizes page-cache residency and TTFT without network changes.
+      - The network warning predates the incident by three hours.
+    ground_truth:
+      label: Competing file scan evicts offloaded model pages and causes disk reload latency; network alert is stale
+      match_groups:
+        - [page cache, page-cache, evict, major page faults]
+        - [weight offload, offloaded layers, disk reload]
+        - scope: distractor
+          terms: [stale network, old network, predates, three hours]
+
+  - id: holdout-ai-mig-canary-placement
+    domain: ai_inference
+    complexity: complex
+    incident: >-
+      Only a canary inference pod fails with CUDA out of memory although stable pods
+      run the same model and the physical GPU still has unused memory in other slices.
+    evidence:
+      - The canary is scheduled onto a 1g.10gb MIG slice while stable pods use 3g.40gb slices.
+      - The model requires 18 GB during weight loading; memory outside the assigned MIG slice is inaccessible.
+      - Rescheduling the canary to a 3g.40gb slice loads successfully without changing model or batch size.
+    ground_truth:
+      label: Canary placement on an undersized MIG slice causes model-load GPU OOM
+      match_groups:
+        - [mig, 1g.10gb, mig slice]
+        - [undersized, 18 gb, gpu oom, out of memory]
+        - [canary, placement, rescheduling]
+
+  - id: holdout-ai-trace-blind-nccl
+    domain: ai_inference
+    complexity: complex
+    incident: >-
+      Distributed inference latency rises while request-level GPU traces disappear,
+      leading the dashboard to show no slow kernels.
+    evidence:
+      - The TELLER/CUPTI exporter has zero replicas, explaining the trace gap but not request latency.
+      - NCCL logs show rank 5 waits 7.8 seconds in all-gather after a packet-loss increase on its data interface.
+      - Restoring the exporter returns traces but latency remains high; removing packet loss restores latency.
+    ground_truth:
+      label: Rank 5 packet loss causes NCCL all-gather delay while exporter outage creates a trace blind spot
+      match_groups:
+        - [rank 5, packet loss, data interface]
+        - [nccl, all-gather, collective]
+        - [teller, cupti, exporter, trace blind, trace gap]
+
+  - id: holdout-ai-batch-config-gray
+    domain: ai_inference
+    complexity: complex
+    incident: >-
+      One canary revision has lower throughput and higher TTFT, but only for prompts
+      above 8k tokens; short prompts and the stable revision are normal.
+    evidence:
+      - Canary max_num_batched_tokens is 4096 while the stable revision uses 16384.
+      - Long prompts are split across repeated prefill scheduling cycles on the canary.
+      - Aligning max_num_batched_tokens restores long-prompt TTFT and throughput without model changes.
+    ground_truth:
+      label: Canary max_num_batched_tokens is too low and fragments long-prompt prefill
+      match_groups:
+        - [max_num_batched_tokens, batched tokens, 4096]
+        - [long prompt, 8k, prefill]
+        - [canary, scheduling cycles, split, fragment]
+
+  - id: holdout-ai-cuda-context-leak
+    domain: ai_inference
+    complexity: complex
+    incident: >-
+      GPU memory usage grows after repeated hot model reloads even when no requests
+      are running; eventually the next model load fails.
+    evidence:
+      - Each reload leaves one CUDA context owned by an old worker process in persistence mode.
+      - KV Cache metrics reset correctly, but nvidia-smi shows memory retained by orphan worker PIDs.
+      - Terminating the orphan processes releases memory and the model loads; changing request rate has no effect.
+    ground_truth:
+      label: Orphan worker CUDA contexts leak GPU memory across hot reloads
+      match_groups:
+        - [cuda context, orphan worker, orphan process]
+        - [memory leak, retained memory, leak gpu memory]
+        - [hot reload, repeated reload, old worker]

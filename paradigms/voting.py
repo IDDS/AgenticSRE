@@ -97,7 +97,7 @@ class VotingParadigm(ParadigmBase):
         pool = self.pool
 
         # Build unified context
-        context = pool.build_context(incident_query)
+        context = pool.build_context(incident_query, namespace=namespace)
 
         # Step 1: Gather shared evidence (enriched)
         self.log("  [voting] Step 1: Gathering evidence (parallel)...")

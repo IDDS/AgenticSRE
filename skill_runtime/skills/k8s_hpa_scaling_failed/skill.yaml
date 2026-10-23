@@ -1,0 +1,17 @@
+id: k8s.hpa_scaling_failed
+version: 0.1.0
+name: K8s HPA Scaling Failed
+domain: k8s
+description: Detect, diagnose, and propose guarded recovery for Kubernetes HPA scale and metrics collection failures.
+stages: [detect, diagnose, heal, verify]
+risk: medium
+permissions: [k8s.read, k8s.write.scale]
+tool_dependencies: [kubectl]
+tags: [kubernetes, hpa, autoscaling, metrics-server]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.95

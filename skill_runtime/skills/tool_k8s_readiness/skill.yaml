@@ -1,0 +1,30 @@
+id: tool.k8s_readiness
+version: 0.1.0
+name: K8s Readiness Tool Skill
+domain: k8s
+description: Read-only Kubernetes readiness inspection tool skill for Agent evidence collection when alerts mention pods, services, deployments, endpoints, rollout, readiness probes, Kubernetes events, or object-level health checks.
+stages: [detect, diagnose, verify]
+risk: low
+permissions: [k8s.read]
+tool_dependencies: [kubectl]
+tags: [tool, kubernetes, readiness, events, endpoints]
+matching_keywords:
+  - kubernetes
+  - k8s
+  - pod
+  - service
+  - deployment
+  - endpoint
+  - endpoints
+  - readiness
+  - rollout
+  - event
+  - CrashLoopBackOff
+  - Pending
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 1
+  min_confidence_for_heal: 0.65
+  min_confidence_for_auto_heal: 0.9

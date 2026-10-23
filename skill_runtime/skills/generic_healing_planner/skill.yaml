@@ -1,0 +1,16 @@
+id: generic.healing_planner
+version: 0.1.0
+name: Generic Healing Planner
+domain: generic
+description: Generic guarded remediation planner that emits low-risk inspection and approval-gated recovery actions.
+stages: [heal]
+risk: medium
+permissions: [k8s.read, k8s.write.restart]
+tags: [generic, healing, remediation, planner]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.75
+  min_confidence_for_auto_heal: 0.95

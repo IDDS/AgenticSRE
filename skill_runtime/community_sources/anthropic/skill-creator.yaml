@@ -1,0 +1,16 @@
+source: anthropic-skills
+name: skill-creator
+trust_level: trusted
+license: unknown
+homepage: https://github.com/anthropics/skills/blob/main/skills/skill-creator/SKILL.md
+local_path: anthropic/skill-creator/SKILL.md
+description: Skill creation guidance emphasizing concise SKILL.md files, progressive disclosure, bundled resources, validation, and forward-testing.
+integration_mode: draft_template
+allowed_use:
+  - Generate review-only AgenticSRE skill drafts.
+  - Validate draft structure and skill creation workflow.
+blocked_use:
+  - Do not auto-write production skills.
+  - Do not auto-enable generated skills.
+  - Do not bypass AgenticSRE approval, dry-run, rollback, and verification gates.
+tags: [skill-creator, community, draft, validation]

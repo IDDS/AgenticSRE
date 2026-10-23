@@ -1,0 +1,62 @@
+benchmarks:
+  - id: opentelemetry-demo
+    name: OpenTelemetry Demo
+    description: CNCF OpenTelemetry 微服务电商基准，入口请求会调用商品、推荐、广告、购物车等下游服务。
+    discovery:
+      required_services:
+        - frontend
+        - productcatalogservice
+        - recommendationservice
+    defaults:
+      namespace: default
+      service: frontend
+      port: 80
+      trace_backend: skywalking
+      trace_service: frontend
+    scenarios:
+      - id: browse-home
+        name: 浏览商城首页
+        description: 访问商城首页，触发商品目录、推荐、广告和货币服务调用链。
+        method: GET
+        path: /
+
+  - id: train-ticket
+    name: Train Ticket
+    description: DeathStarBench 风格的火车票微服务基准。
+    discovery:
+      required_services:
+        - ts-ui-dashboard
+        - ts-travel-service
+        - ts-route-service
+    defaults:
+      namespace: train-ticket
+      service: ts-ui-dashboard
+      port: 8080
+      trace_backend: jaeger
+      trace_service: ts-ui-dashboard
+    scenarios:
+      - id: browse-portal
+        name: 浏览票务门户
+        description: 访问 Train Ticket 门户首页，验证入口服务可用性和前端资源请求。
+        method: GET
+        path: /
+
+  - id: social-network
+    name: Social Network
+    description: DeathStarBench Social Network 微服务基准。
+    discovery:
+      required_services:
+        - nginx-thrift
+        - home-timeline-service
+    defaults:
+      namespace: test-social-network
+      service: nginx-thrift
+      port: 8080
+      trace_backend: jaeger
+      trace_service: nginx-web-server
+    scenarios:
+      - id: read-home-timeline
+        name: 读取首页时间线
+        description: 读取用户首页时间线，触发网关、时间线、社交图和存储相关调用。
+        method: GET
+        path: /wrk2-api/home-timeline/read?start=0&stop=10

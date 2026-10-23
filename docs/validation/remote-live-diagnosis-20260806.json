@@ -1,0 +1,548 @@
+{
+  "status": "passed",
+  "run_id": "live-diag-bfa12c41f5",
+  "remote_dashboard": "http://127.0.0.1:18080",
+  "namespace": "agenticsre-diag-e2e-0806-final",
+  "truth_leak_protection": [
+    "candidate_faults",
+    "candidate_skills",
+    "confidence",
+    "diagnosis",
+    "evidence",
+    "experiment_fault_type",
+    "fault_type",
+    "initial_evidence",
+    "observation_signals",
+    "raw_fault_type",
+    "root_cause",
+    "scenario_id"
+  ],
+  "scenarios": [
+    {
+      "scenario": "service_scale_to_zero",
+      "ground_truth": "deployment desired replicas changed from 1 to 0, removing service endpoints",
+      "input_truth_leak": false,
+      "fault_observed": {
+        "endpoints_empty": true,
+        "business_probe_failed": true
+      },
+      "multi_agent": {
+        "run_id": "rca-b06e6559",
+        "session_id": "rca-82e637f8",
+        "root_cause": "Deployment agenticsre-diag-probe 的期望副本数被设置为 0，导致没有任何 Pod 运行，Service 无法选中后端 Pod，Endpoints 为空，远端探针连接被拒绝。",
+        "fault_type": "service_disruption",
+        "confidence": 0.75,
+        "root_cause_alignment": null,
+        "human_review": {
+          "review_id": "hitl-6f67f1c2",
+          "incident_id": "rca-82e637f8",
+          "source": "rca_quality_gate",
+          "reason": "RCA quality judge marked the result as needing human review. Collaboration critic requested human review for weak or conflicting evidence.",
+          "priority": "medium",
+          "status": "pending",
+          "created_at": 1786005660.620473,
+          "updated_at": 1786005660.6204736,
+          "rca_result": {
+            "root_cause": "Deployment agenticsre-diag-probe 的期望副本数被设置为 0，导致没有任何 Pod 运行，Service 无法选中后端 Pod，Endpoints 为空，远端探针连接被拒绝。",
+            "confidence": 0.75,
+            "fault_type": "service_disruption",
+            "affected_services": [
+              "agenticsre-diag-probe"
+            ],
+            "timeline": [
+              {
+                "time": "未知（持续中）",
+                "event": "Deployment agenticsre-diag-probe 的 spec.replicas 被设为 0。"
+              },
+              {
+                "time": "未知（持续中）",
+                "event": "由于无运行中 Pod，Service Endpoints 变为空。"
+              },
+              {
+                "time": "持续中",
+                "event": "远端探针尝试访问 Service agenticsre-diag-probe，连接被拒绝或超时。"
+              }
+            ],
+            "evidence_summary": {
+              "metrics": "未采集到指标数据。",
+              "logs": "未采集到日志数据。",
+              "traces": "远端探针报告服务完全不可达，无 HTTP/gRPC 响应，相当于连接被拒绝或超时。",
+              "events": "Deployment agenticsre-diag-probe 的期望副本数为 0，当前就绪副本数为 0；Service 关联的 Endpoints 地址列表为空。集群中无 Warning 事件，所有节点正常。"
+            },
+            "reasoning_chain": "远端探针报告服务不可达，事件信号显示 Deployment 副本数为 0，Endpoints 为空。没有任何 Pod 失败或网络策略阻塞的证据。因此，副本数设置为 0 是导致服务不可达的直接原因。",
+            "remediation_suggestion": "将 Deployment agenticsre-diag-probe 的 spec.replicas 设置为大于 0 的值（例如 1 或期望的副本数），以恢复 Pod 运行，Service 将自动更新 Endpoints 并恢复可达性。",
+            "prevention": "1. 设置告警，当关键 Deployment 的副本数低于预期阈值时触发通知。\n2. 通过准入控制或 Policy 限制将生产服务 Deployment 缩容至 0 的操作。\n3. 使用 PDB（PodDisruptionBudget）防止意外缩容。",
+            "fault_type_original": "misconfiguration",
+            "fault_type_reason": "Replica/endpoints/service unavailable terms were present.",
+            "confidence_raw": 1.0,
+            "confidence_explanation": {
+              "method": "evidence_calibrated_v2",
+              "confidence_kind": "heuristic_support_score",
+              "profile": "configurable_v2",
+              "formula": "0.1800*raw + 0.1800*hypothesis + 0.2700*evidence + 0.1700*quality + 0.1000*specificity + 0.1000*history, then apply configured evidence/quality/history caps",
+              "raw_confidence": 1.0,
+              "pre_cap_confidence": 0.812,
+              "calibrated_confidence": 0.75,
+              "delta": -0.25,
+              "factors": {
+                "raw": 1.0,
+                "hypothesis": 1.0,
+                "evidence": 0.771,
+                "quality": 0.552,
+                "specificity": 1.0,
+                "history": 0.5
+              },
+              "weights": {
+                "raw": 0.18,
+                "hypothesis": 0.18,
+                "evidence": 0.27,
+                "quality": 0.17,
+                "specificity": 0.1,
+                "history": 0.1
+              },
+              "contributions": {
+                "raw": 0.18,
+                "hypothesis": 0.18,
+                "evidence": 0.2081,
+                "quality": 0.0938,
+                "specificity": 0.1,
+                "history": 0.05
+              },
+              "hypothesis": {
+                "top": 1.0,
+                "margin": 1.0,
+                "count": 3,
+                "top_weight": 0.75,
+                "margin_weight": 0.25
+              },
+              "evidence": {
+                "successful_agents": [
+                  "event_agent",
+                  "skill_runtime",
+                  "trace_agent"
+                ],
+                "agent_count": 3,
+                "structured_count": 2,
+                "support_count": 0,
+                "contradict_count": 0,
+                "coverage_score": 0.75,
+                "signal_score": 0.667,
+                "alignment_score": 1.0,
+                "keyword_hits": 6,
+                "weights": {
+                  "coverage": 0.45,
+                  "signal": 0.35,
+                  "alignment": 0.2
+                },
+                "source_target": 4,
+                "signal_target": 3.0,
+                "alignment_target": 5
+              },
+              "quality": {
+                "judge_score": 0.58,
+                "critic_score": 0.5,
+                "judge_weight": 0.65,
+                "critic_weight": 0.35
+              },
+              "specificity": {
+                "root_cause_chars": 102,
+                "min_root_cause_chars": 30,
+                "root_cause_long_enough": true,
+                "fault_type_present": true,
+                "affected_services_present": true,
+                "contains_vague_language": false
+              },
+              "history": {
+                "history_kind": "diagnosis_correctness",
+                "diagnosis_sample_count": 0,
+                "diagnosis_correct_count": 0,
+                "diagnosis_accuracy": null,
+                "diagnosis_accuracy_lower_bound": null,
+                "sufficient_samples": false,
+                "used_for_diagnosis": false,
+                "required_sample_count": 5,
+                "recovery_sample_count": 0,
+                "recovery_success_rate": null
+              },
+              "cap": 0.75,
+              "cap_triggers": [
+                {
+                  "code": "human_review_required",
+                  "cap": 0.75,
+                  "reason": "Judge/Critic 要求人工复核，置信度上限受限"
+                }
+              ],
+              "reasons": [
+                "最高假设与次高假设差距较大，根因排序较稳定",
+                "至少 3 个独立证据源提供了可用证据",
+                "结构化证据 2 条参与校准",
+                "根因、故障类型和影响对象较具体",
+                "缺少经确认的历史诊断标签，恢复历史不参与根因置信度"
+              ],
+              "limitations": [],
+              "caps": [
+                "Judge/Critic 要求人工复核，置信度上限受限"
+              ],
+              "configuration": {
+                "source": "runtime_config",
+                "normalization_applied": false,
+                "hypothesis_top_weight": 0.75,
+                "evidence_weights": {
+                  "coverage": 0.45,
+                  "signal": 0.35,
+                  "alignment": 0.2
+                },
+                "quality_judge_weight": 0.65,
+                "thresholds": {
+                  "min_evidence_sources_without_cap": 2,
+                  "min_sources_without_structured_evidence": 3,
+                  "specificity_cap_threshold": 0.55,
+                  "min_history_samples": 5,
+                  "low_history_diagnosis_accuracy": 0.3,
+                  "history_confidence_level": 0.95
+                },
+                "caps": {
+                  "default": 0.95,
+                  "single_evidence": 0.72,
+                  "missing_structured_evidence": 0.78,
+                  "contradictory_evidence": 0.7,
+                  "review_required": 0.75,
+                  "low_specificity": 0.65,
+                  "low_history_diagnosis_accuracy": 0.65
+                }
+              }
+            },
+            "used_rule_ids": [
+              "rule-0044bbf70d",
+              "rule-8e616d5c07"
+            ]
+          },
+          "judge": {
+            "judge_level": 2,
+            "combined_score": 0.58,
+            "needs_review": true,
+            "rule_based": {
+              "score": 0.3,
+              "level": 3,
+              "high_patterns": 0,
+              "medium_patterns": 0,
+              "low_patterns": 0,
+              "pattern_score": 0,
+              "length_factor": 0.196,
+              "confidence_factor": 1.0,
+              "length": 98
+            },
+            "llm_based": {
+              "judge_level": 0,
+              "coherence_score": 0.95,
+              "evidence_score": 0.9,
+              "specificity_score": 1.0,
+              "actionability_score": 0.9,
+              "feedback": "The reasoning is logically coherent, linking probe failure to missing pods via replicas=0. Evidence from event signals is concrete. The root cause is specific and actionable (scale up deployment). Minor gap: does not explain why replicas was set to 0, but for immediate remediation, it's sufficient."
+            },
+            "threshold": 0.65,
+            "collaboration_critique": {
+              "error": "collaboration_reflection_timeout",
+              "quality_score": 0.5,
+              "needs_revision": false,
+              "needs_human_review": true,
+              "weaknesses": [
+                "Critic LLM 未在时限内返回，最终结论需要人工复核。"
+              ],
+              "missing_evidence": [],
+              "alternative_hypotheses": [],
+              "confidence_adjustment": -0.1,
+              "recommended_focus": [
+                "复核当前状态证据与最终根因是否一致。"
+              ]
+            },
+            "closure": null
+          },
+          "decision": "",
+          "reviewer": "",
+          "expert_diagnosis": "",
+          "comment": "",
+          "learning_result": {}
+        },
+        "status": "completed"
+      },
+      "agent_skill": {
+        "run_id": "rca-4de72f55",
+        "root_cause": "Deployment agenticsre-diag-probe 的 replicas 被设置为 0，导致没有任何 Pod 处理请求，Service Endpoints 为空，外部探针无法访问。",
+        "fault_type": "ServiceUnavailable",
+        "confidence": 0.814,
+        "primary_skill_id": "k8s.service_unavailable",
+        "status": "completed",
+        "llm_used": true
+      },
+      "recovery_verified": true
+    },
+    {
+      "scenario": "image_pull_error",
+      "ground_truth": "deployment referenced nonexistent image nginx:agenticsre-missing-live-diagnosis-tag",
+      "input_truth_leak": false,
+      "fault_observed": {
+        "pod": "agenticsre-diag-probe-image-76d945fd9f-cr2rp",
+        "waiting_reason": "ImagePullBackOff"
+      },
+      "multi_agent": {
+        "run_id": "rca-6f8922d6",
+        "session_id": "rca-25ec49e6",
+        "root_cause": "agenticsre-diag-probe-image-76d945fd9f-cr2rp 当前处于 ImagePullBackOff/ErrImagePull，容器镜像无法拉取，导致工作负载没有就绪副本。",
+        "fault_type": "image_pull_error",
+        "confidence": 0.75,
+        "root_cause_alignment": {
+          "reason": "current_pod_image_pull_waiting_state",
+          "evidence_types": [
+            "pod_waiting_state"
+          ],
+          "hypothesis_id": "H2"
+        },
+        "human_review": {
+          "review_id": "hitl-dd86095b",
+          "incident_id": "rca-25ec49e6",
+          "source": "rca_quality_gate",
+          "reason": "RCA quality judge marked the result as needing human review. Collaboration critic requested human review for weak or conflicting evidence.",
+          "priority": "medium",
+          "status": "pending",
+          "created_at": 1786006126.8410459,
+          "updated_at": 1786006126.8410466,
+          "rca_result": {
+            "root_cause": "agenticsre-diag-probe-image-76d945fd9f-cr2rp 当前处于 ImagePullBackOff/ErrImagePull，容器镜像无法拉取，导致工作负载没有就绪副本。",
+            "confidence": 0.75,
+            "fault_type": "image_pull_error",
+            "affected_services": [
+              "agenticsre-diag-probe-image"
+            ],
+            "timeline": [
+              {
+                "time": "未知（事件时间轴中首次出现）",
+                "event": "Pod agenticsre-diag-probe-image-76d945fd9f-cr2rp 报告 Failed to pull image 'nginx:agenticsre-missing-live-diagnosis-tag'，随后进入 ErrImagePull 状态"
+              },
+              {
+                "time": "约 08:45:08",
+                "event": "Pod 状态变为 ImagePullBackOff"
+              }
+            ],
+            "evidence_summary": {
+              "metrics": "未发现异常。节点与容器级别的 CPU、内存、磁盘、网络等指标均正常，Pod 就绪状态因 Pod 未运行而未上报或未被异常检测覆盖。",
+              "logs": "未采集到容器日志，因容器未能启动。",
+              "traces": "未采集到链路追踪数据。",
+              "events": "Pod agenticsre-diag-probe-image-76d945fd9f-cr2rp 持续产生 Failed 事件，原因为镜像拉取错误：ErrImagePull 和 ImagePullBackOff，均指向不存在的镜像标签 nginx:agenticsre-missing-live-diagnosis-tag。"
+            },
+            "reasoning_chain": "该 Deployment 仅有一个 Pod，其事件显示镜像拉取连续失败，最终进入 ImagePullBackOff。这是 Pod 无法达到 Ready 的唯一直接证据。指标中无其他资源压力，表明集群本身健康。因此根因限制为 Deployment 配置中指定的镜像标签不存在或不可访问。没有证据表明副本数归零或资源不足。\n证据一致性校验以当前集群结构化状态为准，覆盖了与已确认 Top1 机制冲突的报告措辞。",
+            "remediation_suggestion": "立即更正 Deployment agenticsre-diag-probe-image 中容器镜像标签为有效标签（如 nginx:latest 或指定版本），或确保镜像仓库中存在 nginx:agenticsre-missing-live-diagnosis-tag 并正确配置 imagePullSecrets。应用更改后，删除旧 Pod 触发重建。",
+            "prevention": "在 CI/CD 流水线中增加镜像标签存在性校验；部署前使用工具（如 skopeo 或 crane）验证镜像可拉取；避免在配置中直接使用开发或临时标签，采用不可变版本标识；设置 Deployment 滚动更新策略结合健康检查以快速发现类似问题。",
+            "root_cause_original": "Deployment agenticsre-diag-probe-image 中指定的容器镜像标签 nginx:agenticsre-missing-live-diagnosis-tag 在镜像仓库中不存在，导致 Kubelet 反复尝试拉取失败，Pod 无法启动，长时间未达到 Ready 状态。",
+            "root_cause_alignment": {
+              "reason": "current_pod_image_pull_waiting_state",
+              "evidence_types": [
+                "pod_waiting_state"
+              ],
+              "hypothesis_id": "H2"
+            },
+            "fault_type_original": "ConfigurationError",
+            "fault_type_reason": "ImagePullBackOff/ErrImagePull or explicit image pull failure evidence was present.",
+            "confidence_raw": 0.95,
+            "confidence_explanation": {
+              "method": "evidence_calibrated_v2",
+              "confidence_kind": "heuristic_support_score",
+              "profile": "configurable_v2",
+              "formula": "0.1800*raw + 0.1800*hypothesis + 0.2700*evidence + 0.1700*quality + 0.1000*specificity + 0.1000*history, then apply configured evidence/quality/history caps",
+              "raw_confidence": 0.95,
+              "pre_cap_confidence": 0.76,
+              "calibrated_confidence": 0.75,
+              "delta": -0.2,
+              "factors": {
+                "raw": 0.95,
+                "hypothesis": 0.962,
+                "evidence": 0.61,
+                "quality": 0.592,
+                "specificity": 1.0,
+                "history": 0.5
+              },
+              "weights": {
+                "raw": 0.18,
+                "hypothesis": 0.18,
+                "evidence": 0.27,
+                "quality": 0.17,
+                "specificity": 0.1,
+                "history": 0.1
+              },
+              "contributions": {
+                "raw": 0.171,
+                "hypothesis": 0.1732,
+                "evidence": 0.1647,
+                "quality": 0.1007,
+                "specificity": 0.1,
+                "history": 0.05
+              },
+              "hypothesis": {
+                "top": 0.95,
+                "margin": 0.85,
+                "count": 4,
+                "top_weight": 0.75,
+                "margin_weight": 0.25
+              },
+              "evidence": {
+                "successful_agents": [
+                  "event_agent",
+                  "metric_agent",
+                  "skill_runtime"
+                ],
+                "agent_count": 3,
+                "structured_count": 2,
+                "support_count": 0,
+                "contradict_count": 0,
+                "coverage_score": 0.75,
+                "signal_score": 0.55,
+                "alignment_score": 0.4,
+                "keyword_hits": 2,
+                "weights": {
+                  "coverage": 0.45,
+                  "signal": 0.35,
+                  "alignment": 0.2
+                },
+                "source_target": 4,
+                "signal_target": 3.0,
+                "alignment_target": 5
+              },
+              "quality": {
+                "judge_score": 0.642,
+                "critic_score": 0.5,
+                "judge_weight": 0.65,
+                "critic_weight": 0.35
+              },
+              "specificity": {
+                "root_cause_chars": 102,
+                "min_root_cause_chars": 30,
+                "root_cause_long_enough": true,
+                "fault_type_present": true,
+                "affected_services_present": true,
+                "contains_vague_language": false
+              },
+              "history": {
+                "history_kind": "diagnosis_correctness",
+                "diagnosis_sample_count": 0,
+                "diagnosis_correct_count": 0,
+                "diagnosis_accuracy": null,
+                "diagnosis_accuracy_lower_bound": null,
+                "sufficient_samples": false,
+                "used_for_diagnosis": false,
+                "required_sample_count": 5,
+                "recovery_sample_count": 0,
+                "recovery_success_rate": null
+              },
+              "cap": 0.75,
+              "cap_triggers": [
+                {
+                  "code": "human_review_required",
+                  "cap": 0.75,
+                  "reason": "Judge/Critic 要求人工复核，置信度上限受限"
+                }
+              ],
+              "reasons": [
+                "最高假设与次高假设差距较大，根因排序较稳定",
+                "至少 3 个独立证据源提供了可用证据",
+                "结构化证据 2 条参与校准",
+                "根因、故障类型和影响对象较具体",
+                "缺少经确认的历史诊断标签，恢复历史不参与根因置信度"
+              ],
+              "limitations": [],
+              "caps": [
+                "Judge/Critic 要求人工复核，置信度上限受限"
+              ],
+              "configuration": {
+                "source": "runtime_config",
+                "normalization_applied": false,
+                "hypothesis_top_weight": 0.75,
+                "evidence_weights": {
+                  "coverage": 0.45,
+                  "signal": 0.35,
+                  "alignment": 0.2
+                },
+                "quality_judge_weight": 0.65,
+                "thresholds": {
+                  "min_evidence_sources_without_cap": 2,
+                  "min_sources_without_structured_evidence": 3,
+                  "specificity_cap_threshold": 0.55,
+                  "min_history_samples": 5,
+                  "low_history_diagnosis_accuracy": 0.3,
+                  "history_confidence_level": 0.95
+                },
+                "caps": {
+                  "default": 0.95,
+                  "single_evidence": 0.72,
+                  "missing_structured_evidence": 0.78,
+                  "contradictory_evidence": 0.7,
+                  "review_required": 0.75,
+                  "low_specificity": 0.65,
+                  "low_history_diagnosis_accuracy": 0.65
+                }
+              }
+            },
+            "used_rule_ids": []
+          },
+          "judge": {
+            "judge_level": 1,
+            "combined_score": 0.642,
+            "needs_review": true,
+            "rule_based": {
+              "score": 0.404,
+              "level": 2,
+              "high_patterns": 0,
+              "medium_patterns": 1,
+              "low_patterns": 0,
+              "pattern_score": 0.071,
+              "length_factor": 0.406,
+              "confidence_factor": 0.95,
+              "length": 203
+            },
+            "llm_based": {
+              "judge_level": 0,
+              "coherence_score": 0.9,
+              "evidence_score": 0.8,
+              "specificity_score": 0.9,
+              "actionability_score": 0.9,
+              "feedback": "The reasoning is logically sound, directly linking the Pod's ImagePullBackOff state to a likely missing or inaccessible image tag. Evidence from events and metrics supports the conclusion, though raw error details could be more explicit. The root cause is specific and immediately actionable for an SRE to inspect the Deployment configuration."
+            },
+            "threshold": 0.65,
+            "collaboration_critique": {
+              "error": "collaboration_reflection_timeout",
+              "quality_score": 0.5,
+              "needs_revision": false,
+              "needs_human_review": true,
+              "weaknesses": [
+                "Critic LLM 未在时限内返回，最终结论需要人工复核。"
+              ],
+              "missing_evidence": [],
+              "alternative_hypotheses": [],
+              "confidence_adjustment": -0.1,
+              "recommended_focus": [
+                "复核当前状态证据与最终根因是否一致。"
+              ]
+            },
+            "closure": null
+          },
+          "decision": "",
+          "reviewer": "",
+          "expert_diagnosis": "",
+          "comment": "",
+          "learning_result": {}
+        },
+        "status": "completed"
+      },
+      "agent_skill": {
+        "run_id": "rca-7552a55e",
+        "root_cause": "Pod agenticsre-diag-probe-image-76d945fd9f-cr2rp 使用的容器镜像 nginx:agenticsre-missing-live-diagnosis-tag 无法拉取，导致容器处于 ImagePullBackOff 状态，进而使 Pod 无法达到 Ready 状态。",
+        "fault_type": "ImagePullError",
+        "confidence": 0.723,
+        "primary_skill_id": "k8s.image_pull_error",
+        "status": "completed",
+        "llm_used": true
+      },
+      "recovery_verified": true
+    }
+  ],
+  "cleanup_verified": true
+}

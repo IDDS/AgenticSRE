@@ -5,6 +5,8 @@ Provides kubectl wrapper and K8s SDK operations with safety controls.
 
 import json
 import logging
+import shlex
+from skill_runtime.kubectl_safety import readonly_kubectl_args
 import subprocess
 from typing import Any, Dict, List, Optional
 
@@ -33,12 +35,13 @@ class KubectlTool(SRETool):
         "taint", "label", "annotate", "edit", "exec",
     }
 
-    def __init__(self, kubeconfig: str = "", namespace: str = "default",
+    def __init__(self, kubeconfig: str = "", context: str = "", namespace: str = "default",
                  allow_write: bool = False, use_dry_run: bool = True,
                  forbidden_commands: Optional[List[str]] = None,
                  ssh_jump_host: str = "", target_host: str = "",
                  use_ssh: bool = False):
         self.kubeconfig = kubeconfig
+        self.context = context
         self.namespace = namespace
         self.allow_write = allow_write
         self.use_dry_run = use_dry_run
@@ -66,28 +69,31 @@ class KubectlTool(SRETool):
         if verb in self.WRITE_COMMANDS and not self.allow_write:
             return ToolResult(success=False, error=f"Write command '{verb}' blocked. Set allow_write=True.")
 
-        # Build command
-        full_cmd = f"kubectl {command}"
-        if ns and "-n" not in command and "--namespace" not in command and "--all-namespaces" not in command:
-            full_cmd += f" -n {ns}"
-        
-        # Dry run for write commands
-        if verb in self.WRITE_COMMANDS and self.use_dry_run and "--dry-run" not in command:
-            full_cmd += " --dry-run=client"
-
-        # Add output format if not specified
-        if "-o" not in command and verb in ("get",):
-            full_cmd += " -o wide"
-
-        # If remote K8s cluster, wrap with SSH
+        try:
+            if not self.allow_write:
+                args = readonly_kubectl_args(command, ns)
+            else:
+                args = shlex.split(command)
+                if ns and not any(a in {"-n", "--namespace", "-A", "--all-namespaces"} or a.startswith("--namespace=") for a in args):
+                    args.extend(["-n", ns])
+        except ValueError as exc:
+            return ToolResult(success=False, error=str(exc))
+        if verb in self.WRITE_COMMANDS and self.use_dry_run and not any(a.startswith("--dry-run") for a in args):
+            args.append("--dry-run=client")
+        if verb == "get" and not any(a in {"-o", "--output"} or a.startswith(("--output=", "-o=")) for a in args):
+            args.extend(["-o", "wide"])
+        full_cmd = ["kubectl"]
+        if self.kubeconfig:
+            full_cmd.append(f"--kubeconfig={self.kubeconfig}")
+        if self.context:
+            full_cmd.append(f"--context={self.context}")
+        full_cmd.extend(args)
         if self.use_ssh and self.ssh_jump_host and self.target_host:
-            full_cmd = f'ssh -J {self.ssh_jump_host} {self.target_host} "{full_cmd}"'
-        elif self.kubeconfig:
-            full_cmd = f"KUBECONFIG={self.kubeconfig} {full_cmd}"
+            full_cmd = ["ssh", "-J", self.ssh_jump_host, self.target_host, shlex.join(full_cmd)]
 
         try:
             result = subprocess.run(
-                full_cmd, shell=True, capture_output=True, text=True,
+                full_cmd, shell=False, capture_output=True, text=True,
                 timeout=timeout
             )
             if result.returncode == 0:

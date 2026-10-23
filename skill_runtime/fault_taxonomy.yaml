@@ -1,0 +1,351 @@
+version: 1
+domains:
+  k8s:
+    priority: 80
+    indicators:
+      - k8s
+      - kubernetes
+      - pod
+      - deployment
+      - service
+      - node
+      - hpa
+      - configmap
+      - secret
+      - imagepull
+      - errimagepull
+      - crashloop
+      - failedscheduling
+      - networkpolicy
+      - volume mount
+      - pvc
+      - pending
+      - unschedulable
+      - insufficient nvidia.com/gpu
+      - insufficient cpu
+      - insufficient memory
+  llm:
+    priority: 70
+    indicators:
+      - vllm
+      - llm
+      - inference
+      - 智算
+      - 推理
+      - ttft
+      - tpot
+      - kv cache
+      - kv_cache
+      - cuda
+      - nccl
+      - rdma
+      - gpu
+      - tensor_parallel
+      - pipeline_parallel
+      - world_size
+      - nvidia.com/gpu
+      - device plugin
+      - runtimeclass
+      - mig
+      - vgpu
+      - mps
+      - ecc
+      - xid
+      - topology aware
+      - object storage
+      - model repository
+  db:
+    priority: 60
+    indicators:
+      - db
+      - database
+      - mysql
+      - postgres
+      - redis
+      - mongodb
+      - 连接池
+  tool:
+    priority: 90
+    indicators:
+      - internet
+      - web search
+      - search
+      - google
+      - github issue
+      - official docs
+      - arxiv
+      - browser
+      - playwright
+      - frontend validation
+      - prometheus query
+      - promql
+      - query_range
+      - 互联网
+      - 搜索
+      - 检索
+      - 官方文档
+      - 开源社区
+      - 论文
+      - 浏览器
+      - 前端验证
+      - 指标查询
+      - 阈值
+      - 时间窗口
+
+fault_types:
+  k8s:
+    scheduling_failed:
+      indicators: [pending, scheduling, failedscheduling, unschedulable, 调度, insufficient nvidia.com/gpu, insufficient gpu]
+    image_pull_error:
+      indicators: [imagepull, errimagepull, 镜像]
+    config_missing:
+      priority: 10
+      indicators: [createcontainerconfigerror, configmap, secret, config missing, 配置缺失]
+    hpa_scaling_failed:
+      indicators: [hpa, failedgetresourcemetric, unable to get cpu utilization, metrics api]
+    volume_mount_failed:
+      indicators: [volume mount, failedmount, pvc, mountvolume]
+    pod_crashloop:
+      indicators: [crashloop, restart, back-off, 重启]
+    node_not_ready:
+      indicators: [node notready, not ready, kubelet, 节点]
+    oom_killed:
+      indicators: [oomkilled, out of memory, 内存]
+    dns_resolution:
+      indicators: [dns, 解析]
+    network_policy_deny:
+      indicators: [networkpolicy, deny, 网络策略, 拒绝]
+    prometheus_scrape_failed:
+      priority: 80
+      indicators: [prometheus scrape, scrape failed, metrics endpoint, metricsbindaddress, servicemonitor, podmonitor, /metrics, bound to localhost, localhost]
+    service_unavailable:
+      priority: 20
+      indicators: [service unavailable, no endpoints, 503, endpoint_timeout, timeout]
+    control_plane_unhealthy:
+      indicators: [control_plane_unhealthy, etcdinsufficientmembers, insufficient members, quorum, kube-etcd, etcdserver, kube-apiserver, apiserver]
+  llm:
+    vllm_process_crash:
+      family: process
+      indicators: [process_crash, vllm_process_crash, process, crash, restart, 进程崩溃]
+    gpu_oom:
+      family: gpu_memory
+      indicators: [gpu_oom, out of memory, 显存, gpu memory, gpu pressure, memory pressure]
+    kv_cache_exhaustion:
+      family: gpu_memory
+      indicators: [kv_cache_exhaustion, kv cache, kv_cache]
+    business_slo:
+      family: business_slo
+      indicators: [business_slo, high_latency, latency, p95, ttft, tpot, degraded]
+    endpoint_timeout:
+      family: endpoint
+      indicators: [endpoint_timeout, http_503, grpc_failure, connection refused, no endpoints, service endpoint]
+  tool:
+    internet_search_research:
+      family: external_knowledge
+      indicators: [internet, web search, search, google, github issue, official docs, arxiv, 互联网, 搜索, 检索, 官方文档, 开源社区, 论文, 已知问题]
+    browser_frontend_validation:
+      family: frontend_validation
+      indicators: [browser, playwright, frontend, ui, modal, screenshot, 浏览器, 前端, 页面, 弹窗, 截图, 点击]
+    prometheus_query:
+      family: metrics_query
+      indicators: [promql, prometheus query, query_range, threshold, time window, current value, peak value, 指标查询, 阈值, 时间窗口]
+
+observable_signal_classes:
+  llm_node_resource_pressure:
+    disk:
+      label: 磁盘/根分区
+      fault_type: LLM::k8s_vllm_node_disk_pressure
+      indicators: [node_rootfs, rootfs, filesystem, node_disk, disk_pressure, disk, 磁盘, 根分区]
+    memory:
+      label: 内存
+      fault_type: LLM::k8s_vllm_node_memory_pressure
+      indicators: [memory_pressure, node_memory, memavailable, memory, 内存]
+    network:
+      label: 网络
+      fault_type: LLM::k8s_vllm_node_network_pressure
+      indicators: [network_pressure, node_network, packet, packet_loss, network, 丢包, 网络]
+    fd:
+      label: 文件描述符
+      fault_type: LLM::k8s_vllm_fd_exhaustion
+      indicators: [fd_exhaustion, too many open files, file descriptor, 文件描述符]
+    io:
+      label: I/O
+      fault_type: LLM::k8s_vllm_node_io_pressure
+      indicators: [io_pressure, i/o, node_disk_io, disk_io, 读写]
+    cpu:
+      label: CPU
+      fault_type: LLM::k8s_vllm_node_cpu_pressure
+      indicators: [cpu_pressure, node_cpu, cpu, CPU]
+    default:
+      label: OS/节点
+      fault_type: LLM::k8s_vllm_os_resource_pressure
+      indicators: [resource_pressure, node_resource_pressure, pressure, 资源压力]
+
+llm_experiment_faults:
+  request_queue_overflow:
+    family: scheduler
+    diagnosis_fault_type: LLM::vllm_scheduler_queue_pressure
+    root_cause: vLLM 请求队列被压满或调度并发超过服务能力，故障从调度层传播到业务请求时延
+  continuous_batch_disruption:
+    family: scheduler
+    diagnosis_fault_type: LLM::continuous_batching_degradation
+    root_cause: vLLM 连续批处理或调度参数被扰动，请求合批效率下降，容易表现为等待队列增长和 TTFT/E2E 延迟升高
+  prefill_decode_misclassification:
+    family: scheduler
+    diagnosis_fault_type: LLM::prefill_decode_or_attention_backend_mismatch
+    root_cause: vLLM Prefill/Decode 阶段划分异常，算子路径和调度效率可能退化
+  attention_backend_mismatch:
+    family: scheduler
+    diagnosis_fault_type: LLM::prefill_decode_or_attention_backend_mismatch
+    root_cause: attention backend 选择异常，推理算子路径可能退化
+  kv_cache_exhaustion:
+    family: gpu_memory
+    diagnosis_fault_type: LLM::kv_cache_exhaustion
+    root_cause: KV Cache 被高并发或长上下文请求耗尽，新请求无法获得缓存块并进入排队或失败
+  gpu_oom:
+    family: gpu_memory
+    diagnosis_fault_type: LLM::gpu_memory_oom
+    root_cause: GPU 显存耗尽或 CUDA OOM，模型执行和 KV Cache 分配受到直接影响
+  model_load_failure:
+    family: model_asset
+    diagnosis_fault_type: LLM::model_asset_or_tokenizer_failure
+    root_cause: 模型加载路径或模型资产不可用，vLLM 服务初始化/重建失败
+  model_permission_error:
+    family: model_asset
+    diagnosis_fault_type: LLM::model_asset_or_tokenizer_failure
+    root_cause: 模型目录权限异常，推理服务无法读取模型资产
+  tokenizer_error:
+    family: model_asset
+    diagnosis_fault_type: LLM::model_asset_or_tokenizer_failure
+    root_cause: Tokenizer 或模型预处理资产异常，请求可能在进入推理执行前失败
+  weight_corruption:
+    family: model_asset
+    diagnosis_fault_type: LLM::model_asset_or_tokenizer_failure
+    root_cause: 模型权重路径或权重文件被扰动，vLLM 无法稳定加载目标模型
+  cuda_error:
+    family: driver_cuda
+    diagnosis_fault_type: LLM::cuda_runtime_or_context_error
+    root_cause: CUDA 运行时异常，推理进程无法正确访问 GPU 设备
+  cuda_ctx_corruption:
+    family: driver_cuda
+    diagnosis_fault_type: LLM::cuda_runtime_or_context_error
+    root_cause: CUDA 上下文异常，后续 kernel launch 可能失败
+  gpu_clock_throttle:
+    family: driver_performance
+    diagnosis_fault_type: LLM::gpu_driver_or_pcie_degradation
+    root_cause: GPU 时钟或电源策略导致性能退化，Decode 阶段吞吐可能下降
+  pcie_throttle:
+    family: driver_performance
+    diagnosis_fault_type: LLM::gpu_driver_or_pcie_degradation
+    root_cause: PCIe 传输路径出现性能退化，Host-Device 拷贝拖慢推理链路
+  cupti_trace_overhead:
+    family: profiler_overhead
+    diagnosis_fault_type: LLM::cupti_profiling_overhead
+    root_cause: CUPTI/Profiler 采集开销过高，kernel 执行路径被观测开销拖慢
+  nccl_failure:
+    family: distributed_comm
+    diagnosis_fault_type: LLM::distributed_inference_communication_failure
+    root_cause: 多卡/分布式推理通信链路异常，NCCL 通信失败会阻塞模型执行
+  endpoint_timeout:
+    family: inference_network
+    diagnosis_fault_type: LLM::k8s_vllm_service_endpoints_empty
+    root_cause: 推理服务 Endpoint 不可达或无可用后端，请求会表现为连接超时、拒绝或业务侧失败
+  http_503:
+    family: inference_network
+    diagnosis_fault_type: LLM::k8s_vllm_service_endpoints_empty
+    root_cause: 推理服务 HTTP 入口无可用后端或被拒绝，业务请求会出现 503、连接失败或成功率下降
+  grpc_failure:
+    family: inference_network
+    diagnosis_fault_type: LLM::inference_network_degradation
+    root_cause: 推理服务内部或业务侧 gRPC 通信异常，请求失败率和尾延迟会上升
+  tp_communication_loss:
+    family: distributed_comm
+    diagnosis_fault_type: LLM::distributed_inference_communication_failure
+    root_cause: Tensor Parallel 通信异常，多卡推理同步路径受阻
+  rdma_failure:
+    family: distributed_comm
+    diagnosis_fault_type: LLM::distributed_inference_communication_failure
+    root_cause: RDMA/IB 通信异常，多节点推理吞吐和同步延迟受到影响
+  packet_loss:
+    family: inference_network
+    diagnosis_fault_type: LLM::inference_network_degradation
+    root_cause: 推理服务网络出现丢包，请求时延和失败率会上升
+  bandwidth_throttle:
+    family: inference_network
+    diagnosis_fault_type: LLM::inference_network_degradation
+    root_cause: 推理服务网络带宽受限，流式 token 输出间隔和尾延迟会上升
+  cpu_stress:
+    family: os_resource
+    diagnosis_fault_type: LLM::k8s_vllm_os_resource_pressure
+    root_cause: vLLM 所在节点存在 CPU 资源压力，可能导致预处理、调度或请求排队变慢
+  memory_pressure:
+    family: os_resource
+    diagnosis_fault_type: LLM::k8s_vllm_os_resource_pressure
+    root_cause: vLLM 所在节点存在内存压力，可能导致模型加载、请求调度或容器稳定性退化
+  disk_pressure:
+    family: os_resource
+    diagnosis_fault_type: LLM::k8s_vllm_os_resource_pressure
+    root_cause: vLLM 所在节点存在磁盘 I/O 或空间压力，可能导致模型 shard 加载、日志写入或缓存访问变慢
+  fd_exhaustion:
+    family: os_resource
+    diagnosis_fault_type: LLM::k8s_vllm_os_resource_pressure
+    root_cause: vLLM 所在节点或邻近工作负载存在文件描述符压力，新连接和文件访问可能失败
+  io_scheduler_interference:
+    family: os_resource
+    diagnosis_fault_type: LLM::k8s_vllm_os_resource_pressure
+    root_cause: vLLM 所在节点存在 I/O 调度干扰，模型加载和日志写入时延可能升高
+
+skill_aliases:
+  k8s.scheduling_failed: [scheduling_failed, failedscheduling, pending, unschedulable, insufficient nvidia.com/gpu, insufficient gpu]
+  k8s.service_unavailable: [service_unavailable, serviceunavailable, service unavailable, no_ready_endpoints, no endpoints]
+  k8s.pod_crashloop: [pod_crashloop, crashloopbackoff, crash_loop]
+  k8s.image_pull_error: [image_pull_error, imagepullbackoff, errimagepull]
+  k8s.node_not_ready: [node_not_ready, node notready, nodenotready]
+  k8s.oom_killed: [oom_killed, oomkilled]
+  k8s.dns_resolution: [dns_resolution, dnsresolution]
+  k8s.volume_mount_failed: [volume_mount_failed, failedmount]
+  k8s.network_policy_deny: [network_policy_deny, networkpolicydeny]
+  k8s.hpa_scaling_failed: [hpa_scaling_failed, hpascalingfailed]
+  k8s.config_missing: [config_missing, createcontainerconfigerror]
+  k8s.resource_pressure: [resource_pressure, cpu_pressure, memory_pressure, diskpressure]
+  k8s.resource_quota_exceeded: [resource_quota_exceeded, quota_exceeded]
+  k8s.deployment_unhealthy: [deployment_unhealthy, deploymentunhealthy]
+  k8s.control_plane_unhealthy: [control_plane_unhealthy, etcdinsufficientmembers, insufficient members, quorum, kube-etcd, etcdserver, kube-apiserver, apiserver]
+  llm.vllm_process_crash: [vllm_process_crash, process_crash, llm::process_crash, llm::vllm_process_crash]
+  llm.gpu_resource_pressure: [gpu_oom, gpu_resource_pressure, llm::gpu_memory_pressure, kv_cache_exhaustion]
+  llm.vllm_scheduler_queue: [request_queue_overflow, continuous_batch_disruption, prefill_decode_misclassification, attention_backend_mismatch, scheduler, queue, batching]
+  llm.model_asset_failure: [model_load_failure, model_permission_error, tokenizer_error, weight_corruption, model_asset, tokenizer]
+  llm.cuda_driver_failure: [cuda_error, cuda_ctx_corruption, cuda context, cuda runtime, kernel launch, cuda]
+  llm.distributed_communication: [nccl_failure, tp_communication_loss, rdma_failure, packet_loss, bandwidth_throttle, distributed_comm, nccl, rdma]
+  llm.business_slo: [business_slo, high_latency]
+  llm.k8s_vllm_observability: [k8s_vllm_observability, llm::k8s_vllm, endpoint_timeout, http_503, grpc_failure]
+  llm.teller_request_trace_diagnosis: [teller_request_latency_high, teller_kernel_bottleneck, teller_request_context_missing, teller, request_span, kernel_p95, request_context, llm::teller]
+  llm.aishperf_aiinfra_diagnosis: [aishperf_aiinfra_fault, aemu, alcor]
+  llm.dcgm_exporter_observability: [dcgm_exporter_down, dcgm_target_down, gpu_metrics_missing, gpu_metric_absent, dcgm, dcgm_fi, DCGM_FI_DEV_GPU_UTIL, gpu 指标, 显卡指标]
+  llm.teller_trace_collection: [teller_trace_stale, trace_collection_stale, request_context_missing, cuda_trace_missing, nvtx_only, cupti_trace_overhead, profiler_overhead, request_id, cupti, nvtx, trace 未更新, 请求路径]
+  llm.vllm_load_generator: [loadgen, loadgen_traffic_zero, traffic_zero, request_rate_zero, background traffic, no traffic, 负载生成器, 背景流量, 请求为 0]
+  llm.model_serving_endpoint: [model_not_found, openai_api_error, http_400, http_404, bad_request, model serving, /v1/models, /v1/completions, chat/completions, 模型名, 请求参数]
+  llm.parallel_topology_consistency: [tensor_parallel_size, pipeline_parallel_size, world_size, rank mismatch, tp_size_mismatch, model shard, tensor_parallel, pipeline_parallel, 多卡, 张量并行, 流水并行]
+  llm.gpu_device_plugin_health: [nvidia-device-plugin, nvidia.com/gpu, gpu_allocatable_missing, gpu allocatable, insufficient nvidia.com/gpu, runtimeclass, device plugin, gpu_device_plugin, GPU 节点, 设备插件]
+  llm.replica_traffic_imbalance: [replica skew, traffic imbalance, hot replica, endpoint imbalance, sticky session, replica_traffic_imbalance, 副本不均, 流量倾斜]
+  llm.model_hardware_compatibility: [hardware compatibility, compute capability, unsupported dtype, unsupported backend, quantization, flashattention, bf16, gemma, qwen, cuda arch, model_hardware_compatibility, 兼容性]
+  llm.gpu_hardware_health: [gpu_ecc_error, gpu_xid_error, retired_pages, thermal throttle, power throttle, nvlink error, pcie replay, ecc, xid, gpu_clock_throttle, pcie_throttle, pcie, GPU 温度, 降频]
+  llm.gpu_partition_isolation: [mig, vgpu, mps, time-slicing, gpu sharing, gpu slice, mig profile, gpu_partition_isolation, 分区, 切片, 隔离]
+  llm.model_repository_access: [model_repository_access, model repository, object storage, huggingface token, hf token, model cache, checksum mismatch, shard download, download timeout, 模型仓库, 对象存储, 分片下载]
+  llm.topology_aware_scheduling: [topology aware, numa, nvlink locality, rdma locality, cross-node, topology spread, node affinity, topology_aware_scheduling, 拓扑感知, 跨节点]
+  k8s.prometheus_scrape_target: [prometheus_scrape_failed, targetdown, target down, scrape failed, servicemonitor, podmonitor, metrics endpoint, metricsbindaddress]
+  tool.prometheus_query: [prometheus_query, promql, query_range, threshold, time window, current value, peak value, 指标查询, 阈值, 时间窗口]
+  tool.internet_search_research: [internet_search_research, web_search, internet, search, official_docs, github_issue, arxiv, 互联网, 搜索, 检索, 官方文档, 开源社区, 论文]
+  tool.browser_frontend_validation: [browser_frontend_validation, browser, playwright, frontend, ui, modal, screenshot, 浏览器, 前端, 页面, 弹窗, 截图]
+
+llm_family_skill_routes:
+  gpu_memory: llm.gpu_resource_pressure
+  process: llm.vllm_process_crash
+  scheduler: llm.vllm_scheduler_queue
+  model_asset: llm.model_asset_failure
+  driver_cuda: llm.cuda_driver_failure
+  driver_performance: llm.gpu_hardware_health
+  profiler_overhead: llm.teller_trace_collection
+  distributed_comm: llm.distributed_communication
+  inference_network: llm.k8s_vllm_observability
+  os_resource: llm.k8s_vllm_observability

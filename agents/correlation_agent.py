@@ -4,6 +4,7 @@ Cross-signal correlation analysis across Metric × Log × Trace × Event.
 """
 
 import logging
+from agents.evidence import format_evidence
 from typing import Any, Dict, List, Optional
 
 from tools.llm_client import LLMClient
@@ -24,10 +25,17 @@ You have anomaly data from metrics, logs, traces, and K8s events.
 Analyze the cross-signal correlation to identify:
 1. Services with anomalies across multiple signal types (strongest indicators)
 2. Temporal correlation between different signal anomalies
-3. Causal chains: which anomaly likely caused which
-4. The most likely root cause service based on multi-signal evidence
+3. Observed propagation paths, with unverified causal hypotheses labelled explicitly
+4. Candidate origin services and the mechanism evidence still missing
 
-Be specific about correlation patterns. Format as structured analysis."""
+Latency, error ratios, alert names and correlated traces do not prove internal
+CPU, configuration, probe or application mechanisms. Do not infer absent
+measurements or equate an application alert name with a Kubernetes event.
+
+Be specific about correlation patterns. Use at most four concise bullets and
+350 Chinese characters (or 200 English words). Do not reproduce raw spans,
+identifiers or every measurement. This is an intermediate observation summary,
+not the final report."""
 
     def __init__(self, llm: LLMClient):
         self.llm = llm
@@ -69,15 +77,12 @@ Be specific about correlation patterns. Format as structured analysis."""
             )
         
         # Add evidence summaries
-        for agent_name, result in evidence.items():
-            summary = result.get("summary", "")
-            if summary:
-                context += f"\n\n[{agent_name} Summary]: {summary[:500]}"
+        context += "\n\n" + format_evidence(evidence, limit=5000)
 
         summary = self.llm.chat([
             {"role": "system", "content": self.SYSTEM_PROMPT},
             {"role": "user", "content": context[:8000]}
-        ])
+        ], max_tokens=1536, thinking=False)
 
         return {
             "agent": "correlation_agent",

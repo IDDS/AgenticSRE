@@ -1,0 +1,29 @@
+id: llm.replica_traffic_imbalance
+version: 0.1.0
+name: vLLM 多副本流量不均诊断
+domain: llm
+description: Diagnose vLLM replica traffic skew, endpoint imbalance, hot GPU, and uneven request distribution.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, prometheus.read, k8s.write.scale]
+tool_dependencies: [kubectl, prometheus]
+tags: [llm, vllm, replica, load-balancing, endpoint, gpu-utilization]
+icon: split
+category: 智算服务
+matching:
+  keywords:
+    - replica skew
+    - traffic imbalance
+    - hot replica
+    - endpoint imbalance
+    - sticky session
+    - 副本不均
+    - 流量倾斜
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.98
+entrypoint: skill.py

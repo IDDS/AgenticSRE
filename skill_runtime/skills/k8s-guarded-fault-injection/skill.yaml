@@ -1,0 +1,18 @@
+id: k8s.guarded_fault_injection
+version: 0.3.0
+name: K8s Guarded Fault Injection
+domain: k8s
+description: Plan a bounded AgenticSRE Kubernetes fault experiment as a typed inject/cleanup contract with explicit scope, approval, rollback, and verification gates.
+stages: [detect, diagnose, heal, verify]
+risk: high
+permissions: [k8s.read, k8s.fault.write]
+tool_dependencies: [kubectl]
+tags: [kubernetes, fault-injection, fine-grained, chaos, guarded, rollback, agenticsre]
+matching_keywords: [fault injection, precise injection, fine-grained fault, chaos experiment, inject fault, 故障注入, 细粒度故障, 混沌实验, 故障演练, 受控注入, 爆炸半径]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.8
+  min_confidence_for_auto_heal: 0.99

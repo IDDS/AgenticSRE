@@ -1,35 +1,52 @@
-FROM python:3.12-slim
+# AgenticSRE container image.
 
-WORKDIR /app
+ARG PYTHON_BASE_IMAGE=python:3.12-slim
+FROM ${PYTHON_BASE_IMAGE}
 
-# Install system deps + kubectl
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL "https://dl.k8s.io/release/v1.31.4/bin/linux/amd64/kubectl" \
-       -o /usr/local/bin/kubectl \
-    && chmod +x /usr/local/bin/kubectl
+        openssh-client \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-ENV PYTHONPATH=/app
+COPY docker-deps/kubectl /usr/local/bin/kubectl
+RUN chmod +x /usr/local/bin/kubectl
 
-# Install Python dependencies
+WORKDIR /app
+
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
+
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --timeout 120 --retries 5 \
+    --index-url "${PIP_INDEX_URL}" \
+    --trusted-host "${PIP_TRUSTED_HOST}" \
+    -r requirements.txt
 
-# Copy application code
+COPY hermes-agent/ ./hermes-agent/
+RUN pip install --no-cache-dir --timeout 120 --retries 5 \
+    --index-url "${PIP_INDEX_URL}" \
+    --trusted-host "${PIP_TRUSTED_HOST}" \
+    ./hermes-agent
+RUN cd /app/hermes-agent && python -c "from run_agent import AIAgent"
+
 COPY agents/ ./agents/
 COPY configs/ ./configs/
+COPY eval/ ./eval/
+COPY integrations/ ./integrations/
 COPY memory/ ./memory/
 COPY observability/ ./observability/
 COPY orchestrator/ ./orchestrator/
 COPY paradigms/ ./paradigms/
+COPY skill_runtime/ ./skill_runtime/
 COPY tools/ ./tools/
+COPY vllm_fault_injector/ ./vllm_fault_injector/
 COPY web_app/ ./web_app/
-COPY main.py mcp_server.py ./
+COPY main.py mcp_server.py operational_ontology.py operational_lineage.py operational_provenance.py diagnostic_strategy.py README.md USER_MANUAL.md AGENTS.md ./
 
 VOLUME ["/app/data", "/app/logs"]
 
+ENV PYTHONPATH=/app
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

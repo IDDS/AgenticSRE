@@ -1,0 +1,22 @@
+id: llm.distributed_communication
+version: 0.1.0
+name: 分布式推理通信故障
+domain: llm
+description: Diagnose NCCL, RDMA, tensor-parallel, packet loss, bandwidth throttle, and inference network communication faults.
+stages: [detect, diagnose, heal, verify]
+risk: critical
+permissions: [prometheus.read, k8s.read, host.read, k8s.write.restart]
+tool_dependencies: [kubectl, curl, nvidia-smi]
+tags: [llm, nccl, rdma, tensor-parallel, network, bandwidth, gpu]
+icon: network
+category: 智算通信
+matching:
+  keywords: [nccl_failure, tp_communication_loss, rdma_failure, packet_loss, bandwidth_throttle, grpc_failure, nccl, rdma, tensor parallel, packet loss, bandwidth]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.84
+  min_confidence_for_auto_heal: 0.97
+entrypoint: skill.py

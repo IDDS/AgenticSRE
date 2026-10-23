@@ -1,0 +1,70 @@
+{
+  "at": "2026-10-23T03:42:20.963831+00:00",
+  "runs": [
+    {
+      "run_id": "rca-8de08a97",
+      "mode": "multi",
+      "status": "completed",
+      "provider_error_codes": [
+        "provider_payment_required",
+        "model_service_unavailable"
+      ],
+      "diagnosis": {
+        "root_cause": "命名空间 train-ticket 的本次调查 的根因尚未完成模型核验；模型报告不可用，现有观测和候选仅供人工复核。",
+        "fault_type": "unknown",
+        "confidence": 0.342,
+        "root_entity": null,
+        "diagnosis_status": "requires_review",
+        "automation_gate": {
+          "allowed": false,
+          "blockers": [
+            "reviewer_failed_or_invalid",
+            "incomplete_model_execution",
+            "quality_review_required",
+            "collaboration_review_required"
+          ]
+        },
+        "model_response_validation": {
+          "status": "requires_review",
+          "incomplete_responses": [],
+          "call_timeouts": 0,
+          "failed_calls": [
+            {
+              "code": "provider_payment_required",
+              "status_code": 402
+            }
+          ],
+          "failed_stages": [
+            {
+              "stage": "final_report",
+              "code": "provider_payment_required"
+            }
+          ],
+          "confidence_before_cap": 0.342,
+          "confidence_cap": 0.65
+        }
+      },
+      "events": 42,
+      "diagnosis_accuracy_verified": false,
+      "business_fault_injection_accepted": false
+    },
+    {
+      "run_id": "rca-c9c520bf",
+      "mode": "skill",
+      "status": "failed",
+      "provider_error_codes": [],
+      "diagnosis": {
+        "root_cause": "",
+        "fault_type": "",
+        "confidence": null,
+        "root_entity": null,
+        "diagnosis_status": null,
+        "automation_gate": null,
+        "model_response_validation": null
+      },
+      "events": 11,
+      "diagnosis_accuracy_verified": false,
+      "business_fault_injection_accepted": false
+    }
+  ]
+}

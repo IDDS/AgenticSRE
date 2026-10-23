@@ -1,0 +1,19 @@
+id: llm.business_slo
+version: 0.1.0
+name: 智算业务 SLO
+domain: llm
+description: 基于成功率、TTFT、TPOT、端到端时延、队列、KV Cache 和 GPU 指标诊断 vLLM 业务影响。
+stages: [detect, diagnose, verify]
+risk: low
+permissions: [prometheus.read, observability.read]
+tool_dependencies: [prometheus, curl]
+tags: [llm, vllm, slo, ttft, tpot, latency, queue, kv-cache, gpu]
+icon: activity
+category: 业务 SLO
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.72
+  min_confidence_for_auto_heal: 0.9

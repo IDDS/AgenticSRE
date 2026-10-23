@@ -1,0 +1,28 @@
+id: k8s.service_unavailable
+version: 0.1.0
+name: K8s Service Unavailable
+domain: k8s
+description: Detect, diagnose, and propose guarded healing for unavailable Kubernetes services when alerts mention HTTP 503, ServiceUnavailable, empty endpoints, no ready endpoints, TargetDown, selector mismatch, or backend Deployment with no ready replicas.
+stages: [detect, diagnose, heal, verify]
+risk: medium
+permissions: [k8s.read, k8s.write.scale]
+tags: [kubernetes, service, endpoints, deployment]
+matching_keywords:
+  - service_unavailable
+  - ServiceUnavailable
+  - HTTP 503
+  - '503'
+  - no endpoints
+  - no ready endpoints
+  - endpoints empty
+  - TargetDown
+  - selector mismatch
+  - scaled to zero
+  - ready replicas
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.85
+  min_confidence_for_auto_heal: 0.9

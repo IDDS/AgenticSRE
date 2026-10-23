@@ -1,0 +1,24 @@
+graph TB
+    INPUT["告警 / 事件 / 人工调查"] --> SCOPE["调查范围 · 集群 / namespace / 已知对象身份"]
+    SCOPE --> EVIDENCE["保真分组与初始观测 · 保存来源和时间"]
+    EVIDENCE --> HYPOTHESIS["产生竞争假设 · 机制 / 支持条件 / 可反驳条件"]
+    HYPOTHESIS --> PLAN["规划调查 · 按缺口选择工具与证据来源"]
+    PLAN --> COLLECT["执行采集 · 保存本次观测与引用 ID"]
+    COLLECT --> REVIEW{"独立角色复核与宿主引用校验"}
+    REVIEW -->|"有缺口且预算允许 · 有界补证"| PLAN
+    REVIEW -->|"复核结果与缺口保留"| REPORT["诊断报告 · 六因子校准 / 动态上限 / 待复核状态"]
+    REPORT --> GATE{"处置条件是否满足"}
+    GATE -->|"证据 / 审核 / 审批不足"| HUMAN["人工复核或仅建议 · 记录停止原因"]
+    GATE -->|"全部门禁通过"| EXEC["受控动作 · 身份版本核对 / 回滚保护"]
+    EXEC --> VERIFY["独立验证恢复 · 基础设施与业务探针"]
+    REPORT --> FEEDBACK["反馈收据 · 事故 / 诊断快照 / 显式规则版本"]
+    VERIFY --> RECOVERY_HISTORY["恢复历史 · 动作与环境指纹 / 验证结果"]
+    HUMAN --> FEEDBACK
+    FEEDBACK --> MEMORY["候选记忆 · 人工版本审核 / 来源撤销"]
+    MEMORY -.->|"仅合格范围与有效版本 · 提示下一次假设"| HYPOTHESIS
+    classDef fact fill:#eaf0fb,stroke:#315b95,color:#17324e
+    classDef reasoning fill:#e7f4f1,stroke:#2c7968,color:#163f36
+    classDef guard fill:#fff3df,stroke:#a86b23,color:#62401b
+    class INPUT,SCOPE,EVIDENCE,COLLECT fact
+    class HYPOTHESIS,PLAN,REPORT,MEMORY reasoning
+    class REVIEW,GATE,HUMAN,EXEC,VERIFY guard

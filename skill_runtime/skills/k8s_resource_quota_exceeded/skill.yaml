@@ -1,0 +1,17 @@
+id: k8s.resource_quota_exceeded
+version: 0.1.0
+name: K8s Resource Quota Exceeded
+domain: k8s
+description: Detect, diagnose, and propose read-only recovery guidance for Kubernetes namespace ResourceQuota exhaustion.
+stages: [detect, diagnose, verify]
+risk: low
+permissions: [k8s.read]
+tool_dependencies: [kubectl]
+tags: [kubernetes, resourcequota, quota, capacity]
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.78
+  min_confidence_for_auto_heal: 0.9

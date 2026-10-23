@@ -1,0 +1,32 @@
+id: llm.dcgm_exporter_observability
+version: 0.1.0
+name: DCGM GPU 指标采集诊断
+domain: llm
+description: Diagnose DCGM exporter and GPU Prometheus scrape failures in AI clusters.
+stages: [detect, diagnose, heal, verify]
+risk: medium
+permissions: [prometheus.read, k8s.read, k8s.write.restart]
+tool_dependencies: [prometheus, kubectl]
+tags: [llm, gpu, dcgm, prometheus, exporter, observability]
+icon: gauge
+category: 智算观测
+matching:
+  keywords:
+    - dcgm
+    - gpu metrics missing
+    - gpu_metric_absent
+    - dcgm_exporter_down
+    - DCGM_FI_DEV_GPU_UTIL
+    - target down
+    - scrape
+    - exporter
+    - GPU 指标
+    - 显卡指标
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.78
+  min_confidence_for_auto_heal: 0.95
+entrypoint: skill.py

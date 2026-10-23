@@ -1,0 +1,17 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: agenticsre-path-io-latency
+  namespace: agenticsre-platform-chaos-validation
+spec:
+  action: latency
+  mode: one
+  selector:
+    namespaces: [agenticsre-platform-chaos-validation]
+    labelSelectors:
+      app: agenticsre-io-target
+  volumePath: /data
+  path: /data/fault-probe
+  delay: 250ms
+  percent: 100
+  duration: 30s

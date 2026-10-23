@@ -12,6 +12,7 @@ from memory.domain_adapter import DomainAdapter, DomainProfile
 from memory.context_builder import ContextBuilder, AgentContext
 from memory.expert_feedback import ExpertFeedbackStore
 from memory.evolution_tracker import EvolutionTracker
+from memory.human_review import HumanReviewStore
 
 __all__ = [
     "FaultContextStore", "ContextLearner", "RCAJudge",
@@ -20,4 +21,5 @@ __all__ = [
     "ContextBuilder", "AgentContext",
     "ExpertFeedbackStore",
     "EvolutionTracker",
+    "HumanReviewStore",
 ]

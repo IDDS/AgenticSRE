@@ -1,0 +1,32 @@
+id: tool.prometheus_query
+version: 0.1.0
+name: Prometheus 查询工具 Skill
+domain: tool
+description: Controlled PromQL query tool for evidence collection and threshold validation.
+stages: [detect, diagnose, verify]
+risk: low
+permissions: [prometheus.read]
+tool_dependencies: [prometheus]
+tags: [tool, prometheus, promql, metrics, threshold, time-window]
+icon: chart-line
+category: tool
+matching:
+  keywords:
+    - promql
+    - prometheus query
+    - query_range
+    - threshold
+    - time window
+    - current value
+    - peak value
+    - 指标查询
+    - 阈值
+    - 时间窗口
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 1
+  min_confidence_for_heal: 0.65
+  min_confidence_for_auto_heal: 0.95
+entrypoint: skill.py

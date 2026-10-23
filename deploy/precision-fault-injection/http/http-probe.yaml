@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agenticsre-http-validation
+  labels:
+    app.kubernetes.io/managed-by: agenticsre
+    agenticsre.local/validation: http-request-precision
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenticsre-http-probe
+  namespace: agenticsre-http-validation
+data:
+  server.py: |
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != "/healthz":
+                self.send_error(404)
+                return
+            payload = b"ok\n"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *_args):
+            return
+
+    ThreadingHTTPServer(("0.0.0.0", 18080), Handler).serve_forever()
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agenticsre-http-probe
+  namespace: agenticsre-http-validation
+  labels:
+    app: agenticsre-http-probe
+spec:
+  nodeName: lsy-3
+  restartPolicy: Never
+  containers:
+    - name: probe
+      image: 10.10.3.146:5001/online-boutique/recommendationservice@sha256:8c40a3dd88153a08139ec3c3e4c28e53e407a02f8ebf5c27cccdf537fd45fa22
+      imagePullPolicy: IfNotPresent
+      command: ["/usr/local/bin/python3", "/opt/agenticsre/server.py"]
+      ports: [{name: http, containerPort: 18080}]
+      volumeMounts:
+        - {name: probe-source, mountPath: /opt/agenticsre, readOnly: true}
+  volumes:
+    - name: probe-source
+      configMap: {name: agenticsre-http-probe}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agenticsre-http-probe
+  namespace: agenticsre-http-validation
+spec:
+  selector: {app: agenticsre-http-probe}
+  ports:
+    - {name: http, port: 18080, targetPort: 18080}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agenticsre-http-client
+  namespace: agenticsre-http-validation
+  labels:
+    app: agenticsre-http-client
+spec:
+  nodeName: lsy-3
+  restartPolicy: Never
+  containers:
+    - name: client
+      image: 10.10.3.146:5001/online-boutique/recommendationservice@sha256:8c40a3dd88153a08139ec3c3e4c28e53e407a02f8ebf5c27cccdf537fd45fa22
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh", "-c", "trap : TERM INT; sleep infinity & wait"]

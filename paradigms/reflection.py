@@ -104,7 +104,7 @@ class ReflectionParadigm(ParadigmBase):
         pool = self.pool
 
         # Build unified context
-        context = pool.build_context(incident_query)
+        context = pool.build_context(incident_query, namespace=namespace)
 
         # Step 1: Parallel domain agent investigation (enriched)
         self.log("  [reflection] Step 1: Gathering initial evidence (parallel)...")

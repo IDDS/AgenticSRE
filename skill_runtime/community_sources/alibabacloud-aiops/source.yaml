@@ -1,0 +1,21 @@
+source: alibabacloud-aiops-skills
+name: Alibaba Cloud AIOps Skills
+trust_level: trusted-community
+license: Apache-2.0 OR MIT
+homepage: https://github.com/aliyun/alibabacloud-aiops-skills
+repository: aliyun/alibabacloud-aiops-skills
+description: Alibaba Cloud AIOps skill collection covering Alibaba Cloud products and general operational tooling.
+integration_mode: mirror_then_convert
+allowed_use:
+  - Mirror selected skills into a local reviewed directory.
+  - Convert cloud/AIOps/tool skills into disabled AgenticSRE drafts.
+  - Prioritize read-only diagnostics for K8s, DB, cloud resource, log, metric, and incident workflows.
+blocked_use:
+  - Do not execute cloud write operations directly from imported skills.
+  - Do not persist AccessKey/SecretKey in skill manifests.
+  - Do not enable cloud resource mutation without approval, dry-run, rollback, and verification plans.
+security_notes:
+  - Cloud credentials must come from runtime environment or existing CLI profile.
+  - Imported skills are review-only until tests and human approval pass.
+  - Prefer read permissions first; write/admin permissions require explicit risk classification.
+tags: [aliyun, alibaba-cloud, aiops, cloud, k8s, database, observability]

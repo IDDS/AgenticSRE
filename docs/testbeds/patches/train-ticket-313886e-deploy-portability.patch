@@ -1,0 +1,49 @@
+diff --git a/hack/deploy/deploy.sh b/hack/deploy/deploy.sh
+--- a/hack/deploy/deploy.sh
++++ b/hack/deploy/deploy.sh
+@@ -1,3 +1,4 @@
+ #!/bin/bash
+-
++set -euo pipefail
++
+ TT_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+diff --git a/hack/deploy/gen-mysql-secret.sh b/hack/deploy/gen-mysql-secret.sh
+--- a/hack/deploy/gen-mysql-secret.sh
++++ b/hack/deploy/gen-mysql-secret.sh
+@@ -53,3 +53,3 @@ function gen_secret_for_services {
+   fi
+-  rm $secret_yaml > /dev/null 2>&1
++  rm -f "$secret_yaml"
+   touch $secret_yaml
+@@ -57,3 +57,3 @@ function gen_secret_for_services {
+   do
+-    if [ useOneHost == 0 ]; then
++    if [ "${useOneHost}" = "0" ]; then
+       mysqlHost="ts-$s-mysql-leader"
+@@ -71,2 +71,2 @@ function update_tt_dp_cm {
+-  if [ "$(uname)"="Darwin" ]; then
++  if [ "$(uname)" = "Darwin" ]; then
+     sed -i "" "s/nacos/${nacosCM}/g" $dp_yaml
+@@ -85,2 +85,2 @@ function update_tt_sw_dp_cm {
+-  if [ "$(uname)"="Darwin" ]; then
++  if [ "$(uname)" = "Darwin" ]; then
+     sed -i "" "s/nacos/${nacosCM}/g" $sw_dp_yaml
+diff --git a/hack/deploy/utils.sh b/hack/deploy/utils.sh
+--- a/hack/deploy/utils.sh
++++ b/hack/deploy/utils.sh
+@@ -93,2 +93,3 @@ function deploy_tt_secret {
+   echo "Start to deploy secret of train-ticket services."
++  kubectl apply --dry-run=server -f deployment/kubernetes-manifests/quickstart-k8s/yamls/secret.yaml -n $namespace > /dev/null
+   kubectl apply -f deployment/kubernetes-manifests/quickstart-k8s/yamls/secret.yaml -n $namespace > /dev/null
+@@ -98,2 +99,3 @@ function deploy_tt_svc {
+   namespace=$1
++  kubectl apply --dry-run=server -f deployment/kubernetes-manifests/quickstart-k8s/yamls/svc.yaml -n $namespace > /dev/null
+   kubectl apply -f deployment/kubernetes-manifests/quickstart-k8s/yamls/svc.yaml -n $namespace > /dev/null
+@@ -105,2 +107,3 @@ function deploy_tt_dp {
+   update_tt_dp_cm $nacosRelease $rabbitmqRelease
++  kubectl apply --dry-run=server -f deployment/kubernetes-manifests/quickstart-k8s/yamls/deploy.yaml -n $namespace > /dev/null
+   kubectl apply -f deployment/kubernetes-manifests/quickstart-k8s/yamls/deploy.yaml -n $namespace > /dev/null
+@@ -113,2 +116,3 @@ function deploy_tt_dp_sw {
+   update_tt_sw_dp_cm $nacosRelease $rabbitmqRelease
++  kubectl apply --dry-run=server -f deployment/kubernetes-manifests/quickstart-k8s/yamls/sw_deploy.yaml -n $namespace > /dev/null
+   kubectl apply -f deployment/kubernetes-manifests/quickstart-k8s/yamls/sw_deploy.yaml -n $namespace > /dev/null

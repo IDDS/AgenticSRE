@@ -1,0 +1,29 @@
+id: tool.kafka_health
+version: 0.1.0
+name: Kafka 健康诊断
+domain: db
+description: Read-only Kafka diagnostic skill for broker, lag, ISR, partition, rebalance, and timeout issues.
+stages: [detect, diagnose, verify]
+risk: high
+permissions: [kafka.read]
+tool_dependencies: [kafka-cli, prometheus]
+tags: [tool, kafka, mq, consumer-lag, broker, partition]
+icon: messages-square
+category: 中间件
+matching:
+  keywords:
+    - kafka
+    - consumer lag
+    - under replicated
+    - offline partition
+    - broker
+    - rebalance
+    - 消息队列
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.98
+entrypoint: skill.py

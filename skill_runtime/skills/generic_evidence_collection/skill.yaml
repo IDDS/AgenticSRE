@@ -1,0 +1,29 @@
+id: generic.evidence_collection
+version: 0.1.0
+name: Generic Evidence Collection
+domain: generic
+description: Generic evidence collection planner for Agent+Skill workflows when incidents need read-only metrics, logs, traces, Kubernetes events, host state, database signals, LLM/vLLM runtime metrics, or before-after verification evidence.
+stages: [detect, diagnose]
+risk: low
+permissions: [observability.read, k8s.read, host.read]
+tags: [generic, evidence, logs, metrics, events]
+matching_keywords:
+  - evidence
+  - collect
+  - investigation
+  - metrics
+  - logs
+  - traces
+  - events
+  - prometheus
+  - kubectl
+  - before after
+  - verification
+  - Agent+Skill
+policy:
+  requires_approval: false
+  safe_auto_execute: true
+confidence:
+  min_evidence_sources: 1
+  min_confidence_for_heal: 0.6
+  min_confidence_for_auto_heal: 0.9

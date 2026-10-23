@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agenticsre-binary-errno-probe
+  namespace: agenticsre-c-native-validation
+  labels:
+    app: agenticsre-binary-errno-probe
+spec:
+  nodeName: lsy-3
+  restartPolicy: Never
+  containers:
+  - name: probe
+    image: opspai/ts-news-service:v1.2.9
+    imagePullPolicy: Never
+    command:
+    - /opt/agenticsre/probe
+    args:
+    - binary-errno
+    env:
+    - name: LD_LIBRARY_PATH
+      value: /opt/agenticsre
+    - name: LD_PRELOAD
+      value: /opt/agenticsre/libagenticsre_return_override.so
+    - name: AGENTICSRE_FAULT_ACTION
+      value: errno
+    - name: AGENTICSRE_FAULT_HIT
+      value: '4'
+    - name: AGENTICSRE_FAULT_MAX_HITS
+      value: '1'
+    - name: AGENTICSRE_FAULT_ERRNO
+      value: '5'
+    - name: AGENTICSRE_FAULT_RETURN
+      value: '-1'
+    volumeMounts:
+    - name: artifacts
+      mountPath: /opt/agenticsre
+      readOnly: true
+  volumes:
+  - name: artifacts
+    configMap:
+      name: agenticsre-c-native-artifacts
+      defaultMode: 365

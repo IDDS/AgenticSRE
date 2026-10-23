@@ -4,12 +4,12 @@ Self-healing agent with plan→execute→verify→rollback cycle.
 """
 
 import logging
+import copy
 import uuid
 from typing import Any, Dict, List, Optional
 
 from tools.base_tool import ToolRegistry, ToolResult
 from tools.llm_client import LLMClient
-from tools.action_stack import ActionStack, Action
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class RemediationAgent:
     Self-healing remediation agent.
     
     Flow: LLM generates NL plan → converts to kubectl commands → 
-    executes with ActionStack rollback → verifies cluster health.
+    executes with recorded undo actions → verifies cluster health.
     """
 
     PLAN_PROMPT = """You are an expert SRE responsible for remediating Kubernetes issues.
@@ -55,7 +55,8 @@ Generate a remediation plan:
     def __init__(self, llm: LLMClient, registry: ToolRegistry, config=None):
         self.llm = llm
         self.registry = registry
-        self.action_stack = ActionStack(max_depth=10)
+        self.execution = None
+        self.namespace = ""
         
         from configs.config_loader import get_config
         cfg = config or get_config()
@@ -84,56 +85,109 @@ Generate a remediation plan:
                 "message": "Remediation plan requires approval before execution",
             }
 
-        # Generate and execute plan
-        plan = self._generate_plan(rca_result)
-        results = []
-        
-        for action_spec in plan.get("actions", []):
-            # Create action with rollback
-            action = Action(
-                action_id=f"rem-{uuid.uuid4().hex[:8]}",
-                description=action_spec.get("description", ""),
-                command=action_spec.get("command", ""),
-                rollback_command=action_spec.get("rollback_command", ""),
-            )
-            
-            # Execute
-            result = self._execute_command(action.command)
-            action.status = "executed" if result.success else "failed"
-            action.result = str(result.data)[:500] if result.success else result.error
-            
-            # Push to stack for rollback
-            self.action_stack.push(action)
-            
-            results.append({
-                "action_id": action.action_id,
-                "description": action.description,
-                "status": action.status,
-                "result": action.result,
-            })
-            
+        return self.execute_plan(self._generate_plan(rca_result))
+
+    def execute_plan(self, plan: Dict, checkpoint=None) -> Dict:
+        """Execute exactly this plan, checkpointing intent before each write.
+
+        A failed tool call may already have changed the target. Never retry it
+        or automatically undo earlier steps without reconciling that outcome.
+        """
+        specs = plan.get("actions") if isinstance(plan, dict) else None
+        if (not isinstance(specs, list) or not specs or any(
+            not isinstance(item, dict) or any(
+                not isinstance(item.get(key), str) or not item[key].strip()
+                for key in ("command", "rollback_command")
+            ) for item in specs
+        )):
+            return {"status": "failed", "error": "invalid_or_empty_plan",
+                    "actions": [], "requires_manual_review": True, "rollback_available": False}
+        record = {"status": "running", "actions": [
+            {"action_id": f"rem-{uuid.uuid4().hex[:8]}",
+             "description": item.get("description", ""),
+             "command": item["command"], "rollback_command": item["rollback_command"],
+             "status": "pending"} for item in copy.deepcopy(specs)
+        ], "requires_manual_review": False, "rollback_available": False}
+        self.execution = record
+        save = checkpoint or (lambda value: None)
+        save(record)
+        for action in record["actions"]:
+            action["status"] = "executing"
+            save(record)
+            try:
+                result = self._execute_command(action["command"])
+            except Exception as exc:
+                result = ToolResult(success=False, error=str(exc))
+            action.update(status="executed" if result.success else "failed",
+                          result=str(result.data)[:500] if result.success else result.error,
+                          outcome_unknown=not result.success)
+            record["rollback_available"] = any(a["status"] == "executed" for a in record["actions"])
             if not result.success:
-                logger.error(f"Remediation action failed: {action.description}")
-                break
+                record.update(status="failed", requires_manual_review=True)
+            save(record)
+            if not result.success:
+                return record
+        try:
+            verification = self._verify_health()
+        except Exception as exc:
+            verification = {"status": "error", "error": str(exc)}
+        state = verification.get("overall_status", verification.get("status")) if isinstance(verification, dict) else None
+        checks = verification.get("checks", {}) if isinstance(verification, dict) else {}
+        known_healthy = state in ("healthy", "ok") and isinstance(checks, dict) and all(
+            isinstance(item, dict) and item.get("status") in ("healthy", "ok")
+            for item in checks.values())
+        record.update(verification=verification,
+                      status="executed" if known_healthy else "verification_failed",
+                      requires_manual_review=not known_healthy)
+        save(record)
+        return record
 
-        # Verify cluster health after remediation
-        verification = self._verify_health()
+    def rollback(self, execution=None, checkpoint=None) -> Dict:
+        """Undo recorded, confirmed writes once in reverse order.
 
-        return {
-            "status": "executed",
-            "actions": results,
-            "verification": verification,
-            "rollback_available": len(self.action_stack) > 0,
-        }
-
-    def rollback(self) -> Dict:
-        """Roll back all remediation actions."""
-        def executor(cmd: str) -> str:
-            result = self._execute_command(cmd)
-            return result.data if result.success else result.error
-        
-        results = self.action_stack.rollback_all(executor)
-        return {"status": "rolled_back", "actions": results}
+        Unknown execution/undo outcomes require operator reconciliation. An
+        empty or legacy record cannot establish that anything was rolled back.
+        """
+        record = execution if execution is not None else self.execution
+        if not record or not record.get("actions"):
+            return {"status": "blocked", "error": "no_recorded_actions",
+                    "requires_manual_review": True, "actions": []}
+        actions = record["actions"]
+        if any(a.get("outcome_unknown") or a.get("status") in (
+            "executing", "rolling_back", "rollback_failed", "failed") for a in actions):
+            return {"status": "blocked", "error": "action_outcome_unknown",
+                    "requires_manual_review": True, "actions": copy.deepcopy(actions)}
+        eligible = [a for a in reversed(actions) if a.get("status") == "executed"]
+        if any(not a.get("rollback_command") for a in eligible):
+            return {"status": "blocked", "error": "missing_recorded_rollback",
+                    "requires_manual_review": True, "actions": copy.deepcopy(actions)}
+        if not eligible:
+            done = any(a.get("status") == "rolled_back" for a in actions)
+            return {"status": "rolled_back" if done else "blocked", "requires_manual_review": not done,
+                    "actions": copy.deepcopy(actions)}
+        save = checkpoint or (lambda value: None)
+        for action in eligible:
+            action["status"] = "rolling_back"
+            record["status"] = "rolling_back"
+            save(record)
+            try:
+                result = self._execute_command(action["rollback_command"])
+            except Exception as exc:
+                result = ToolResult(success=False, error=str(exc))
+            action.update(status="rolled_back" if result.success else "rollback_failed",
+                          rollback_result=str(result.data)[:500] if result.success else result.error,
+                          outcome_unknown=not result.success)
+            if not result.success:
+                record.update(status="rollback_failed", requires_manual_review=True)
+                save(record)
+                return {"status": "failed", "requires_manual_review": True,
+                        "actions": copy.deepcopy(actions)}
+            save(record)
+        record.update(status="rolled_back", rollback_available=False)
+        save(record)
+        return {"status": "rolled_back", "requires_manual_review": False,
+                "actions": copy.deepcopy(actions),
+                "scope": "recorded undo commands succeeded; business recovery not certified"}
 
     def _generate_plan(self, rca_result: Dict) -> Dict:
         """Generate remediation plan via LLM."""
@@ -166,7 +220,7 @@ Generate a remediation plan:
         cmd = command.strip()
         if cmd.startswith("kubectl "):
             cmd = cmd[8:]
-        return kubectl.execute(command=cmd)
+        return kubectl.execute(command=cmd, **({"namespace": self.namespace} if self.namespace else {}))
 
     def _verify_health(self) -> Dict:
         """Verify cluster health after remediation."""

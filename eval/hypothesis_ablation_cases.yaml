@@ -1,0 +1,135 @@
+version: 1
+description: >-
+  Controlled incident/evidence fixtures for hypothesis-branch ablation. Ground-truth
+  match groups are used only by the offline evaluator and are never included in prompts.
+
+cases:
+  - id: general-cpu-contention
+    domain: general_compute
+    incident: >-
+      Post creation latency rose from 80 ms to more than 2 s. The compose-post path
+      reports intermittent 504 responses, while read-only APIs remain mostly healthy.
+    evidence:
+      - compose-post-service CPU usage is 99% and CPU throttling increased sharply after T0.
+      - Other application pods on the same node show normal memory and disk utilization.
+      - Kubernetes events show a new CPU-intensive workload scheduled on the affected node at T0-2m.
+      - Removing that workload returns compose-post latency to its baseline range.
+    ground_truth:
+      label: CPU resource contention affecting compose-post-service
+      match_groups:
+        - [cpu]
+        - [compose-post, compose post]
+        - [contention, pressure, stress, throttling, saturation, 争用, 压力, 饱和]
+
+  - id: general-memory-oom
+    domain: general_compute
+    incident: >-
+      Timeline requests are intermittently unavailable. A workload restarted several
+      times around the alert, but no deployment rollout was recorded.
+    evidence:
+      - The affected container terminated with exit code 137 and reason OOMKilled.
+      - Node memory utilization exceeded 94%; CPU and disk remained below warning thresholds.
+      - Working-set memory grew continuously during the ten minutes before the alert.
+      - The service recovered after memory pressure was removed and the pod restarted.
+    ground_truth:
+      label: Memory pressure causing OOM termination
+      match_groups:
+        - [memory, oom, oomkilled, 内存]
+        - [pressure, exhaustion, limit, killed, oomkill, leak, 压力, 耗尽, 终止, 泄漏]
+
+  - id: general-crashloop
+    domain: general_compute
+    incident: >-
+      A newly created workload never becomes ready. Its restart count rises rapidly and
+      clients receive service-unavailable responses.
+    evidence:
+      - Pod status alternates between Running and CrashLoopBackOff.
+      - The container exits with code 1 within one second of each start.
+      - Image pull, scheduling, node resources and service endpoints are otherwise normal.
+      - Logs end immediately after process initialization with a fatal application error.
+    ground_truth:
+      label: Application process crash causing CrashLoopBackOff
+      match_groups:
+        - [crashloop, crash loop, crash, fatal error, immediate exit, 致命错误, 立即退出, 崩溃]
+        - [exit code 1, exits, process, application, 进程, 应用]
+
+  - id: general-network-partition
+    domain: general_compute
+    incident: >-
+      The frontend proxy begins returning 503 for one downstream route. Backend pods stay
+      Ready and continue serving requests that originate inside their own namespace.
+    evidence:
+      - A NetworkChaos object targeting frontend-proxy to frontend appeared immediately before T0.
+      - Service selectors and endpoints remain populated and all target pods are Ready.
+      - Requests crossing the affected network boundary fail, while direct backend requests return HTTP 200.
+      - Deleting the NetworkChaos object restores the route without restarting either service.
+    ground_truth:
+      label: Network partition introduced by NetworkChaos
+      match_groups:
+        - [networkchaos, network chaos, network partition, 网络分区, 网络隔离]
+        - [frontend-proxy, frontend proxy, proxy]
+
+  - id: general-zero-replica
+    domain: general_compute
+    incident: >-
+      Home timeline requests return 503 and Kubernetes reports no ready endpoints for the
+      home-timeline service. Other social-network APIs are healthy.
+    evidence:
+      - Deployment home-timeline-service has desired replicas 0 and available replicas 0.
+      - An event records the ReplicaSet scaling from one replica to zero shortly before T0.
+      - There are no image pull failures, resource-pressure events or readiness-probe failures.
+      - Scaling the deployment back to one creates an endpoint and clears the 503 response.
+    ground_truth:
+      label: home-timeline-service scaled to zero replicas
+      match_groups:
+        - [home-timeline, home timeline]
+        - [scaled to zero, scaled down to 0, scale down, zero replica, replicas 0, 0 desired replicas, 缩容, 副本为 0, 零副本]
+
+  - id: general-database-dependency
+    domain: general_compute
+    incident: >-
+      New posts cannot be stored and compose-post requests time out. Read paths that do not
+      write post data continue to work.
+    evidence:
+      - post-storage-service spans spend more than 95% of their duration waiting for MongoDB.
+      - The post-storage MongoDB deployment has no available pod or endpoint.
+      - compose-post CPU, memory and network error rates remain near baseline.
+      - Restoring the MongoDB replica clears write latency without changing compose-post.
+    ground_truth:
+      label: post-storage MongoDB dependency unavailable
+      match_groups:
+        - [mongodb, mongo]
+        - [post-storage, post storage]
+        - [unavailable, dependency, endpoint, down, 不可用, 依赖]
+
+  - id: ai-kv-cache-pressure
+    domain: ai_compute
+    incident: >-
+      An inference endpoint develops long time-to-first-token and starts queueing requests
+      during a long-context workload. The model server remains reachable.
+    evidence:
+      - vLLM KV Cache usage reaches 99% and GPU framebuffer memory reaches 98%.
+      - Waiting requests increase from 0 to 12 while running requests stay bounded.
+      - GPU compute utilization is not saturated and the node has no disk-pressure event.
+      - Stopping the additional long-context load reduces KV Cache use and TTFT returns toward baseline.
+    ground_truth:
+      label: vLLM KV Cache exhaustion caused by long-context load
+      match_groups:
+        - [kv cache, kv_cache, kv缓存]
+        - [exhaustion, exhausted, pressure, saturation, capacity, 耗尽, 压力, 饱和, 容量]
+
+  - id: ai-request-queue
+    domain: ai_compute
+    incident: >-
+      Inference throughput is stable but TTFT P95 rises to 8.2 s and user requests wait before
+      decoding begins. GPU errors and model-process restarts are absent.
+    evidence:
+      - vllm:num_requests_waiting is 12 while num_requests_running is 2.
+      - TPOT P95 remains 0.8 s after decoding starts, separating queue delay from token generation.
+      - GPU memory is below the KV Cache warning threshold and no CUDA OOM is present.
+      - Reducing request arrival rate drains the queue and TTFT falls without restarting vLLM.
+    ground_truth:
+      label: Request arrival rate exceeds scheduler capacity and causes queue buildup
+      match_groups:
+        - [queue, queuing, waiting, backlog, 排队, 队列, 积压]
+        - [arrival rate, request rate, concurrency, scheduler capacity, scheduling delay, scheduling queue, scheduler overload, increased load, worker slots, max_num_seqs, concurrent requests limit, execution slots, overload, 到达率, 并发, 调度容量, 过载]

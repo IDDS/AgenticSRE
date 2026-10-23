@@ -1,0 +1,34 @@
+services:
+  agenticsre-skill-runtime:
+    image: ${AGENTICSRE_IMAGE:-agenticsre:latest}
+    container_name: agenticsre-skill-runtime
+    network_mode: host
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - SKILL_RUNTIME_PORT=${SKILL_RUNTIME_PORT:-8090}
+      - http_proxy=
+      - https_proxy=
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+      - no_proxy=${AGENTICSRE_NO_PROXY:-localhost,127.0.0.1,::1,.svc,.cluster.local}
+      - NO_PROXY=${AGENTICSRE_NO_PROXY:-localhost,127.0.0.1,::1,.svc,.cluster.local}
+    command: ["bash", "/app/skill_runtime/run.sh"]
+    volumes:
+      - ./skill_runtime:/app/skill_runtime:ro
+      - ./configs:/app/configs:ro
+      - ./web_app:/app/web_app:ro
+      - ./orchestrator:/app/orchestrator:ro
+      - ./vllm_fault_injector:/app/vllm_fault_injector:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ~/.kube/config:/root/.kube/config:ro
+      - ~/.ssh:/root/.ssh:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${SKILL_RUNTIME_PORT:-8090}/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3

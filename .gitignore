@@ -1,34 +1,85 @@
-# ── Python ──
+# ─── Python ───
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
+*.egg
 dist/
 build/
-*.egg
+.pycache_tmp/
 
-# ── Environment ──
-.env
+# ─── Virtual envs ───
 .venv/
 venv/
 env/
 
-# ── Data ──
-data/
-*.db
+# ─── Credentials (绝不能提交) ───
+.env
+.env.local
+.env.*.local
+**/credentials.json
+**/*-credentials.json
+**/.ssh/
+*kubeconfig*
+# 例外: configs/clusters.yaml 是档案定义不是 kubeconfig
+!configs/clusters.yaml
 
-# ── IDE ──
+# ─── 运行时数据 (与机器绑定, 不该跨机同步) ───
+data/
+logs/
+*.log
+*.db
+chroma_data/
+report/
+backups/
+outputs/
+demo_recordings/
+.gstack/
+
+# ─── 构建产物 / 发布包 ───
+# 太大, 用 build_release.sh 重新生成
+*.tar
+*.tar.gz
+*.tgz
+release/
+agenticsre-release-*/
+# 本地 build 用的 kubectl 二进制 54MB
+docker-deps/
+
+# ─── 项目文档 / SOW (敏感, 不进代码仓) ───
+doc/
+设计文档/
+测试/
+*.docx
+*.pdf
+
+# ─── 子项目 (独立管理) ───
+hermes-agent/
+AliData/
+
+# ─── 评估结果 ───
+eval/results/*
+!eval/results/.gitkeep
+# 由评估脚本生成
+eval/comparison_report.md
+
+# ─── IDE / OS ───
 .vscode/
 .idea/
 *.swp
 *.swo
 .DS_Store
+**/.DS_Store
+._*
+**/._*
 
-# ── Logs ──
-*.log
+# ─── Claude / AI 工具 ───
+.claude/
+.codex/
+CLAUDE.md
+CLAUDE.md.local
+
+# ─── 临时 ───
 /tmp/
-
-# ── Eval results (keep .gitkeep) ──
-eval/results/*.json
-
-# ── ChromaDB ──
-chroma_data/
+*.bak
+*.orig

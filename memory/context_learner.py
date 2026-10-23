@@ -41,7 +41,6 @@ Respond in JSON:
             "condition": "specific observable condition (metrics/logs/events pattern)",
             "conclusion": "likely root cause or diagnosis",
             "fault_type": "category of fault",
-            "namespace": "applicable namespace or 'general'",
             "confidence": 0.8
         }}
     ]
@@ -82,7 +81,8 @@ Respond in JSON:
         self.auto_learn = cfg.memory.auto_learn
 
     def learn_from_trace(self, reasoning_trace: str, root_cause: str,
-                          confidence: float, judge_level: int = 0) -> Dict:
+                          confidence: float, judge_level: int = 0, *, memory_scope=None,
+                          source_incident_id: str = '') -> Dict:
         """
         Auto-learn mode: extract rules from an RCA reasoning trace.
         Blocked if judge_level >= 3 (low quality reasoning).
@@ -90,7 +90,12 @@ Respond in JSON:
         if not self.auto_learn:
             return {"status": "disabled", "rules_added": 0}
         
-        if judge_level >= 3:
+        try:
+            numeric_judge_level = int(judge_level)
+        except Exception:
+            numeric_judge_level = 3
+
+        if numeric_judge_level >= 3:
             logger.info("Auto-learning blocked: judge_level >= 3 (low quality)")
             return {"status": "blocked_by_judge", "rules_added": 0}
 
@@ -103,27 +108,42 @@ Respond in JSON:
                     confidence=confidence,
                 )}
             ])
-
-            rules_added = 0
+            from memory.rule_lifecycle import valid_rules
+            if not isinstance(result, dict) or not valid_rules(result.get('rules', [])):
+                return {'status': 'invalid_rules', 'rules_added': 0, 'rules_activated': 0}
+            rule_ids = []
+            receipts = []
             for rule in result.get("rules", []):
-                rule_id = self.store.add_rule({
+                receipt = self.store.add_rule({
                     "condition": rule.get("condition", ""),
                     "conclusion": rule.get("conclusion", ""),
                     "fault_type": rule.get("fault_type", ""),
-                    "namespace": rule.get("namespace", "general"),
+                    "namespace": "",
                     "confidence": rule.get("confidence", 0.5),
                     "source": "auto_learn",
                     "from_trace": reasoning_trace[:200],
-                })
-                rules_added += 1
+                    "source_incident_id": source_incident_id,
+                    **(memory_scope.source_fields() if memory_scope is not None else {}),
+                }, return_receipt=True)
+                if not isinstance(receipt, dict) or type(receipt.get('created')) is not bool:
+                    raise ValueError('rule_write_receipt_required')
+                if receipt['created'] and receipt.get('stored_status') != 'candidate':
+                    raise ValueError('new_rule_must_remain_candidate')
+                receipts.append(receipt)
+                rule_ids.append(receipt['rule_id'])
 
-            return {"status": "success", "rules_added": rules_added}
+            new_ids = [r['rule_id'] for r in receipts if r['created']]
+            return {"status": "success", "rules_added": len(new_ids), 'rule_ids': rule_ids,
+                    'candidate_rule_ids': new_ids, 'rule_results': receipts,
+                    'rule_status': 'candidate' if new_ids else 'no_new_rules', 'rules_activated': 0}
 
         except Exception as e:
-            logger.error(f"Auto-learning failed: {e}")
-            return {"status": "error", "error": str(e), "rules_added": 0}
+            logger.error('Auto-learning failed (%s)', type(e).__name__)
+            return {"status": "error", "error": 'auto_learning_failed', 'rules_added': None,
+                    'rules_activated': 0}
 
-    def learn_supervised(self, agent_diagnosis: str, ground_truth: str) -> Dict:
+    def learn_supervised(self, agent_diagnosis: str, ground_truth: str, *, memory_scope=None,
+                         source_incident_id: str = '', source_feedback_id: str = '') -> Dict:
         """
         Supervised learning: compare agent diagnosis with ground truth
         and extract positive/negative rules.
@@ -137,38 +157,64 @@ Respond in JSON:
                 )}
             ])
 
-            rules_added = 0
-            correct = result.get("correct", False)
+            # JSON strings such as "false" are truthy in Python. Validate the
+            # complete verdict before writing even the first derived rule.
+            correct = result.get("correct") if isinstance(result, dict) else None
+            if type(correct) is not bool:
+                return {"status": "invalid_correctness", "correct": None, "rules_added": 0}
+            rules = result.get("rules", [])
+            from memory.rule_lifecycle import valid_rules
+            if not valid_rules(rules):
+                return {"status": "invalid_rules", "correct": None, "rules_added": 0}
+            rule_ids = []
+            receipts = []
             
-            for rule in result.get("rules", []):
-                self.store.add_rule({
+            for rule in rules:
+                receipt = self.store.add_rule({
                     "condition": rule.get("condition", ""),
                     "conclusion": rule.get("conclusion", ""),
                     "rule_type": rule.get("rule_type", "positive" if correct else "negative"),
                     "lesson": rule.get("lesson", ""),
                     "confidence": rule.get("confidence", 0.5),
                     "source": "supervised",
-                })
-                rules_added += 1
+                    "source_incident_id": source_incident_id,
+                    "source_feedback_id": source_feedback_id,
+                    **(memory_scope.source_fields() if memory_scope is not None else {}),
+                }, return_receipt=True)
+                if not isinstance(receipt, dict) or type(receipt.get('created')) is not bool:
+                    raise ValueError('rule_write_receipt_required')
+                if receipt['created'] and receipt.get('stored_status') != 'candidate':
+                    raise ValueError('new_rule_must_remain_candidate')
+                receipts.append(receipt)
+                rule_ids.append(receipt['rule_id'])
 
+            new_ids = [r['rule_id'] for r in receipts if r['created']]
             return {
                 "status": "success",
                 "correct": correct,
-                "rules_added": rules_added,
+                "rules_added": len(new_ids),
+                "rule_ids": rule_ids,
+                "correct_source": "model_comparison_to_expert_text",
+                'rule_status': 'candidate' if new_ids else 'no_new_rules', 'rules_activated': 0,
+                'candidate_rule_ids': new_ids, 'rule_results': receipts,
             }
 
         except Exception as e:
-            logger.error(f"Supervised learning failed: {e}")
-            return {"status": "error", "error": str(e)}
+            logger.error("Supervised learning failed (%s)", type(e).__name__)
+            return {"status": "error", "error": "supervised_learning_failed", "correct": None}
 
     def store_fault_context(self, incident_query: str, rca_result: Dict,
-                             evidence: Dict, hypotheses: List[Dict]) -> str:
+                             evidence: Dict, hypotheses: List[Dict], *, memory_scope=None,
+                             source_incident_id: str = '') -> str:
         """Store a complete fault context for future reference."""
         fault = {
             "description": incident_query[:500],
             "root_cause": rca_result.get("root_cause", ""),
             "confidence": rca_result.get("confidence", 0),
             "fault_type": rca_result.get("fault_type", ""),
+            "source_incident_id": source_incident_id,
+            'memory_status': 'candidate',
+            **(memory_scope.source_fields() if memory_scope is not None else {}),
             "hypotheses": [h.get("description", "") for h in hypotheses[:5]],
             "evidence_summary": {
                 agent: str(result.get("summary", ""))[:300]

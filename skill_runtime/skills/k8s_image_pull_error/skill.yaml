@@ -1,0 +1,17 @@
+id: k8s.image_pull_error
+version: 0.1.0
+name: K8s Image Pull Error
+domain: k8s
+description: Diagnose ImagePullBackOff and ErrImagePull failures and propose guarded rollout recovery.
+stages: [detect, diagnose, heal, verify]
+risk: medium
+permissions: [k8s.read, k8s.write.rollout]
+tool_dependencies: [kubectl]
+tags: [kubernetes, image, imagepullbackoff, registry]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.85
+  min_confidence_for_auto_heal: 0.9

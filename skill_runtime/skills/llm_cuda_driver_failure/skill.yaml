@@ -1,0 +1,22 @@
+id: llm.cuda_driver_failure
+version: 0.1.0
+name: CUDA 与 GPU 驱动故障
+domain: llm
+description: Diagnose CUDA runtime/context, GPU Xid, clock throttle, PCIe degradation, and CUPTI/profiler overhead faults.
+stages: [detect, diagnose, heal, verify]
+risk: critical
+permissions: [prometheus.read, k8s.read, host.read, k8s.write.restart]
+tool_dependencies: [kubectl, curl, nvidia-smi, teller]
+tags: [llm, cuda, gpu, driver, xid, pcie, cupti, profiler]
+icon: cpu
+category: 智算驱动
+matching:
+  keywords: [cuda_error, cuda_ctx_corruption, gpu_clock_throttle, pcie_throttle, cupti_trace_overhead, xid, cuda, pcie, cupti, profiler]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.84
+  min_confidence_for_auto_heal: 0.97
+entrypoint: skill.py

@@ -1,0 +1,17 @@
+id: k8s.volume_mount_failed
+version: 0.1.0
+name: K8s Volume Mount Failed
+domain: k8s
+description: Detect, diagnose, and propose guarded recovery for Kubernetes volume mount, attach, and PVC binding failures.
+stages: [detect, diagnose, heal, verify]
+risk: medium
+permissions: [k8s.read, k8s.write.delete-pod]
+tool_dependencies: [kubectl]
+tags: [kubernetes, storage, volume, pvc, pv]
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.95

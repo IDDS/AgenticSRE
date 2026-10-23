@@ -1,0 +1,32 @@
+id: llm.gpu_partition_isolation
+version: 0.1.0
+name: GPU 分区与隔离诊断
+domain: llm
+description: Diagnose MIG, vGPU, MPS, time-slicing, GPU sharing, and isolation issues for AI workloads.
+stages: [detect, diagnose, heal, verify]
+risk: critical
+permissions: [k8s.read, host.read, k8s.write.config]
+tool_dependencies: [kubectl, nvidia-smi]
+tags: [llm, gpu, mig, vgpu, mps, time-slicing, isolation]
+icon: panels-top-left
+category: 智算资源
+matching:
+  keywords:
+    - mig
+    - vgpu
+    - mps
+    - time-slicing
+    - gpu sharing
+    - gpu slice
+    - mig profile
+    - 分区
+    - 切片
+    - 隔离
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.86
+  min_confidence_for_auto_heal: 0.99
+entrypoint: skill.py

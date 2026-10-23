@@ -1,0 +1,160 @@
+# AgenticSRE LLM inference fault scenarios.
+# These supplement vllm_fault_injector/scenarios.yaml with model-application
+# and multi-node T4 test cases. The runtime endpoint still defaults to dry-run.
+
+scenarios:
+  - id: "llm-sw-queue-overflow"
+    name: "请求队列溢出"
+    layer: "software"
+    fault_type: "request_queue_overflow"
+    category: "调度与连续批处理"
+    description: "将 vLLM max-num-seqs 降到 1，模拟高并发下调度队列堆积、请求排队和超时。"
+    severity: "warning"
+    expected_detection_time_s: 30
+    expected_symptoms:
+      - "num_requests_waiting 持续升高"
+      - "TTFT 明显增长"
+      - "吞吐下降但服务未崩溃"
+
+  - id: "llm-sw-continuous-batch-off"
+    name: "连续批处理退化"
+    layer: "software"
+    fault_type: "continuous_batch_disruption"
+    category: "调度与连续批处理"
+    description: "限制 max-num-batched-tokens，模拟 continuous batching 被错误配置导致的吞吐塌陷。"
+    severity: "warning"
+    expected_detection_time_s: 30
+    expected_symptoms:
+      - "tokens_per_second 下降"
+      - "TPOT 增长"
+      - "GPU 利用率呈锯齿状"
+
+  - id: "llm-sw-tokenizer-corruption"
+    name: "Tokenizer 配置异常"
+    layer: "software"
+    fault_type: "tokenizer_error"
+    category: "模型资产与输入处理"
+    description: "注入损坏 tokenizer 配置，模拟模型资产不一致或版本发布错误。"
+    severity: "critical"
+    expected_detection_time_s: 20
+    expected_symptoms:
+      - "请求解析失败"
+      - "HTTP 500 或 bad request 激增"
+      - "应用日志出现 tokenizer 初始化错误"
+
+  - id: "llm-sw-weight-corruption"
+    name: "模型权重局部损坏"
+    layer: "software"
+    fault_type: "weight_corruption"
+    category: "模型资产与输出质量"
+    description: "对模型权重 shard 做局部破坏，模拟 checkpoint 损坏、缓存污染或灰度发布资产错误。"
+    severity: "critical"
+    expected_detection_time_s: 45
+    expected_symptoms:
+      - "输出质量异常"
+      - "CUDA kernel error 或 safetensors 读取异常"
+      - "同样 prompt 的输出稳定性下降"
+
+  - id: "llm-drv-pcie-throttle"
+    name: "PCIe 传输拥塞"
+    layer: "driver"
+    fault_type: "pcie_throttle"
+    category: "GPU/驱动性能退化"
+    description: "制造 Host-Device 拷贝压力，模拟 T4 服务器上 PCIe 带宽争用导致的灰色性能故障。"
+    severity: "warning"
+    expected_detection_time_s: 45
+    expected_symptoms:
+      - "GPU utilization 不低但 token throughput 下降"
+      - "TTFT 和 TPOT 同时变差"
+      - "CPU-GPU 拷贝时间升高"
+
+  - id: "llm-drv-clock-throttle"
+    name: "GPU 时钟降频"
+    layer: "driver"
+    fault_type: "gpu_clock_throttle"
+    category: "GPU/驱动性能退化"
+    description: "锁定 GPU 低频，模拟温度、电源或调度策略引起的推理吞吐下降。"
+    severity: "warning"
+    expected_detection_time_s: 30
+    expected_symptoms:
+      - "gpu_clock_mhz 降低"
+      - "tokens_per_second 降低"
+      - "错误率不高但 SLA 退化"
+
+  - id: "llm-drv-cuda-context"
+    name: "CUDA 上下文破坏"
+    layer: "driver"
+    fault_type: "cuda_ctx_corruption"
+    category: "GPU/驱动硬故障"
+    description: "破坏 CUDA 上下文，模拟推理进程后续 kernel launch 全部失败。"
+    severity: "critical"
+    expected_detection_time_s: 20
+    expected_symptoms:
+      - "CUDA context error"
+      - "GPU 利用率归零"
+      - "推理请求全部失败"
+
+  - id: "llm-net-packet-loss"
+    name: "流式输出随机丢包"
+    layer: "network"
+    fault_type: "packet_loss"
+    category: "推理 API 与流式传输"
+    description: "对推理端点注入随机丢包，模拟 OpenAI 兼容流式输出中断、客户端重试和尾延迟扩大。"
+    severity: "warning"
+    expected_detection_time_s: 20
+    expected_symptoms:
+      - "stream interrupted"
+      - "P99 latency 上升"
+      - "客户端重试数增加"
+
+  - id: "llm-net-bandwidth-throttle"
+    name: "Token 流带宽限制"
+    layer: "network"
+    fault_type: "bandwidth_throttle"
+    category: "推理 API 与流式传输"
+    description: "限制服务出口带宽，模拟长回答或多租户环境下 token streaming 速度退化。"
+    severity: "warning"
+    expected_detection_time_s: 30
+    expected_symptoms:
+      - "流式 token 间隔增大"
+      - "ITL 增长"
+      - "吞吐不稳定"
+
+  - id: "llm-net-rdma-fallback"
+    name: "跨节点 RDMA/IB 退化"
+    layer: "network"
+    fault_type: "rdma_failure"
+    category: "多节点并行通信"
+    description: "在多 T4 节点上模拟 RDMA/IB 失败，观察 TP 通信回退和吞吐下降。"
+    severity: "critical"
+    expected_detection_time_s: 45
+    expected_symptoms:
+      - "NCCL WARN 或 timeout"
+      - "TP 同步耗时升高"
+      - "多节点吞吐低于单节点扩展预期"
+
+  - id: "llm-os-disk-pressure"
+    name: "模型加载磁盘压力"
+    layer: "os"
+    fault_type: "disk_pressure"
+    category: "操作系统与模型加载"
+    description: "制造磁盘写入压力，模拟模型 shard 加载、日志写入或本地缓存争用。"
+    severity: "warning"
+    expected_detection_time_s: 60
+    expected_symptoms:
+      - "模型加载时间变长"
+      - "冷启动变慢"
+      - "日志写入延迟"
+
+  - id: "llm-os-fd-exhaustion"
+    name: "文件描述符耗尽"
+    layer: "os"
+    fault_type: "fd_exhaustion"
+    category: "操作系统与连接管理"
+    description: "耗尽进程 fd，模拟高并发连接、日志文件和模型文件句柄竞争导致的新连接失败。"
+    severity: "critical"
+    expected_detection_time_s: 20
+    expected_symptoms:
+      - "too many open files"
+      - "新请求连接失败"
+      - "健康检查间歇失败"

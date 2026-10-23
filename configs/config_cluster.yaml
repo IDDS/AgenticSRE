@@ -5,11 +5,11 @@
 
 llm:
   api_key: "${LLM_API_KEY}"
-  base_url: "https://api.deepseek.com/v1"
-  model: "deepseek-chat"
+  base_url: "${LLM_BASE_URL:https://api.deepseek.com/v1}"
+  model: "${LLM_MODEL:deepseek-v4-pro}"
   temperature: 0.1
-  max_tokens: 8192
-  timeout: 120
+  max_tokens: 65536
+  timeout: 300
 
 runtime:
   mode: "web"
@@ -32,18 +32,14 @@ kubernetes:
   target_host: ""
 
 observability:
-  backend: "native"
-  alidata_env_file: ".env"
-  offline_mode: false
-  offline_data_dir: ""
-  offline_problem_id: ""
-  offline_data_type: "auto"
   prometheus_url: "http://10.10.3.146:30290"
+  otel_prometheus_url: "http://10.10.3.146:30091"
   elasticsearch_url: "http://localhost:9200"
   jaeger_url: "http://10.10.3.146:30686"
   grafana_url: "http://10.103.160.240:80"
 
 database:
+  # Reserved only; embedded ChromaDB/SQLite + JSON is the active persistence.
   dsn: ""
 
 mcp:
@@ -52,6 +48,10 @@ mcp:
 remediation:
   enabled: true
   confidence_threshold: 0.2
+  auto_confidence_threshold: 0.90
+  auto_history_success_rate_threshold: 0.80
+  auto_history_confidence_level: 0.95
+  auto_history_min_samples: 14
   max_rollback_depth: 5
   require_approval: true
 
@@ -68,6 +68,36 @@ memory:
   judge_threshold: 0.65
   judge_llm_weight: 0.4
 
+confidence_calibration:
+  raw_weight: 0.18
+  hypothesis_weight: 0.18
+  evidence_weight: 0.27
+  quality_weight: 0.17
+  specificity_weight: 0.10
+  history_weight: 0.10
+  hypothesis_top_weight: 0.75
+  evidence_coverage_weight: 0.45
+  evidence_signal_weight: 0.35
+  evidence_alignment_weight: 0.20
+  quality_judge_weight: 0.65
+  evidence_source_target: 4
+  evidence_signal_target: 3.0
+  evidence_alignment_target: 5
+  min_evidence_sources_without_cap: 2
+  min_sources_without_structured_evidence: 3
+  min_root_cause_chars: 30
+  specificity_cap_threshold: 0.55
+  min_history_samples: 5
+  history_confidence_level: 0.95
+  low_history_diagnosis_accuracy: 0.30
+  default_cap: 0.95
+  single_evidence_cap: 0.72
+  missing_structured_evidence_cap: 0.78
+  contradictory_evidence_cap: 0.70
+  review_required_cap: 0.75
+  low_specificity_cap: 0.65
+  low_history_diagnosis_accuracy_cap: 0.65
+
 daemon:
   poll_interval_seconds: 30
   dedup_ttl_seconds: 300
@@ -82,6 +112,14 @@ pipeline:
   enable_correlation: true
   enable_graph_rca: true
   enable_recovery: true
+  enable_collaboration_optimization: true
+  enable_fast_evidence_selection: true
+  evidence_agent_timeout_s: 45
+  enable_llm_inference_agent: true
+  enable_structured_evidence: true
+  evidence_summary_max_tokens: 1024
+  skip_alert_compression_for_manual_rca: true
+  skip_planning_in_fast_evidence: true
 
 alert:
   compression_enabled: true
@@ -102,7 +140,7 @@ detection:
   default_ewma_span: 10
   metric_checks:
     - name: "node_cpu_usage"
-      query: 'avg(rate(node_cpu_seconds_total{mode!="idle"}[5m])) by (instance) * 100'
+      query: 'avg by(instance)(1 - rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100'
       unit: "%"
       label_key: "instance"
       level: "node"
@@ -125,7 +163,7 @@ detection:
       warn: 85
       crit: 95
     - name: "container_cpu"
-      query: 'sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (pod, namespace) / sum(kube_pod_container_resource_limits{resource="cpu"}) by (pod, namespace) * 100'
+      query: 'sum(rate(container_cpu_usage_seconds_total{container!=""}[1m])) by (pod, namespace) / sum(kube_pod_container_resource_limits{resource="cpu"}) by (pod, namespace) * 100'
       unit: "%"
       label_key: "pod"
       ns_key: "namespace"

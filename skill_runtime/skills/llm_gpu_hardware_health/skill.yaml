@@ -1,0 +1,33 @@
+id: llm.gpu_hardware_health
+version: 0.1.0
+name: GPU 硬件健康诊断
+domain: llm
+description: Diagnose GPU ECC, Xid, temperature, power throttle, retired pages, NVLink and PCIe health issues.
+stages: [detect, diagnose, heal, verify]
+risk: critical
+permissions: [prometheus.read, k8s.read, host.read, k8s.write.cordon]
+tool_dependencies: [prometheus, kubectl, nvidia-smi, dmesg]
+tags: [llm, gpu, hardware, ecc, xid, temperature, nvlink, pcie]
+icon: thermometer-sun
+category: 智算硬件
+matching:
+  keywords:
+    - gpu_ecc_error
+    - gpu_xid_error
+    - retired_pages
+    - thermal throttle
+    - power throttle
+    - nvlink error
+    - pcie replay
+    - ECC
+    - Xid
+    - 温度
+    - 降频
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.86
+  min_confidence_for_auto_heal: 0.99
+entrypoint: skill.py

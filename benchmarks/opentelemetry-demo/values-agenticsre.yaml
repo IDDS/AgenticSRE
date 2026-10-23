@@ -1,0 +1,73 @@
+# OpenTelemetry Demo values for AgenticSRE benchmark runs.
+#
+# Goal:
+# - Keep the full demo microservice topology for RCA/self-healing experiments.
+# - Avoid the heaviest optional dependency by disabling OpenSearch log storage.
+# - Expose the user-facing entrypoint through a fixed NodePort.
+
+components:
+  accounting:
+    initContainers: []
+
+  cart:
+    initContainers: []
+
+  checkout:
+    initContainers: []
+
+  fraud-detection:
+    initContainers: []
+
+  flagd:
+    initContainers:
+      - name: init-config
+        image: docker.m.daocloud.io/library/alpine:3.18
+        command: ["sh", "-c", "cp /config-ro/demo.flagd.json /config-rw/demo.flagd.json && cat /config-rw/demo.flagd.json"]
+        volumeMounts:
+          - mountPath: /config-ro
+            name: config-ro
+          - mountPath: /config-rw
+            name: config-rw
+
+  frontend-proxy:
+    service:
+      type: NodePort
+      port: 8080
+      nodePort: 30088
+
+  valkey-cart:
+    imageOverride:
+      repository: "docker.m.daocloud.io/valkey/valkey"
+      tag: "9.0.1-alpine3.23"
+
+opensearch:
+  enabled: false
+
+grafana:
+  enabled: false
+
+prometheus:
+  enabled: true
+  server:
+    service:
+      type: NodePort
+      nodePort: 30091
+
+jaeger:
+  enabled: true
+  jaeger:
+    image:
+      repository: docker.m.daocloud.io/jaegertracing/jaeger
+      tag: "2.8.0"
+
+opentelemetry-collector:
+  enabled: true
+  image:
+    repository: "docker.m.daocloud.io/otel/opentelemetry-collector-contrib"
+  mode: deployment
+  replicaCount: 1
+  config:
+    service:
+      pipelines:
+        logs:
+          exporters: [debug]

@@ -1,0 +1,15 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: agenticsre-domain-resolution-error
+  namespace: agenticsre-platform-chaos-validation
+spec:
+  action: error
+  mode: one
+  selector:
+    namespaces: [agenticsre-platform-chaos-validation]
+    labelSelectors:
+      app: agenticsre-dns-client
+  patterns:
+    - agenticsre-dns-target.agenticsre-platform-chaos-validation.svc.cluster.local
+  duration: 30s

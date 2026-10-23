@@ -161,6 +161,14 @@ class ToolRegistry:
         """Get the singleton instance."""
         return cls()
 
+    @classmethod
+    def isolated(cls) -> 'ToolRegistry':
+        """Create a request-scoped registry that does not mutate the singleton."""
+        instance = object.__new__(cls)
+        instance._tools = {}
+        instance._categories = {}
+        return instance
+
     def __len__(self) -> int:
         return len(self._tools)
 

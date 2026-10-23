@@ -1,0 +1,28 @@
+id: llm.aishperf_aiinfra_diagnosis
+version: 0.1.0
+name: AISHPerf AI Infra Diagnosis Adapter
+domain: llm
+description: Integrates AISHPerf/Alcor AIOps chaos and aiops-eval diagnosis domains into AgenticSRE as review-only evidence and recovery guidance.
+stages: [detect, diagnose]
+risk: high
+permissions:
+  - read.observability
+  - review.external_chaos
+tags:
+  - llm
+  - aiinfra
+  - aishperf
+  - aiops-chaos
+  - diagnosis
+  - review-only
+policy:
+  requires_approval: true
+  safe_auto_execute: false
+confidence:
+  min_evidence_sources: 2
+  min_confidence_for_heal: 0.82
+  min_confidence_for_auto_heal: 0.95
+external_source:
+  repository: https://gitee.com/aishperf-caict/aishperf_openness
+  chaos_component: entities/aiops-chaos
+  eval_component: suites/aiops-eval
