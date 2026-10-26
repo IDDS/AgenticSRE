@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "app_imported": true,
+  "history_route_present": true,
+  "source_mounts": false,
+  "build_scope": "actual_application_COPY_with_existing_dependencies",
+  "image_id": "sha256:c93da219e154e00271c5b80ea2577c2efc7b9c5bae0661de8a5bdd38ddf54a6e",
+  "production_replaced": false
+}

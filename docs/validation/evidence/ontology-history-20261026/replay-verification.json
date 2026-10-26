@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "scope": "Saved real cluster observations inside synthetic replay investigations",
+  "same_uid_observations": 3,
+  "saved_selected_backend_counts": [
+    1,
+    0,
+    1
+  ],
+  "selector_changes_resolved": 2,
+  "new_collection": false,
+  "new_fault_injection": false,
+  "model_called": false,
+  "prior_business_impact_verified": false,
+  "prior_experiment_status": "failed_acceptance",
+  "diagnosis_accuracy_verified": false
+}

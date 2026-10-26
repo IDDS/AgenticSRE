@@ -4408,6 +4408,8 @@ async function loadRCAOntology(runId) {
     const token = (state._ontologyRequest || 0) + 1;
     state._ontologyRequest = token;
     state._lastOntology = null;
+    state._ontologyHistory = null;
+    state._ontologyHistoryRequest = (state._ontologyHistoryRequest || 0) + 1;
     if (!runId) return;
     const model = await api(`/api/rca/${encodeURIComponent(runId)}/ontology`);
     if (state.rcaRunId !== runId || state._ontologyRequest !== token) return;
@@ -4432,7 +4434,7 @@ async function loadRCAOntology(runId) {
             <button class="btn btn-sm" onclick="loadOntologyCollection('observations')">观测</button>
             <button class="btn btn-sm" onclick="loadOntologyCollection('relations')">关系</button>
             <button class="btn btn-sm" onclick="loadOntologyCollection('tool_executions')">工具执行</button>
-        </div><div id="rca-ontology-items"></div><div id="rca-lineage-panel"></div>`;
+        </div><div id="rca-ontology-items"></div><div id="rca-object-history-panel" aria-live="polite"></div><div id="rca-lineage-panel"></div>`;
     loadOntologyCollection('objects');
     loadRCALineage(model);
 }
@@ -4527,6 +4529,7 @@ async function loadOntologyCollection(collection, entityId = '', offset = 0, rec
                 <p>UID：${escapeHtml(row.uid || '未采集')} · ${row.identity_status === 'uid_bound' ? '已绑定对象版本身份' : '身份信息不完整'}</p>
                 <button class="btn btn-sm" onclick="loadOntologyCollection('observations','${escapeHtmlAttr(row.id)}')">查看该对象观测</button>
                 <button class="btn btn-sm" onclick="loadOntologyCollection('relations','${escapeHtmlAttr(row.id)}')">查看该对象关系</button>
+                ${(model.history_eligible_object_ids || []).includes(row.id) ? `<button class="btn btn-sm" onclick="loadOntologyObjectHistory('${escapeHtmlAttr(row.id)}')">跨调查历史</button>` : ''}
                 ${row.identity_status === 'uid_bound' && ['Pod','ReplicaSet','Deployment','StatefulSet','DaemonSet','Job','CronJob'].includes(row.kind) && row.cluster_id === model.scope.cluster_id && (!model.scope.namespace || row.namespace === model.scope.namespace) ? `<button class="btn btn-sm" onclick="collectRCALineage('${escapeHtmlAttr(row.id)}',this)">采集发布与镜像追溯</button>` : ''}
                 <code>${escapeHtml(row.id)}</code></details>`;
         } else if (collection === 'observations') {
@@ -4550,6 +4553,95 @@ async function loadOntologyCollection(collection, entityId = '', offset = 0, rec
     if (offset + rows.length < page.total) html += `<button class="btn btn-sm" onclick="loadOntologyCollection('${collection}','${escapeHtmlAttr(entityId)}',${offset + 25})">下一页</button>`;
     html += '</div>';
     el.innerHTML = html;
+}
+
+async function loadOntologyObjectHistory(entityId, offset = 0) {
+    const model = state._lastOntology;
+    const panel = document.getElementById('rca-object-history-panel');
+    if (!model || state.rcaRunId !== model.run_id || !panel) return;
+    let context = state._ontologyHistory;
+    if (!context || context.model !== model || context.entityId !== entityId) {
+        context = {model, entityId, data: null, stale: false};
+        state._ontologyHistory = context;
+        panel.innerHTML = `<section class="rca-remediation"><strong>跨调查对象历史</strong>
+            <p>保留窗口内的已记录观测，以所选调查的采集时间为上限；观测变化不单独证明因果。</p>
+            <button class="btn btn-sm" data-history-action="refresh">刷新历史</button>
+            <button class="btn btn-sm" data-history-action="reload">重新加载本次调查</button>
+            <p data-history-status role="status"></p><div data-history-body></div><div data-history-pager></div></section>`;
+        panel.onclick = event => {
+            const button = event.target.closest('button[data-history-action]');
+            if (!button || !panel.contains(button) || state._ontologyHistory !== context || state._lastOntology !== model || state.rcaRunId !== model.run_id) return;
+            const action = button.dataset.historyAction;
+            if (action === 'source') openRCAHistoryRun(button.dataset.runId);
+            else if (action === 'reload') loadRCAOntology(model.run_id);
+            else loadOntologyObjectHistory(entityId, action === 'page' ? Number(button.dataset.offset) : 0);
+        };
+    }
+    const token = (state._ontologyHistoryRequest || 0) + 1;
+    state._ontologyHistoryRequest = token;
+    const active = () => state._lastOntology === model && state.rcaRunId === model.run_id &&
+        state._ontologyHistory === context && state._ontologyHistoryRequest === token;
+    const status = panel.querySelector('[data-history-status]');
+    status.textContent = context.data ? '正在读取，现有内容保留至读取成功。' : '正在读取对象历史…';
+    panel.querySelectorAll('[data-history-action="page"]').forEach(button => { button.disabled = true; });
+    const query = new URLSearchParams({revision: model.revision, offset: String(offset), limit: '25'});
+    if (offset > 0 && context.data) query.set('history_revision', context.data.history_revision);
+    try {
+        const data = await api(`/api/rca/${encodeURIComponent(model.run_id)}/objects/${encodeURIComponent(entityId)}/history?${query}`,
+            {throwOnError: true, suppressErrorLog: true, cache: 'no-store'});
+        if (!active()) return;
+        if (!Array.isArray(data?.items) || data.target?.id !== entityId || data.source_run_id !== model.run_id ||
+                data.source_revision !== model.revision || typeof data.history_revision !== 'string') throw new Error('对象历史响应不完整。');
+        context.data = data;
+        context.stale = false;
+        const labels = {baseline:'首份可比较观测', changed:'共同字段存在变化', availability_changed:'字段采集范围变化',
+            unchanged:'共同观测字段未变', ambiguous_time:'同一采集时间，先后顺序未知', context_only:'历史上下文，不更新比较基线', not_comparable:'状态投影不足，无法比较'};
+        const gapLabels = {matching_object_uid_missing:'部分同名观测缺少 UID', matching_observation_time_missing:'部分观测缺少有效采集时间',
+            collection_incomplete:'来源调查存在采集失败或不完整记录', history_run_identity_missing:'部分调查缺少有效来源标识',
+            legacy_excerpts_excluded:'旧审核节选未纳入事实历史', non_json_tool_result_excluded:'部分非 JSON 工具结果未纳入',
+            state_not_comparable:'部分状态不能比较', invalid_state_projection:'部分投影无法校验',
+            run_observation_limit:'部分调查超过观测条数上限', run_event_limit:'部分调查超过事件扫描上限',
+            run_command_limit:'部分调查超过工具记录上限', tool_result_size_limit:'部分工具结果超过体积上限',
+            observation_size_limit:'部分观测超过体积或结构上限',
+            tool_resource_limit:'部分工具资源清单超过上限', invalid_tool_projection:'部分工具投影无法校验'};
+        const source = runId => `<button class="btn btn-sm" data-history-action="source" data-run-id="${escapeHtmlAttr(runId)}">查看来源调查</button>`;
+        let html = `<p>${escapeHtml(data.target.cluster_id)} / ${escapeHtml(data.target.namespace || '集群级')} · ${escapeHtml(data.target.kind)}/${escapeHtml(data.target.name)}<br>
+            UID：<code>${escapeHtml(data.target.uid)}</code> · 时间上限：${escapeHtml(data.as_of)}</p>
+            <p>当前保留窗口最多 ${Number(data.coverage?.retained_terminal_limit || 200)} 条终态调查，另包含所选调查视图。共 ${Number(data.total)} 项同实例观测。
+            ${data.coverage?.source_outside_retained_window ? '所选调查位于终态保留窗口之外。' : ''}</p>
+            <p class="text-muted">这是离散采集记录；未列出不等于不存在，字段缺失不等于资源删除。补充发布谱系快照在下方独立展示。</p>`;
+        if (data.gaps?.length) html += `<p class="text-warning">覆盖缺口：${data.gaps.map(g => escapeHtml(gapLabels[g] || g)).join('；')}</p>`;
+        const omitted = data.coverage?.omitted || {};
+        if (omitted.after_as_of) html += `<p>已排除 ${Number(omitted.after_as_of)} 项时间上限之后的观测。</p>`;
+        if (!data.items.length) html += '<p>在当前保留范围和时间上限内，没有可展示的同实例观测。请同时核对上述覆盖缺口。</p>';
+        for (const row of data.items) {
+            const comparison = row.comparison || {};
+            html += `<details class="skill-raw-fold"><summary>${escapeHtml(row.observed_at)} · ${escapeHtml(labels[comparison.status] || comparison.status)}</summary>
+                <p>调查：${escapeHtml(row.run_id)} · ${escapeHtml(row.run_status)} ${source(row.run_id)}</p>
+                ${row.collection_has_gaps ? '<p class="text-warning">所在调查有采集缺口；本条已记录观测仍保留供核对。</p>' : ''}
+                <p>观测引用：<code>${escapeHtml(row.observation_id)}</code> · 资源版本：${escapeHtml(String(row.resource_version ?? '未采集'))}</p>
+                ${comparison.previous_observation_id ? `<p>比较基线：${escapeHtml(comparison.previous_run_id)} / ${escapeHtml(comparison.previous_observation_id)}</p>` : ''}
+                ${comparison.changes?.length ? `<p>两次均采集到的字段变化：</p><pre>${escapeHtml(JSON.stringify(comparison.changes, null, 2))}</pre>` : ''}
+                ${comparison.availability?.added_fields?.length ? `<p>本次新增采集字段：${comparison.availability.added_fields.map(escapeHtml).join('、')}</p>` : ''}
+                ${comparison.availability?.missing_fields?.length ? `<p>本次未采集字段：${comparison.availability.missing_fields.map(escapeHtml).join('、')}</p>` : ''}
+                <details><summary>受限状态投影</summary><pre>${escapeHtml(JSON.stringify(row.state, null, 2))}</pre></details></details>`;
+        }
+        if (data.other_incarnations?.length) html += `<details class="skill-raw-fold"><summary>同名、不同 UID 的其他实例（${data.other_incarnations.length} 个，未合并）</summary>` +
+            data.other_incarnations.map(row => `<p>UID：${escapeHtml(row.uid)} · 观测 ${Number(row.observations)} 项 · ${escapeHtml(row.first_seen)} 至 ${escapeHtml(row.last_seen)}</p>`).join('') + '</details>';
+        panel.querySelector('[data-history-body]').innerHTML = html;
+        let pager = '';
+        if (data.offset > 0) pager += `<button class="btn btn-sm" data-history-action="page" data-offset="${Math.max(0, data.offset - data.limit)}">上一页</button>`;
+        if (data.has_more) pager += `<button class="btn btn-sm" data-history-action="page" data-offset="${data.offset + data.limit}">下一页</button>`;
+        panel.querySelector('[data-history-pager]').innerHTML = pager;
+        status.textContent = data.items.length ? `已读取第 ${Number(data.offset) + 1}—${Number(data.offset) + data.items.length} 项；不表示当前集群状态。` :
+            '当前范围没有可展示的观测；请核对覆盖缺口，不表示当前集群状态。';
+    } catch (error) {
+        if (!active()) return;
+        context.stale = error.status === 409;
+        status.textContent = `${error.message || '对象历史读取失败。'}${context.data ? ' 已保留原页面，尚未刷新。' : ''}`;
+    } finally {
+        if (active()) panel.querySelectorAll('[data-history-action="page"]').forEach(button => { button.disabled = context.stale; });
+    }
 }
 
 async function loadRCALineage(model = state._lastOntology) {

@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "scope": "Synthetic real HTTP/UI object history; no live failure or model accuracy claim",
+  "page_errors": [],
+  "checks": [
+    "actual object-row click, same-UID history, separated incarnations, escaped untrusted state",
+    "503 retains page, pagination, 409 retains stale page, explicit refresh",
+    "late object A cannot overwrite B, late response cannot overwrite another investigation",
+    "history desktop/mobile view has no panel overflow",
+    "source-investigation navigation uses the saved record"
+  ],
+  "stats": {
+    "mode": "normal",
+    "model_calls": 0,
+    "mutation_calls": 0,
+    "history_reads": 10
+  }
+}

@@ -43,7 +43,7 @@ AgenticSRE 将告警压缩、假设驱动诊断、运维对象建模、受控处
 
 两条诊断链路共享部分工具、数据契约和存储能力，但不具备完全相同的审核覆盖。多智能体链路已有竞争假设的独立角色复核；Agent+Skill 尚缺等价独立 Judge 时，相关真实对象动作保持阻断。独立角色可以使用同一模型，不能理解为独立模型或已知真值。独立 Skill Runtime 未启动时可使用本进程桥接 fallback，事件会记录实际运行方式，详见 [Agent+Skill 集成](skill_runtime/README.md#agentskill-集成)。
 
-Ontology 借鉴“对象—关系—动作”的组织思想：同一调查中，Pod、Service、控制器等对象以集群、namespace、UID 等身份关联观测；候选假设引用观测，动作引用服务端保存的调查与对象版本。Service 后端关系核对实际 selector、ownerReference 和 EndpointSlice targetRef，保留缺口及两端证据，不把结构关联当作故障因果。它让页面、诊断和执行使用一致的对象语义，当前仍是**单次调查视图**，尚不是跨调查历史 CMDB，也没有完成外部 Git、镜像注册表和 CI/CD 事实核验。详见 [运维 Ontology 与对象动作](docs/operational-ontology.md)。
+Ontology 借鉴“对象—关系—动作”的组织思想：同一调查中，Pod、Service、控制器等对象以集群、namespace、UID 等身份关联观测；候选假设引用观测，动作引用服务端保存的调查与对象版本。Service 后端关系核对实际 selector、ownerReference 和 EndpointSlice targetRef，保留缺口及两端证据，不把结构关联当作故障因果。对象页还提供**跨调查观测历史**：按 UID 汇集当前保留记录，在所选调查的采集时间上限内比较共同字段，单独展示同名重建实例、采集缺口和来源。这是有限保留记录的只读视图，尚不是持续采集的历史 CMDB，也没有完成外部 Git、镜像注册表和 CI/CD 事实核验。详见 [运维 Ontology 与对象动作](docs/operational-ontology.md)及[历史功能验收](docs/validation/ontology-history-20261026.md)。
 
 ## 五阶段 Pipeline
 
