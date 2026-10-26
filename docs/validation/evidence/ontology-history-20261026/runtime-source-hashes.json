@@ -1,0 +1,9 @@
+{
+  "scope": "Final publication r2 runtime and tests; documentation and receipts updated after validation",
+  "sha256": {
+    "skill_runtime/ontology_history.py": "dcfea5800aec4b4441edcce4fcbecf5387974c9253d123fe3e2d655e913cad01",
+    "tests/test_ontology_history.py": "e4a1ddad64d4ca15200d4bdbfcf53079578e3e8d2c9904eef422fa72b7eed892",
+    "web_app/app.py": "1783b3a3086c9c6c511149a2cd084cf64e8652796bf9d9b31927ec824651a35d",
+    "web_app/static/js/app.js": "0687c69c69bebff1d85012e7a3de1dc3c9dc0ae246e4eb3a92ea9e59aba8d9ad"
+  }
+}

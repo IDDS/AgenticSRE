@@ -1,0 +1,49 @@
+{
+  "status": "passed",
+  "source_files": 828,
+  "network": "none",
+  "module_paths": {
+    "skill_runtime.ontology_history": "/workspace/skill_runtime/ontology_history.py",
+    "skill_runtime.service_topology": "/workspace/skill_runtime/service_topology.py",
+    "configs.config_loader": "/workspace/configs/config_loader.py",
+    "memory.fault_context_store": "/workspace/memory/fault_context_store.py",
+    "memory.history_retrieval": "/workspace/memory/history_retrieval.py",
+    "orchestrator.rca_engine": "/workspace/orchestrator/rca_engine.py",
+    "web_app.app": "/workspace/web_app/app.py"
+  },
+  "stages": [
+    {
+      "name": "targeted",
+      "exit_code": 0,
+      "tail": [
+        "          ",
+        "    @app.on_event(\"startup\")",
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "48 passed, 5 warnings in 3.36s"
+      ]
+    },
+    {
+      "name": "full",
+      "exit_code": 0,
+      "duration_s": 290.897,
+      "tail": [
+        "          ",
+        "    @app.on_event(\"startup\")",
+        "",
+        "tests/test_feedback_retraction.py: 30 warnings",
+        "tests/test_memory_admission.py: 2 warnings",
+        "tests/test_memory_candidates.py: 1 warning",
+        "tests/test_memory_empty_lookup.py: 2 warnings",
+        "  /usr/local/lib/python3.12/site-packages/chromadb/api/collection_configuration.py:327: DeprecationWarning: legacy embedding function config: 'Embedding' object has no attribute 'is_legacy'",
+        "    return json.dumps(create_collection_configuration_to_json(config, metadata))",
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "2108 passed, 40 warnings in 289.31s (0:04:49)"
+      ]
+    }
+  ],
+  "js_syntax": true,
+  "source_hashes_unchanged": true,
+  "production_modified": false
+}

@@ -44,6 +44,8 @@ from orchestrator.skill_agent import SkillAgent, SkillAgentRequest
 from operational_ontology import (build_investigation, query_investigation, result_envelopes,
                                   action_context, command_targets_bound_object, preconditioned_action, ontology_schema)
 from operational_lineage import collect_lineage, traceable_object
+from skill_runtime.ontology_history import (build_object_history, eligible_object_ids, check_source_budget,
+                                            HistoryBindingError, HistoryUnavailable)
 from operational_provenance import compare_snapshots, latest_comparisons
 from diagnostic_strategy import strategy_view
 from integrations.aishperf import AISHPerfCatalog, build_aiops_eval_summary
@@ -2624,6 +2626,7 @@ _state = {
 
 _RCA_RUN_DEDUP_LOCK = threading.Lock()
 _RCA_HISTORY_LOCK = threading.RLock()
+_RCA_HISTORY_LOAD_FAILED = False
 
 
 def _fault_mode_registry() -> FaultModeRegistry:
@@ -3283,6 +3286,8 @@ def _build_llm_host_heal_plan(
 
 def _load_rca_history():
     """Load persisted RCA runs from disk on startup."""
+    global _RCA_HISTORY_LOAD_FAILED
+    _RCA_HISTORY_LOAD_FAILED = False
     if _RCA_HISTORY_FILE.exists():
         try:
             data = json.loads(_RCA_HISTORY_FILE.read_text(encoding="utf-8"))
@@ -3298,6 +3303,7 @@ def _load_rca_history():
             _save_rca_history()
             logger.info(f"Loaded {len(data)} RCA runs from disk")
         except Exception as e:
+            _RCA_HISTORY_LOAD_FAILED = True
             logger.warning(f"Failed to load RCA history: {e}")
 
 
@@ -11687,7 +11693,58 @@ async def rca_ontology(run_id: str):
     return {key: value for key, value in model.items()
             if key not in {"observations", "relations", "objects", "tool_executions"}} | {
         "action_context": action_context(model),
+        "history_eligible_object_ids": eligible_object_ids(model),
         "counts": {key: len(model[key]) for key in ("objects", "observations", "relations", "tool_executions")}}
+
+
+_ONTOLOGY_HISTORY_READERS = threading.BoundedSemaphore(2)
+
+
+@app.get("/api/rca/{run_id}/objects/{entity_id}/history")
+def rca_object_history(run_id: str, entity_id: str,
+                       revision: str = Query(..., min_length=1, max_length=128),
+                       history_revision: str = Query('', max_length=128),
+                       offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100)):
+    """Read retained evidence in a worker; never reread the entire history file."""
+    if not _ONTOLOGY_HISTORY_READERS.acquire(blocking=False):
+        raise HTTPException(503, "对象历史读取繁忙，请稍后重试；已有记录未改变。")
+    try:
+        if _RCA_HISTORY_LOAD_FAILED:
+            raise HTTPException(503, "历史存储未能完整载入，请先恢复存储后重试。")
+        run = _state['rca_runs'].get(run_id)
+        if not run:
+            raise HTTPException(404, "分析记录不存在")
+        deadline = time.monotonic() + 3
+        check_source_budget(run, deadline=deadline)
+        try:
+            source = _json_safe_snapshot({k: run.get(k) for k in
+                ('id', 'status', 'cluster_id', 'namespace', 'result', 'events')})
+        except (RuntimeError, RecursionError) as exc:
+            raise HistoryUnavailable('source_changed_during_snapshot') from exc
+        # Retention is selected using the original run timestamps. The source
+        # compact snapshot is substituted only after that selection.
+        model = build_investigation(source)
+        if revision != model['revision'] or model['run_id'] != run_id:
+            raise HTTPException(409, "调查记录已更新，请重新打开记录后读取对象历史。")
+        if not any(obj['id'] == entity_id for obj in model['objects']):
+            raise HTTPException(404, "本次调查没有该对象。")
+        try:
+            records = list(_state['rca_runs'].values())
+        except RuntimeError as exc:
+            raise HistoryUnavailable('history_changed_during_read') from exc
+        result = build_object_history(model, source, records, entity_id, deadline=deadline)
+        if (offset and not history_revision) or history_revision and history_revision != result['history_revision']:
+            raise HTTPException(409, "对象历史已变化，请刷新第一页；已有页面仅供旧版本参考。")
+        items = result.pop('items')
+        result.update(items=items[offset:offset + limit], total=len(items), offset=offset, limit=limit,
+                      has_more=offset + limit < len(items))
+        return JSONResponse(result, headers={'Cache-Control': 'private, no-store'})
+    except HistoryBindingError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except HistoryUnavailable as exc:
+        raise HTTPException(503, "对象历史超出读取预算，请稍后重试；不能据此认为没有历史记录。") from exc
+    finally:
+        _ONTOLOGY_HISTORY_READERS.release()
 
 
 @app.get("/api/rca/{run_id}/strategy")
