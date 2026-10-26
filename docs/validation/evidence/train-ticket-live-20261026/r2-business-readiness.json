@@ -1,0 +1,6 @@
+{
+  "first_valid_at": "2026-10-26T10:56:03.703083+00:00",
+  "warmup_samples": 14,
+  "warmup_failures": 13,
+  "observed_warmup_s": 19.506
+}

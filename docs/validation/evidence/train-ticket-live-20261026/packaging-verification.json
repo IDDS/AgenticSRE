@@ -1,0 +1,14 @@
+{
+  "status": "passed",
+  "source_mounts": false,
+  "web_app_imported": true,
+  "module_sha256": {
+    "recovery_verification.py": "75e816cc2bf5aceb4e83a2155d6044ac085e5802542e4de196795d24879c4a8e",
+    "memory/fault_context_store.py": "177cea9b01f67f71fc356db8121158b78b644125b2d7cad0ad89084fb5484f8a",
+    "web_app/app.py": "f90e87523329bd6931a84a2fb97b7aed2ff5871b76f414ebec67850ab5a988df",
+    "skill_runtime/skills/generic_evidence_collection/skill.py": "8b3e00ce1c702cdc4e8497b430499e53f98e90ec728ebdb578c2ba1d724dfd9c"
+  },
+  "build_scope": "actual_application_COPY_with_existing_dependencies",
+  "production_replaced": false,
+  "image_id": "sha256:b89f98aa10b0cdf25e5df35f79f7af033eacd0b9d91559f01b9d9eebadd36a5d"
+}

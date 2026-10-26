@@ -1,0 +1,199 @@
+{
+  "collected_at": "2026-10-26T11:08:16.193728+00:00",
+  "later_snapshot_not_a_new_live_fault": true,
+  "records": [
+    {
+      "case": "healthy-control",
+      "mode": "multi",
+      "id": "rca-4798c161",
+      "status_at_observation_budget": "running",
+      "seconds_at_budget": 180.699,
+      "status_when_collected": "completed",
+      "diagnosis": {
+        "root_cause": "仍无法定位 ts-station-service 接口异常的具体根因。第二轮补充证据仅重复采集 jaeger 与 loadgenerator 的 CPU/拓扑信息，未提供 ts-station-service 的 Service、Endpoints、Pod、日志或链路追踪数据；因此无法确认选择器不匹配、资源不足或下游依赖故障。观测窗口内 10 笔业务请求均返回 HTTP 200，且对照路由服务也全部成功，用户可观测层面未见异常，但目标服务内部证据仍缺失，根因保持未知。",
+        "fault_type": "unknown",
+        "confidence": 0.465,
+        "root_entity": null,
+        "diagnosis_status": "requires_review",
+        "automation_gate": {
+          "allowed": false,
+          "blockers": [
+            "missing_or_invalid_evidence_citations",
+            "unsupported_claims",
+            "quality_review_required"
+          ]
+        },
+        "model_response_validation": null
+      },
+      "action_context": {
+        "recorded_conditions_met": false,
+        "blockers": [
+          "target_incarnation_unresolved",
+          "target_resource_version_missing",
+          "independent_review_required",
+          "diagnosis_gate_not_allowed"
+        ]
+      }
+    },
+    {
+      "case": "healthy-control",
+      "mode": "skill",
+      "id": "rca-76f35702",
+      "status_at_observation_budget": "failed",
+      "seconds_at_budget": 14.236,
+      "status_when_collected": "failed",
+      "diagnosis": {
+        "root_cause": "",
+        "fault_type": "",
+        "confidence": null,
+        "root_entity": null,
+        "diagnosis_status": null,
+        "automation_gate": null,
+        "model_response_validation": null
+      },
+      "action_context": {
+        "recorded_conditions_met": false,
+        "blockers": [
+          "investigation_not_completed",
+          "target_incarnation_unresolved",
+          "target_resource_version_missing",
+          "independent_review_required",
+          "diagnosis_gate_not_allowed"
+        ]
+      }
+    },
+    {
+      "case": "station-fault-r1",
+      "mode": "multi",
+      "id": "rca-4c1d9234",
+      "status_at_observation_budget": "running",
+      "seconds_at_budget": 165.182,
+      "status_when_collected": "completed",
+      "diagnosis": {
+        "root_cause": "Deployment/ts-station-service 在 train-ticket 命名空间中的期望副本数为 0，导致 Service/ts-station-service 没有任何就绪端点，请求无法路由到后端 Pod，从而返回 502 或连接失败。",
+        "fault_type": "service_disruption",
+        "confidence": 0.65,
+        "root_entity": {
+          "namespace": "train-ticket",
+          "kind": "Deployment",
+          "name": "ts-station-service"
+        },
+        "diagnosis_status": "requires_review",
+        "automation_gate": {
+          "allowed": false,
+          "blockers": [
+            "unresolved_investigation_gaps",
+            "quality_review_required"
+          ]
+        },
+        "model_response_validation": null
+      },
+      "action_context": {
+        "recorded_conditions_met": false,
+        "blockers": [
+          "independent_review_required",
+          "diagnosis_gate_not_allowed"
+        ]
+      }
+    },
+    {
+      "case": "station-fault-r1",
+      "mode": "skill",
+      "id": "rca-04d35254",
+      "status_at_observation_budget": "failed",
+      "seconds_at_budget": 29.188,
+      "status_when_collected": "failed",
+      "diagnosis": {
+        "root_cause": "",
+        "fault_type": "",
+        "confidence": null,
+        "root_entity": null,
+        "diagnosis_status": null,
+        "automation_gate": null,
+        "model_response_validation": null
+      },
+      "action_context": {
+        "recorded_conditions_met": false,
+        "blockers": [
+          "investigation_not_completed",
+          "target_incarnation_unresolved",
+          "target_resource_version_missing",
+          "independent_review_required",
+          "diagnosis_gate_not_allowed"
+        ]
+      }
+    },
+    {
+      "case": "station-fault-r2",
+      "mode": "multi",
+      "id": "rca-2a3e88b7",
+      "status_at_observation_budget": "running",
+      "seconds_at_budget": 167.995,
+      "status_when_collected": "completed",
+      "diagnosis": {
+        "root_cause": "Deployment/ts-station-service 的 desired_replicas=0，导致 Service/ts-station-service 无就绪端点，经 ts-ui-dashboard 调用 GET /api/v1/stationservice/stations 时请求被代理返回 502。缩零状态在窗口结束后约 2-3 分钟被持续观测到，resource_version 未变化，但确切窗口内状态仍为推断。具体缩零来源未在证据中揭示。",
+        "fault_type": "service_disruption",
+        "confidence": 0.65,
+        "root_entity": {
+          "namespace": "train-ticket",
+          "kind": "Deployment",
+          "name": "ts-station-service"
+        },
+        "diagnosis_status": "requires_review",
+        "automation_gate": {
+          "allowed": false,
+          "blockers": [
+            "unsupported_claims",
+            "incomplete_model_execution",
+            "unresolved_investigation_gaps",
+            "quality_review_required"
+          ]
+        },
+        "model_response_validation": {
+          "status": "requires_review",
+          "incomplete_responses": [
+            "truncated"
+          ],
+          "call_timeouts": 0,
+          "failed_calls": [],
+          "failed_stages": [],
+          "confidence_before_cap": 0.693,
+          "confidence_cap": 0.65
+        }
+      },
+      "action_context": {
+        "recorded_conditions_met": false,
+        "blockers": [
+          "independent_review_required",
+          "diagnosis_gate_not_allowed"
+        ]
+      }
+    },
+    {
+      "case": "station-fault-r2",
+      "mode": "skill",
+      "id": "rca-f876aeaf",
+      "status_at_observation_budget": "completed",
+      "seconds_at_budget": 22.586,
+      "status_when_collected": "completed",
+      "diagnosis": {
+        "root_cause": "Service ts-station-service 的 Endpoints 为空（<none>），当前没有就绪 Pod 可路由，导致请求返回 502。已证实 Service selector 为 app=ts-station-service，但未采集到任何匹配该 selector 的 Pod 或工作负载状态，无法进一步确认是 Pod 全部不可用还是 selector 与 Pod 标签不匹配。",
+        "fault_type": "ServiceUnavailable",
+        "confidence": 0.683,
+        "root_entity": null,
+        "diagnosis_status": null,
+        "automation_gate": null,
+        "model_response_validation": null
+      },
+      "action_context": {
+        "recorded_conditions_met": false,
+        "blockers": [
+          "target_incarnation_unresolved",
+          "target_resource_version_missing",
+          "independent_review_required",
+          "diagnosis_gate_not_allowed"
+        ]
+      }
+    }
+  ]
+}

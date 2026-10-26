@@ -1,0 +1,28 @@
+{
+  "at": "2026-10-26T10:47:11.950457+00:00",
+  "new_fault_injected": false,
+  "original_failed_windows_retained": true,
+  "windows": [
+    {
+      "samples": 10,
+      "successes": 10,
+      "controls_healthy": true,
+      "p95_ms": 188.486
+    },
+    {
+      "samples": 10,
+      "successes": 10,
+      "controls_healthy": true,
+      "p95_ms": 50.979
+    },
+    {
+      "samples": 10,
+      "successes": 10,
+      "controls_healthy": true,
+      "p95_ms": 67.913
+    }
+  ],
+  "business_currently_healthy": true,
+  "exact_mttr_verified": false,
+  "autonomous_recovery_verified": false
+}

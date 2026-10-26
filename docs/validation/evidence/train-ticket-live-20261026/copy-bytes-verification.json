@@ -1,0 +1,18 @@
+{
+  "status": "passed",
+  "scope": "Every declared application COPY source file; existing dependencies remain inherited",
+  "images": [
+    {
+      "image": "agenticsre:live-recovery-regression-20261026-r2",
+      "files": 424,
+      "content_sha256": "f0422d8ccf8e6df626a3eeda0989991f949a3db04e5b9f79d540fea3f7fbd4b5"
+    },
+    {
+      "image": "agenticsre:live-recovery-regression-20261026-r4",
+      "files": 424,
+      "content_sha256": "f0422d8ccf8e6df626a3eeda0989991f949a3db04e5b9f79d540fea3f7fbd4b5"
+    }
+  ],
+  "live_and_final_application_bytes_identical": true,
+  "production_replaced": false
+}

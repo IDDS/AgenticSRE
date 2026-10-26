@@ -1,0 +1,20 @@
+{
+  "README.md": "777fe3631dd51d502d1c2987ca7451f830a853790a3e535b09db44e36d712991",
+  "browser.json": "057a593c3f365a819e3d1298894974ba60233f9581481f740ac604a4a41614fe",
+  "cleanup-verification.json": "7c78f566f165555e038e7396bd9954a910a20ed92c26d5ca4c89b8fe7a6db293",
+  "copy-bytes-verification.json": "41fd4c9be89262e0127e7b6f0460173b230052ef27f2059e868217ab74eac1ba",
+  "diagnosis-snapshots.json": "dd8405fe20cdb4765c8f42fe19245dd7063472c8f4ec36c0a6c18075c57c835e",
+  "packaged-full.txt": "ec7c1b3e6518dbd3eaa9c6f37654cf3e70897109471dd75f52c9e03f0f15c41c",
+  "packaged-targeted.txt": "9bbf7ea43fff70a9ce3a0a3de3e93565cc8314a7414795e11a22d87189427870",
+  "packaged-verification.json": "4fe4691717df94dbd0fe450a57de5fa68303f64b57985e2f4e062cb110e2943d",
+  "packaging-verification.json": "46eca558ca7ed067ecd4d6941313ee21f00a6f2b687dcb64de2c68805a519b55",
+  "provider-preflight.json": "d8db72c86f53f27f31e95e521f99317568e91c20884b25a06c2dc0403e1a3a15",
+  "r1-followup.json": "5668e49b7f70612a5a2ab0ddfdd30301c0ef27e6b147a3a7b62f8d44189d3b24",
+  "r1-summary.json": "77fd9145fccdaa0dcf24b8cc9cc18e1f8f93db05a569acfb8e4dce8df373fc3a",
+  "r2-business-readiness.json": "5e419ea4716458f24e389e14c3cc6467bf3b6adbb2bd4dc57d739ee71506351e",
+  "r2-recovery-windows.json": "1cd7933fd86d9db0d3d89c7fd5bbb7ccb998ba22ead363312b386e10f91f3eae",
+  "r2-summary.json": "23f434ae115fe9bada6e76f32be482c50eaa18545f037d87388ef096fcbe36f3",
+  "source-version-receipt.json": "72cff05704b8a5758b9f7863c1f83c6040385b4058a0a17dc0facd884f440c25",
+  "structured-evidence-pre-fix.txt": "3dc5897b489c8e62277789c8445986013c14e2f3dc17c1476fc06453e72ae63a",
+  "watchdog-resume-pre-fix.txt": "19e8a0a0c2a2996e9e9b600b54a0c6e23d28a28cd0936d99c305c98038e9fc98"
+}
