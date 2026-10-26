@@ -164,7 +164,9 @@ Cfinal = min(Cweighted, DynamicCap)
 | 合格诊断 `correct` 标签；来源可能为模型对照专家文本 | 是 | 否 |
 | 恢复成功/失败、人工恢复、代码修复 | 否 | 是 |
 
-全自动执行默认要求诊断置信度不低于 `0.90`，并且只使用同变更动作指纹和同集群/namespace/目标环境指纹的真实验证恢复结果。默认至少需要 `14` 条成功/失败样本，且恢复成功率的 95% 单侧 Clopper–Pearson 下界不低于 `0.80`；规则还必须显式标记安全，无近期发布变更，动作风险不超过配置上限，且中高风险动作具备回滚操作。dry-run、未验证结果和旧无指纹记录不参与全自动增信；难以安全自动恢复的故障使用 `manual_only` 保留诊断与人工建议，但阻断全自动执行。
+全自动执行默认要求诊断置信度不低于 `0.90`，并且只使用同变更动作、同集群/namespace/目标环境、同恢复验证标准的已验证恢复结果。默认至少需要 `14` 条成功/失败样本，且恢复成功率的 95% 单侧 Clopper–Pearson 下界不低于 `0.80`；规则还必须显式标记安全，无近期发布变更，动作风险不超过配置上限，且中高风险动作具备回滚操作。dry-run、未验证结果和缺少对应指纹的旧记录不参与全自动增信；难以安全自动恢复的故障使用 `manual_only` 保留诊断与人工建议，但阻断全自动执行。
+
+恢复探针可在服务端配置有界 JSON 字段断言与完整响应时延，区分 HTTP 状态成功和业务响应符合预期。验证标准变化会分开统计历史；复验在探测前固定原要求，异常或重复复验不会悄悄采用较弱标准，也不会给原动作补记因果成功。详见 [业务响应验证](docs/business-recovery.md)、[历史标准隔离](docs/recovery-verification-history.md)与[验收记录](docs/validation/recovery-verification-20261026.md)。这些检查不代表真实故障诊断准确率或 MTTR 收益已获验证。
 
 完整的审计字段、演示数值复算、代码文件索引和后续优化建议见 [RCA 六因子置信度校准实现说明](docs/confidence_calibration.md)。
 
@@ -230,6 +232,8 @@ python main.py rca "pod CrashLoopBackOff" -n default
 | [docs/alert-compression.md](docs/alert-compression.md) | **使用者/开发** — 告警保真、资源实例隔离、编辑与审核恢复的版本契约 |
 | [docs/diagnostic-strategy.md](docs/diagnostic-strategy.md) | **使用者/评审/开发** — 假设引用、独立角色复核、有界补证与模型失败弃答 |
 | [docs/history-retrieval.md](docs/history-retrieval.md) | **使用者/开发** — 历史读取预算、失败与空结果区分、超时降级 |
+| [docs/business-recovery.md](docs/business-recovery.md) | **运维/开发** — JSON 业务响应断言、读取预算和恢复验证强度 |
+| [docs/recovery-verification-history.md](docs/recovery-verification-history.md) | **运维/评审** — 按动作、环境和恢复验证标准隔离历史与自动门禁 |
 | [docs/feedback-contract.md](docs/feedback-contract.md) | **使用者/开发** — 反馈标签、审核准入、持久收据、重试与规则版本投票 |
 | [docs/memory-admission.md](docs/memory-admission.md) | **使用者/开发** — 记忆范围与时间准入、检索前过滤、通用规则审核版本及兼容边界 |
 | [docs/memory-candidates.md](docs/memory-candidates.md) | **使用者/开发** — 候选隔离、实际新增收据、人工版本审核、编辑后重审与停用历史 |

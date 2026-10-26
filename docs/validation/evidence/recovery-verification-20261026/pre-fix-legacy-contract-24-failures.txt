@@ -1,0 +1,584 @@
+FFFFFFFFFFFFFFFFFFFFFFFF                                                 [100%]
+=================================== FAILURES ===================================
+__________ test_legacy_successes_cannot_support_current_json_contract __________
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_legacy_successes_cannot_s0', ru...'value': 1}]}], auto_history_min_samples=14)), <memory.fault_context_store.FaultContextStore object at 0x7a06be7bcad0>)
+
+    def test_legacy_successes_cannot_support_current_json_contract(history):
+        cfg, store = history
+        for i in range(14):
+            add(store, i)
+        stats, scope = query(history)
+>       assert stats['sample_count'] == 0
+E       assert 14 == 0
+
+/tmp/test_recovery_verification_contract.py:60: AssertionError
+______ test_contract_defaults_and_assertion_order_are_stable_and_private _______
+
+    def test_contract_defaults_and_assertion_order_are_stable_and_private():
+        first = profile()
+        explicit = profile(interval_seconds=2.0, timeout_seconds=3.0, expected_status=200,
+                           max_header_latency_ms=1000.0, max_response_latency_ms=1000.0, max_body_bytes=65536,
+                           json_assertions=[{'op': 'equals', 'value': 1.0, 'path': ['status']}])
+        before = copy.deepcopy(first)
+>       a, b = contract([first]), contract([explicit])
+               ^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:72: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+________________ test_acceptance_changes_split_history[change0] ________________
+
+change = {'url': 'http://api.test.svc.cluster.local/other'}
+
+    @pytest.mark.parametrize('change', [
+        {'url': 'http://api.test.svc.cluster.local/other'}, {'samples': 3}, {'interval_seconds': 3},
+        {'timeout_seconds': 1}, {'max_header_latency_ms': 500}, {'max_response_latency_ms': 500},
+        {'max_body_bytes': 1024}, {'expected_status': 201},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': True}]},
+        {'json_assertions': [{'path': ['other'], 'op': 'equals', 'value': 1}]},
+    ])
+    def test_acceptance_changes_split_history(change):
+>       assert contract([profile()])['verification_fingerprint'] != contract([profile(**change)])['verification_fingerprint']
+               ^^^^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+________________ test_acceptance_changes_split_history[change1] ________________
+
+change = {'samples': 3}
+
+    @pytest.mark.parametrize('change', [
+        {'url': 'http://api.test.svc.cluster.local/other'}, {'samples': 3}, {'interval_seconds': 3},
+        {'timeout_seconds': 1}, {'max_header_latency_ms': 500}, {'max_response_latency_ms': 500},
+        {'max_body_bytes': 1024}, {'expected_status': 201},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': True}]},
+        {'json_assertions': [{'path': ['other'], 'op': 'equals', 'value': 1}]},
+    ])
+    def test_acceptance_changes_split_history(change):
+>       assert contract([profile()])['verification_fingerprint'] != contract([profile(**change)])['verification_fingerprint']
+               ^^^^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+________________ test_acceptance_changes_split_history[change2] ________________
+
+change = {'interval_seconds': 3}
+
+    @pytest.mark.parametrize('change', [
+        {'url': 'http://api.test.svc.cluster.local/other'}, {'samples': 3}, {'interval_seconds': 3},
+        {'timeout_seconds': 1}, {'max_header_latency_ms': 500}, {'max_response_latency_ms': 500},
+        {'max_body_bytes': 1024}, {'expected_status': 201},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': True}]},
+        {'json_assertions': [{'path': ['other'], 'op': 'equals', 'value': 1}]},
+    ])
+    def test_acceptance_changes_split_history(change):
+>       assert contract([profile()])['verification_fingerprint'] != contract([profile(**change)])['verification_fingerprint']
+               ^^^^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+________________ test_acceptance_changes_split_history[change3] ________________
+
+change = {'timeout_seconds': 1}
+
+    @pytest.mark.parametrize('change', [
+        {'url': 'http://api.test.svc.cluster.local/other'}, {'samples': 3}, {'interval_seconds': 3},
+        {'timeout_seconds': 1}, {'max_header_latency_ms': 500}, {'max_response_latency_ms': 500},
+        {'max_body_bytes': 1024}, {'expected_status': 201},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': True}]},
+        {'json_assertions': [{'path': ['other'], 'op': 'equals', 'value': 1}]},
+    ])
+    def test_acceptance_changes_split_history(change):
+>       assert contract([profile()])['verification_fingerprint'] != contract([profile(**change)])['verification_fingerprint']
+               ^^^^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+________________ test_acceptance_changes_split_history[change4] ________________
+
+change = {'max_header_latency_ms': 500}
+
+    @pytest.mark.parametrize('change', [
+        {'url': 'http://api.test.svc.cluster.local/other'}, {'samples': 3}, {'interval_seconds': 3},
+        {'timeout_seconds': 1}, {'max_header_latency_ms': 500}, {'max_response_latency_ms': 500},
+        {'max_body_bytes': 1024}, {'expected_status': 201},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': True}]},
+        {'json_assertions': [{'path': ['other'], 'op': 'equals', 'value': 1}]},
+    ])
+    def test_acceptance_changes_split_history(change):
+>       assert contract([profile()])['verification_fingerprint'] != contract([profile(**change)])['verification_fingerprint']
+               ^^^^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+________________ test_acceptance_changes_split_history[change5] ________________
+
+change = {'max_response_latency_ms': 500}
+
+    @pytest.mark.parametrize('change', [
+        {'url': 'http://api.test.svc.cluster.local/other'}, {'samples': 3}, {'interval_seconds': 3},
+        {'timeout_seconds': 1}, {'max_header_latency_ms': 500}, {'max_response_latency_ms': 500},
+        {'max_body_bytes': 1024}, {'expected_status': 201},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': True}]},
+        {'json_assertions': [{'path': ['other'], 'op': 'equals', 'value': 1}]},
+    ])
+    def test_acceptance_changes_split_history(change):
+>       assert contract([profile()])['verification_fingerprint'] != contract([profile(**change)])['verification_fingerprint']
+               ^^^^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+________________ test_acceptance_changes_split_history[change6] ________________
+
+change = {'max_body_bytes': 1024}
+
+    @pytest.mark.parametrize('change', [
+        {'url': 'http://api.test.svc.cluster.local/other'}, {'samples': 3}, {'interval_seconds': 3},
+        {'timeout_seconds': 1}, {'max_header_latency_ms': 500}, {'max_response_latency_ms': 500},
+        {'max_body_bytes': 1024}, {'expected_status': 201},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': True}]},
+        {'json_assertions': [{'path': ['other'], 'op': 'equals', 'value': 1}]},
+    ])
+    def test_acceptance_changes_split_history(change):
+>       assert contract([profile()])['verification_fingerprint'] != contract([profile(**change)])['verification_fingerprint']
+               ^^^^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+________________ test_acceptance_changes_split_history[change7] ________________
+
+change = {'expected_status': 201}
+
+    @pytest.mark.parametrize('change', [
+        {'url': 'http://api.test.svc.cluster.local/other'}, {'samples': 3}, {'interval_seconds': 3},
+        {'timeout_seconds': 1}, {'max_header_latency_ms': 500}, {'max_response_latency_ms': 500},
+        {'max_body_bytes': 1024}, {'expected_status': 201},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': True}]},
+        {'json_assertions': [{'path': ['other'], 'op': 'equals', 'value': 1}]},
+    ])
+    def test_acceptance_changes_split_history(change):
+>       assert contract([profile()])['verification_fingerprint'] != contract([profile(**change)])['verification_fingerprint']
+               ^^^^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+________________ test_acceptance_changes_split_history[change8] ________________
+
+change = {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': True}]}
+
+    @pytest.mark.parametrize('change', [
+        {'url': 'http://api.test.svc.cluster.local/other'}, {'samples': 3}, {'interval_seconds': 3},
+        {'timeout_seconds': 1}, {'max_header_latency_ms': 500}, {'max_response_latency_ms': 500},
+        {'max_body_bytes': 1024}, {'expected_status': 201},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': True}]},
+        {'json_assertions': [{'path': ['other'], 'op': 'equals', 'value': 1}]},
+    ])
+    def test_acceptance_changes_split_history(change):
+>       assert contract([profile()])['verification_fingerprint'] != contract([profile(**change)])['verification_fingerprint']
+               ^^^^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+________________ test_acceptance_changes_split_history[change9] ________________
+
+change = {'json_assertions': [{'path': ['other'], 'op': 'equals', 'value': 1}]}
+
+    @pytest.mark.parametrize('change', [
+        {'url': 'http://api.test.svc.cluster.local/other'}, {'samples': 3}, {'interval_seconds': 3},
+        {'timeout_seconds': 1}, {'max_header_latency_ms': 500}, {'max_response_latency_ms': 500},
+        {'max_body_bytes': 1024}, {'expected_status': 201},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': True}]},
+        {'json_assertions': [{'path': ['other'], 'op': 'equals', 'value': 1}]},
+    ])
+    def test_acceptance_changes_split_history(change):
+>       assert contract([profile()])['verification_fingerprint'] != contract([profile(**change)])['verification_fingerprint']
+               ^^^^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+____________ test_invalid_or_unmatched_contract_is_incomplete[None] ____________
+
+profiles = None
+
+    @pytest.mark.parametrize('profiles', [None, {}, [profile(), profile()], [profile(service='other')],
+        [profile(json_assertions=[])], [profile(timeout_seconds=10 ** 1000)]])
+    def test_invalid_or_unmatched_contract_is_incomplete(profiles):
+>       result = contract(profiles)
+                 ^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:97: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = None
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+_________ test_invalid_or_unmatched_contract_is_incomplete[profiles1] __________
+
+profiles = {}
+
+    @pytest.mark.parametrize('profiles', [None, {}, [profile(), profile()], [profile(service='other')],
+        [profile(json_assertions=[])], [profile(timeout_seconds=10 ** 1000)]])
+    def test_invalid_or_unmatched_contract_is_incomplete(profiles):
+>       result = contract(profiles)
+                 ^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:97: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = {}
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+_________ test_invalid_or_unmatched_contract_is_incomplete[profiles2] __________
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ....cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    @pytest.mark.parametrize('profiles', [None, {}, [profile(), profile()], [profile(service='other')],
+        [profile(json_assertions=[])], [profile(timeout_seconds=10 ** 1000)]])
+    def test_invalid_or_unmatched_contract_is_incomplete(profiles):
+>       result = contract(profiles)
+                 ^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:97: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ....cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+_________ test_invalid_or_unmatched_contract_is_incomplete[profiles3] __________
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'other', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    @pytest.mark.parametrize('profiles', [None, {}, [profile(), profile()], [profile(service='other')],
+        [profile(json_assertions=[])], [profile(timeout_seconds=10 ** 1000)]])
+    def test_invalid_or_unmatched_contract_is_incomplete(profiles):
+>       result = contract(profiles)
+                 ^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:97: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'other', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+_________ test_invalid_or_unmatched_contract_is_incomplete[profiles4] __________
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    @pytest.mark.parametrize('profiles', [None, {}, [profile(), profile()], [profile(service='other')],
+        [profile(json_assertions=[])], [profile(timeout_seconds=10 ** 1000)]])
+    def test_invalid_or_unmatched_contract_is_incomplete(profiles):
+>       result = contract(profiles)
+                 ^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:97: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+_________ test_invalid_or_unmatched_contract_is_incomplete[profiles5] __________
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    @pytest.mark.parametrize('profiles', [None, {}, [profile(), profile()], [profile(service='other')],
+        [profile(json_assertions=[])], [profile(timeout_seconds=10 ** 1000)]])
+    def test_invalid_or_unmatched_contract_is_incomplete(profiles):
+>       result = contract(profiles)
+                 ^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:97: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+______ test_only_same_verified_contract_counts_and_survives_json_restart _______
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_only_same_verified_contra0', ru...'value': 1}]}], auto_history_min_samples=14)), <memory.fault_context_store.FaultContextStore object at 0x7a06be31b7d0>)
+
+    def test_only_same_verified_contract_counts_and_survives_json_restart(history):
+        cfg, store = history
+>       current = contract([profile()])
+                  ^^^^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:104: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+_____ test_required_missing_contract_cannot_fall_back_to_broad_statistics ______
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_required_missing_contract0', ru...'value': 1}]}], auto_history_min_samples=14)), <memory.fault_context_store.FaultContextStore object at 0x7a06be319a90>)
+
+    def test_required_missing_contract_cannot_fall_back_to_broad_statistics(history):
+        _, store = history
+        add(store, 1)
+>       stats = store.resolution_stats(fault_type='ServiceUnavailable', require_verification_contract=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: FaultContextStore.resolution_stats() got an unexpected keyword argument 'require_verification_contract'
+
+/tmp/test_recovery_verification_contract.py:131: TypeError
+__________ test_auto_gate_rejects_legacy_aggregates_with_good_counts ___________
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_auto_gate_rejects_legacy_0', ru...'value': 1}]}], auto_history_min_samples=14)), <memory.fault_context_store.FaultContextStore object at 0x7a06be323da0>)
+
+    def test_auto_gate_rejects_legacy_aggregates_with_good_counts(history):
+        cfg, _ = history
+        gate = web._build_auto_execution_gate(recipe={'safe_auto_execute': True}, suggestions=[{'risk': 'low'}],
+            diagnosis={'confidence': .99}, cfg=cfg,
+            recovery_history_stats={'scope_required': True, 'scope_complete': True, 'sample_count': 30,
+                                    'success_count': 30, 'failure_count': 0, 'success_rate': 1.0})
+>       assert gate['ready'] is False
+E       assert True is False
+
+/tmp/test_recovery_verification_contract.py:141: AssertionError
+_____ test_matching_history_can_support_gate_but_config_change_removes_it ______
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_matching_history_can_supp0', ru...'value': 1}]}], auto_history_min_samples=14)), <memory.fault_context_store.FaultContextStore object at 0x7a06be321670>)
+
+    def test_matching_history_can_support_gate_but_config_change_removes_it(history):
+        cfg, store = history
+>       policy = contract([profile()])
+                 ^^^^^^^^^^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:147: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = [{'cluster_id': 'east', 'namespace': 'test', 'service': 'api', 'url': 'http://api.test.svc.cluster.local/readiness', ...}]
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+___________ test_actual_infrastructure_verification_carries_contract ___________
+
+    def test_actual_infrastructure_verification_carries_contract():
+        result = probes.verify_business_recovery({'status': 'verified', 'recovered': True},
+            profiles=[], cluster_id='east', namespace='test', service='api')
+>       policy = contract([])
+                 ^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:162: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = []
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+___________ test_writer_refuses_stale_contract_without_adding_fault ____________
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_writer_refuses_stale_cont0', ru...'value': 1}]}], auto_history_min_samples=14)), <memory.fault_context_store.FaultContextStore object at 0x7a06be3220c0>)
+
+    def test_writer_refuses_stale_contract_without_adding_fault(history):
+        _, store = history
+>       old = contract([])
+              ^^^^^^^^^^^^
+
+/tmp/test_recovery_verification_contract.py:169: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profiles = []
+
+    def contract(profiles):
+>       return probes.verification_contract(profiles=profiles, cluster_id='east', namespace='test', service='api')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'recovery_verification' has no attribute 'verification_contract'
+
+/tmp/test_recovery_verification_contract.py:24: AttributeError
+=============================== warnings summary ===============================
+web_app/app.py:11145
+  /workspace/web_app/app.py:11145: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event('shutdown')
+
+../usr/local/lib/python3.12/site-packages/fastapi/applications.py:4675
+../usr/local/lib/python3.12/site-packages/fastapi/applications.py:4675
+  /usr/local/lib/python3.12/site-packages/fastapi/applications.py:4675: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+web_app/app.py:20536
+  /workspace/web_app/app.py:20536: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED ../tmp/test_recovery_verification_contract.py::test_legacy_successes_cannot_support_current_json_contract
+FAILED ../tmp/test_recovery_verification_contract.py::test_contract_defaults_and_assertion_order_are_stable_and_private
+FAILED ../tmp/test_recovery_verification_contract.py::test_acceptance_changes_split_history[change0]
+FAILED ../tmp/test_recovery_verification_contract.py::test_acceptance_changes_split_history[change1]
+FAILED ../tmp/test_recovery_verification_contract.py::test_acceptance_changes_split_history[change2]
+FAILED ../tmp/test_recovery_verification_contract.py::test_acceptance_changes_split_history[change3]
+FAILED ../tmp/test_recovery_verification_contract.py::test_acceptance_changes_split_history[change4]
+FAILED ../tmp/test_recovery_verification_contract.py::test_acceptance_changes_split_history[change5]
+FAILED ../tmp/test_recovery_verification_contract.py::test_acceptance_changes_split_history[change6]
+FAILED ../tmp/test_recovery_verification_contract.py::test_acceptance_changes_split_history[change7]
+FAILED ../tmp/test_recovery_verification_contract.py::test_acceptance_changes_split_history[change8]
+FAILED ../tmp/test_recovery_verification_contract.py::test_acceptance_changes_split_history[change9]
+FAILED ../tmp/test_recovery_verification_contract.py::test_invalid_or_unmatched_contract_is_incomplete[None]
+FAILED ../tmp/test_recovery_verification_contract.py::test_invalid_or_unmatched_contract_is_incomplete[profiles1]
+FAILED ../tmp/test_recovery_verification_contract.py::test_invalid_or_unmatched_contract_is_incomplete[profiles2]
+FAILED ../tmp/test_recovery_verification_contract.py::test_invalid_or_unmatched_contract_is_incomplete[profiles3]
+FAILED ../tmp/test_recovery_verification_contract.py::test_invalid_or_unmatched_contract_is_incomplete[profiles4]
+FAILED ../tmp/test_recovery_verification_contract.py::test_invalid_or_unmatched_contract_is_incomplete[profiles5]
+FAILED ../tmp/test_recovery_verification_contract.py::test_only_same_verified_contract_counts_and_survives_json_restart
+FAILED ../tmp/test_recovery_verification_contract.py::test_required_missing_contract_cannot_fall_back_to_broad_statistics
+FAILED ../tmp/test_recovery_verification_contract.py::test_auto_gate_rejects_legacy_aggregates_with_good_counts
+FAILED ../tmp/test_recovery_verification_contract.py::test_matching_history_can_support_gate_but_config_change_removes_it
+FAILED ../tmp/test_recovery_verification_contract.py::test_actual_infrastructure_verification_carries_contract
+FAILED ../tmp/test_recovery_verification_contract.py::test_writer_refuses_stale_contract_without_adding_fault
+24 failed, 4 warnings in 1.76s

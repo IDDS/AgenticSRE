@@ -1,0 +1,17 @@
+{
+  "business-pre-fix-body-contract-24-failures.txt": "c189effeed573d95d684822fd0135302c7e2af04ff8bf1a0864afed507658f67",
+  "business-pre-fix-image-copy-failure.txt": "2803a919bc24c3b01e90addc4f9504361553fcbfabc943d5a3ece344ab60cf09",
+  "business-pre-fix-infrastructure-failure-preservation.txt": "d813592cb598d8cc66b3a7e0266cf00d99f8c6e609eee1889eb5ab58754d9c21",
+  "image-history-verification.json": "bf99ab15026bedcbf51e60e0af1d1e3c9069f644bcd5db4f700173eeeb6e441a",
+  "image-http-verification.json": "c3cb87790e6accc49a468ddd59c8849e9ec70c33e6961ba0ae5bc1b035d5ded4",
+  "packaged-full.txt": "ba3a9574d0aecd47b09d6302b3e3f391e1f6906de08597f9d5be8cb164bb1c61",
+  "packaged-targeted.txt": "476e44a976a76f427289f6005e3716e975b15bed686357ed378c24b04ac57d40",
+  "packaged-verification.json": "845cabe76822c6761efda65d7379ffb505f07ad7ea8dad4394b9846633557843",
+  "packaging-verification.json": "ef4171aeea5e9492e9a010c304aca33d720e6180f62a75291e49eab13dfbe734",
+  "pre-fix-exception-anchor-2-failures.txt": "26e36f8d161ac9567a555cce6b099d24f847963093cc9623c84cc3486703316d",
+  "pre-fix-execution-failure.txt": "ac329ced0addde88be235d155ec8394a0801f138952377d413002ff5dc3b75b7",
+  "pre-fix-legacy-contract-24-failures.txt": "2a2fd2904c1beed3bdf352e83d2668072798c78fb0ff6d081dfd4fccb0e890c0",
+  "pre-fix-number-precision.txt": "dae8112423fac54afa8699533e32cb060c5ff9dcc883e839c819670d0947dd0d",
+  "runtime-source-hashes.json": "fd1123d08679bcc161363b0c5b7f8d158a12c24e2571ee3cd948659d864e495d",
+  "ui-verification.json": "bd712928efc63ab872bcaeb3dabb6523e51802ded1dba39a0b996e4b8d5e3c9a"
+}

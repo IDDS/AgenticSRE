@@ -1,0 +1,15 @@
+{
+  "snapshot": "recovery-publish-20261026-r2",
+  "tested_files": 846,
+  "archive_sha256": "8cf8b54112172ca6e0faa4dedb6c6bc2849f33506c7ba2c7ca8da9a233eed01b",
+  "sha256": {
+    "Dockerfile": "46228bc12b7e73355c22b3f716ccceeda42100bab133ce3ceef48f6bc3c692ec",
+    "recovery_verification.py": "75e816cc2bf5aceb4e83a2155d6044ac085e5802542e4de196795d24879c4a8e",
+    "memory/fault_context_store.py": "177cea9b01f67f71fc356db8121158b78b644125b2d7cad0ad89084fb5484f8a",
+    "web_app/app.py": "f90e87523329bd6931a84a2fb97b7aed2ff5871b76f414ebec67850ab5a988df",
+    "web_app/static/js/app.js": "2d5b728eb4072262b27f7548a55e9ec72057969db8cc74b64f67507b158d5b1d",
+    "tests/test_business_recovery_semantics.py": "4f3a42dda2823722412aa4660cd70741e476cfce618f71ddb8053a09be2cb6f0",
+    "tests/test_recovery_verification_contract.py": "6382462678363571870e00a91bb7558e992eef9a20a3cbcdc4189c270c105811",
+    "tests/e2e/test_confidence_calibration.py": "dab32d93601c4f9ace632f02601fe451f7dc87a4529d3668e30dbec4e5ba0ff7"
+  }
+}

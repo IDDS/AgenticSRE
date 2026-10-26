@@ -1,0 +1,46 @@
+{
+  "scope": "Actual packaged recovery module and dependencies; synthetic loopback HTTP only",
+  "source_mounts": false,
+  "requests_version": "2.34.2",
+  "urllib3_version": "2.7.0",
+  "module_path": "/app/recovery_verification.py",
+  "module_sha256": "75e816cc2bf5aceb4e83a2155d6044ac085e5802542e4de196795d24879c4a8e",
+  "cases": [
+    {
+      "case": "/ok",
+      "recovered": true,
+      "reason": "business_probe_passed",
+      "elapsed_s": 1.009,
+      "tcp_connections": 1
+    },
+    {
+      "case": "/wrong",
+      "recovered": false,
+      "reason": "business_probe_failed",
+      "elapsed_s": 0.006,
+      "tcp_connections": 1
+    },
+    {
+      "case": "/large",
+      "recovered": null,
+      "reason": "business_probe_incomplete",
+      "elapsed_s": 0.005,
+      "tcp_connections": 1
+    },
+    {
+      "case": "/slow",
+      "recovered": false,
+      "reason": "business_probe_failed",
+      "elapsed_s": 0.126,
+      "tcp_connections": 1
+    },
+    {
+      "case": "/precision",
+      "recovered": false,
+      "reason": "business_probe_failed",
+      "elapsed_s": 0.006,
+      "tcp_connections": 1
+    }
+  ],
+  "status": "passed"
+}
