@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from remediation_history import build_recovery_scope
+from recovery_verification import valid_verification_fingerprint, VERIFICATION_CONTRACT_VERSION
 from memory.feedback_contract import atomic_json, file_lock, read_list
 
 logger = logging.getLogger(__name__)
@@ -585,6 +586,12 @@ class FaultContextStore:
             fault["action_fingerprint"] = str(resolution.get("action_fingerprint") or "")
             fault["environment_fingerprint"] = str(resolution.get("environment_fingerprint") or "")
             fault["recovery_scope_version"] = str(resolution.get("scope_version") or "")
+            for source, destination in [('verification_fingerprint', 'verification_fingerprint'),
+                                        ('verification_contract_version', 'verification_contract_version'),
+                                        ('verification_level', 'verification_level'),
+                                        ('verification_status', 'recovery_verification_status')]:
+                if source in resolution:
+                    fault[destination] = str(resolution[source] or '')
         fault_id = f"fault-{hashlib.md5(json.dumps(fault, sort_keys=True, default=str).encode()).hexdigest()[:10]}"
         fault["fault_id"] = fault_id
         fault["timestamp"] = time.time()
@@ -665,6 +672,8 @@ class FaultContextStore:
         error_pattern: str = "",
         action_fingerprint: str = "",
         environment_fingerprint: str = "",
+        verification_fingerprint: str = "",
+        require_verification_contract: bool = False,
         min_samples: int = 14,
         limit: int = 1000,
     ) -> Dict[str, Any]:
@@ -678,10 +687,14 @@ class FaultContextStore:
         pattern_key = str(error_pattern or "").strip().lower()
         action_key = str(action_fingerprint or "").strip()
         environment_key = str(environment_fingerprint or "").strip()
-        scope_required = bool(action_key or environment_key)
+        verification_key = str(verification_fingerprint or '').strip()
+        verification_required = bool(require_verification_contract or verification_key)
+        verification_complete = valid_verification_fingerprint(verification_key)
+        scope_required = bool(action_key or environment_key or verification_required)
         faults = self.list_faults(limit=limit)
         base_matched: List[Dict[str, Any]] = []
         matched: List[Dict[str, Any]] = []
+        verification_missing = verification_mismatch = verification_unverified = verification_conflict = 0
         for fault in faults:
             ft = str(fault.get("fault_type") or fault.get("error_category") or "").strip().lower()
             pat = str(fault.get("error_pattern") or fault.get("pattern") or "").strip().lower()
@@ -704,6 +717,29 @@ class FaultContextStore:
                 continue
             if environment_key and record_environment != environment_key:
                 continue
+            if verification_required:
+                fields = [('verification_fingerprint', 'verification_fingerprint'),
+                          ('verification_contract_version', 'verification_contract_version'),
+                          ('verification_level', 'verification_level'),
+                          ('verification_status', 'recovery_verification_status')]
+                if any(nested in resolution and flat in fault and resolution[nested] != fault[flat]
+                       for nested, flat in fields):
+                    verification_conflict += 1
+                    continue
+                record_verification = fault.get('verification_fingerprint') or resolution.get('verification_fingerprint')
+                if not record_verification:
+                    verification_missing += 1
+                    continue
+                if not verification_complete or record_verification != verification_key:
+                    verification_mismatch += 1
+                    continue
+                version = fault.get('verification_contract_version') or resolution.get('verification_contract_version')
+                level = fault.get('verification_level') or resolution.get('verification_level')
+                verified = fault.get('recovery_verification_status') or resolution.get('verification_status')
+                if (version != VERIFICATION_CONTRACT_VERSION or level not in {'infrastructure', 'http_headers', 'json_assertions'}
+                        or verified not in {'verified', 'failed'}):
+                    verification_unverified += 1
+                    continue
             matched.append(fault)
 
         success = 0
@@ -779,10 +815,18 @@ class FaultContextStore:
             "fault_type": fault_type,
             "error_pattern": error_pattern,
             "scope_required": scope_required,
-            "scope_complete": not scope_required or bool(action_key and environment_key),
-            "scope_version": "recovery_scope_v1" if scope_required else "legacy_fault_scope",
+            "scope_complete": not scope_required or bool(action_key and environment_key and
+                (not verification_required or verification_complete)),
+            "scope_version": 'recovery_scope_v2' if verification_required else ('recovery_scope_v1' if scope_required else 'legacy_fault_scope'),
             "action_fingerprint": action_key or None,
             "environment_fingerprint": environment_key or None,
+            'verification_required': verification_required,
+            'verification_scope_complete': not verification_required or verification_complete,
+            'verification_fingerprint': verification_key or None,
+            'verification_missing_count': verification_missing,
+            'verification_mismatch_count': verification_mismatch,
+            'verification_unverified_count': verification_unverified,
+            'verification_conflict_count': verification_conflict,
             "sample_count": sample_count,
             "success_count": success,
             "failure_count": failed,

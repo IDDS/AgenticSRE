@@ -1,5 +1,14 @@
 # AgenticSRE Research Instructions
 
+## 本项目协作约定
+
+- 使用中文说明进度和结果，代码与标识符保持原样。
+- 编译、测试、构建和部署均在远程服务器或集群执行，不在本机安装依赖或运行应用构建。
+- 每轮修改完成并通过相应验证后，自动提交并推送到 GitHub 与 GitCode 的主分支；这是用户持续授权的默认流程，无需逐次询问。
+- 提交应包含本轮实际完成的改动，保留其他工作和两个仓库各自的提交历史，不使用强制推送。
+- 提交和推送不等于生产部署；部署需按用户授权的范围单独执行。
+- 不在文件、日志或提交中写入密钥、密码或访问令牌。
+
 This workspace contains the AgenticSRE implementation and the research report
 `report/多智能体协作与演化技术调研报告.md`.
 

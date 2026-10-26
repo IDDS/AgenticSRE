@@ -1,0 +1,525 @@
+FFFFFFFFFFFFFFFFFFFFFFFF                                                 [100%]
+=================================== FAILURES ===================================
+_____ test_http_200_with_failed_contract_cannot_be_recovery[/wrong-status] _____
+
+business_endpoint = ('http://127.0.0.1:36515', [('/wrong-status', 'gzip, deflate'), ('/wrong-status', 'gzip, deflate')])
+path = '/wrong-status'
+
+    @pytest.mark.parametrize('path', ['/wrong-status', '/boolean', '/empty', '/missing', '/invalid', '/duplicate', '/nonfinite', '/flaky'])
+    def test_http_200_with_failed_contract_cannot_be_recovery(business_endpoint, path):
+        url, calls = business_endpoint
+        result = verify(profile(url + path))
+>       assert result['recovered'] is False
+E       assert True is False
+
+/tmp/test_business_recovery_semantics.py:118: AssertionError
+_______ test_http_200_with_failed_contract_cannot_be_recovery[/boolean] ________
+
+business_endpoint = ('http://127.0.0.1:40829', [('/boolean', 'gzip, deflate'), ('/boolean', 'gzip, deflate')])
+path = '/boolean'
+
+    @pytest.mark.parametrize('path', ['/wrong-status', '/boolean', '/empty', '/missing', '/invalid', '/duplicate', '/nonfinite', '/flaky'])
+    def test_http_200_with_failed_contract_cannot_be_recovery(business_endpoint, path):
+        url, calls = business_endpoint
+        result = verify(profile(url + path))
+>       assert result['recovered'] is False
+E       assert True is False
+
+/tmp/test_business_recovery_semantics.py:118: AssertionError
+________ test_http_200_with_failed_contract_cannot_be_recovery[/empty] _________
+
+business_endpoint = ('http://127.0.0.1:39733', [('/empty', 'gzip, deflate'), ('/empty', 'gzip, deflate')])
+path = '/empty'
+
+    @pytest.mark.parametrize('path', ['/wrong-status', '/boolean', '/empty', '/missing', '/invalid', '/duplicate', '/nonfinite', '/flaky'])
+    def test_http_200_with_failed_contract_cannot_be_recovery(business_endpoint, path):
+        url, calls = business_endpoint
+        result = verify(profile(url + path))
+>       assert result['recovered'] is False
+E       assert True is False
+
+/tmp/test_business_recovery_semantics.py:118: AssertionError
+_______ test_http_200_with_failed_contract_cannot_be_recovery[/missing] ________
+
+business_endpoint = ('http://127.0.0.1:45985', [('/missing', 'gzip, deflate'), ('/missing', 'gzip, deflate')])
+path = '/missing'
+
+    @pytest.mark.parametrize('path', ['/wrong-status', '/boolean', '/empty', '/missing', '/invalid', '/duplicate', '/nonfinite', '/flaky'])
+    def test_http_200_with_failed_contract_cannot_be_recovery(business_endpoint, path):
+        url, calls = business_endpoint
+        result = verify(profile(url + path))
+>       assert result['recovered'] is False
+E       assert True is False
+
+/tmp/test_business_recovery_semantics.py:118: AssertionError
+_______ test_http_200_with_failed_contract_cannot_be_recovery[/invalid] ________
+
+business_endpoint = ('http://127.0.0.1:37769', [('/invalid', 'gzip, deflate'), ('/invalid', 'gzip, deflate')])
+path = '/invalid'
+
+    @pytest.mark.parametrize('path', ['/wrong-status', '/boolean', '/empty', '/missing', '/invalid', '/duplicate', '/nonfinite', '/flaky'])
+    def test_http_200_with_failed_contract_cannot_be_recovery(business_endpoint, path):
+        url, calls = business_endpoint
+        result = verify(profile(url + path))
+>       assert result['recovered'] is False
+E       assert True is False
+
+/tmp/test_business_recovery_semantics.py:118: AssertionError
+______ test_http_200_with_failed_contract_cannot_be_recovery[/duplicate] _______
+
+business_endpoint = ('http://127.0.0.1:44129', [('/duplicate', 'gzip, deflate'), ('/duplicate', 'gzip, deflate')])
+path = '/duplicate'
+
+    @pytest.mark.parametrize('path', ['/wrong-status', '/boolean', '/empty', '/missing', '/invalid', '/duplicate', '/nonfinite', '/flaky'])
+    def test_http_200_with_failed_contract_cannot_be_recovery(business_endpoint, path):
+        url, calls = business_endpoint
+        result = verify(profile(url + path))
+>       assert result['recovered'] is False
+E       assert True is False
+
+/tmp/test_business_recovery_semantics.py:118: AssertionError
+______ test_http_200_with_failed_contract_cannot_be_recovery[/nonfinite] _______
+
+business_endpoint = ('http://127.0.0.1:38249', [('/nonfinite', 'gzip, deflate'), ('/nonfinite', 'gzip, deflate')])
+path = '/nonfinite'
+
+    @pytest.mark.parametrize('path', ['/wrong-status', '/boolean', '/empty', '/missing', '/invalid', '/duplicate', '/nonfinite', '/flaky'])
+    def test_http_200_with_failed_contract_cannot_be_recovery(business_endpoint, path):
+        url, calls = business_endpoint
+        result = verify(profile(url + path))
+>       assert result['recovered'] is False
+E       assert True is False
+
+/tmp/test_business_recovery_semantics.py:118: AssertionError
+________ test_http_200_with_failed_contract_cannot_be_recovery[/flaky] _________
+
+business_endpoint = ('http://127.0.0.1:37117', [('/flaky', 'gzip, deflate'), ('/flaky', 'gzip, deflate')])
+path = '/flaky'
+
+    @pytest.mark.parametrize('path', ['/wrong-status', '/boolean', '/empty', '/missing', '/invalid', '/duplicate', '/nonfinite', '/flaky'])
+    def test_http_200_with_failed_contract_cannot_be_recovery(business_endpoint, path):
+        url, calls = business_endpoint
+        result = verify(profile(url + path))
+>       assert result['recovered'] is False
+E       assert True is False
+
+/tmp/test_business_recovery_semantics.py:118: AssertionError
+_______________ test_fast_headers_cannot_hide_slow_business_body _______________
+
+business_endpoint = ('http://127.0.0.1:45121', [('/slow-body', 'gzip, deflate'), ('/slow-body', 'gzip, deflate')])
+
+    def test_fast_headers_cannot_hide_slow_business_body(business_endpoint):
+        url, _ = business_endpoint
+        started = time.monotonic()
+        result = verify(profile(url + '/slow-body', max_response_latency_ms=100, timeout_seconds=.1))
+>       assert result['recovered'] is False
+E       assert True is False
+
+/tmp/test_business_recovery_semantics.py:152: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change0] ______________
+
+business_endpoint = ('http://127.0.0.1:39989', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'json_assertions': []}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change1] ______________
+
+business_endpoint = ('http://127.0.0.1:43187', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'json_assertions': None}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change2] ______________
+
+business_endpoint = ('http://127.0.0.1:33611', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change3] ______________
+
+business_endpoint = ('http://127.0.0.1:39159', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change4] ______________
+
+business_endpoint = ('http://127.0.0.1:37105', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change5] ______________
+
+business_endpoint = ('http://127.0.0.1:43819', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'json_assertions': [{'path': ['status'], 'op': 'equals'}]}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change6] ______________
+
+business_endpoint = ('http://127.0.0.1:40935', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': nan}]}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change7] ______________
+
+business_endpoint = ('http://127.0.0.1:36665', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change8] ______________
+
+business_endpoint = ('http://127.0.0.1:32929', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change9] ______________
+
+business_endpoint = ('http://127.0.0.1:38505', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change10] _____________
+
+business_endpoint = ('http://127.0.0.1:43273', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}, {'path': ['data'], 'op': 'non_empty'}, {'path': ['data'], ...ath': ['data'], 'op': 'non_empty'}, {'path': ['data'], 'op': 'non_empty'}, {'path': ['data'], 'op': 'non_empty'}, ...]}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change11] _____________
+
+business_endpoint = ('http://127.0.0.1:43025', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'max_body_bytes': 65537}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change12] _____________
+
+business_endpoint = ('http://127.0.0.1:42403', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'max_body_bytes': True}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change13] _____________
+
+business_endpoint = ('http://127.0.0.1:35663', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'max_response_latency_ms': inf}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+_____________ test_invalid_semantic_config_never_queries[change14] _____________
+
+business_endpoint = ('http://127.0.0.1:37309', [('/ok', 'gzip, deflate'), ('/ok', 'gzip, deflate')])
+change = {'json_assertion': []}
+
+    @pytest.mark.parametrize('change', [
+        {'json_assertions': []}, {'json_assertions': None}, {'json_assertions': [{'path': ['status'], 'op': 'eval', 'value': 1}]},
+        {'json_assertions': [{'path': [True], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': [-1], 'op': 'equals', 'value': 1}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals'}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': float('nan')}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': {'unsafe': 'shape'}}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'equals', 'value': 1, 'typo': True}]},
+        {'json_assertions': [{'path': ['status'], 'op': 'non_empty', 'value': True}]},
+        {'json_assertions': [{'path': ['data'], 'op': 'non_empty'}] * 17},
+        {'max_body_bytes': 65537}, {'max_body_bytes': True}, {'max_response_latency_ms': float('inf')},
+        {'json_assertion': []},
+    ])
+    def test_invalid_semantic_config_never_queries(business_endpoint, change):
+        url, calls = business_endpoint
+        result = verify(profile(url + '/ok', **change))
+>       assert result['recovered'] is None
+E       assert True is None
+
+/tmp/test_business_recovery_semantics.py:173: AssertionError
+=============================== warnings summary ===============================
+../usr/local/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /usr/local/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED ../tmp/test_business_recovery_semantics.py::test_http_200_with_failed_contract_cannot_be_recovery[/wrong-status]
+FAILED ../tmp/test_business_recovery_semantics.py::test_http_200_with_failed_contract_cannot_be_recovery[/boolean]
+FAILED ../tmp/test_business_recovery_semantics.py::test_http_200_with_failed_contract_cannot_be_recovery[/empty]
+FAILED ../tmp/test_business_recovery_semantics.py::test_http_200_with_failed_contract_cannot_be_recovery[/missing]
+FAILED ../tmp/test_business_recovery_semantics.py::test_http_200_with_failed_contract_cannot_be_recovery[/invalid]
+FAILED ../tmp/test_business_recovery_semantics.py::test_http_200_with_failed_contract_cannot_be_recovery[/duplicate]
+FAILED ../tmp/test_business_recovery_semantics.py::test_http_200_with_failed_contract_cannot_be_recovery[/nonfinite]
+FAILED ../tmp/test_business_recovery_semantics.py::test_http_200_with_failed_contract_cannot_be_recovery[/flaky]
+FAILED ../tmp/test_business_recovery_semantics.py::test_fast_headers_cannot_hide_slow_business_body
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change0]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change1]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change2]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change3]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change4]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change5]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change6]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change7]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change8]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change9]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change10]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change11]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change12]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change13]
+FAILED ../tmp/test_business_recovery_semantics.py::test_invalid_semantic_config_never_queries[change14]
+24 failed, 13 deselected, 1 warning in 36.87s

@@ -56,7 +56,8 @@ from skill_runtime.runtime_evidence import cuda_runtime_evidence, has_abnormal_c
 from vllm_fault_injector.k8s_utils import build_label_selector
 from confidence_statistics import clopper_pearson_lower_bound
 from remediation_history import build_recovery_scope
-from recovery_verification import verify_business_recovery
+from recovery_verification import (verify_business_recovery, verification_contract,
+                                   valid_verification_fingerprint, VERIFICATION_CONTRACT_VERSION)
 from web_app.fault_mode_registry import FaultModeRegistry, FaultModeRegistryError, FAMILY_META
 
 # ── Setup Paths ──
@@ -7959,8 +7960,9 @@ def _build_auto_execution_gate(
     history_successes = _to_int(history.get("success_count"), -1)
     history_failures = _to_int(history.get("failure_count"), -1)
     counts_present = history_successes >= 0 and history_failures >= 0
-    scope_required = bool(history.get("scope_required"))
-    scope_complete = bool(history.get("scope_complete", not scope_required))
+    scope_required = True
+    scope_complete = (history.get('scope_required') is True and history.get('scope_complete') is True and
+                      bool(history.get('action_fingerprint') and history.get('environment_fingerprint')))
     if counts_present and history_samples <= 0:
         history_samples = history_successes + history_failures
     history_lower_bound = (
@@ -7990,6 +7992,12 @@ def _build_auto_execution_gate(
     recent_code_change = _diagnosis_has_recent_code_change(diagnosis or {})
     blockers = []
     messages = []
+    verification_complete = (history.get('verification_required') is True and
+        history.get('verification_scope_complete') is True and
+        valid_verification_fingerprint(history.get('verification_fingerprint')))
+    if not verification_complete:
+        blockers.append('verification_contract_missing')
+        messages.append('历史恢复样本没有绑定当前恢复验证标准，不能支持全自动执行。')
     if not suggestions:
         blockers.append("no_executable_actions")
         messages.append("当前没有可执行自愈动作，不能进入全自动执行。")
@@ -8051,6 +8059,10 @@ def _build_auto_execution_gate(
         "history_scope_version": history.get("scope_version"),
         "history_action_fingerprint": history.get("action_fingerprint"),
         "history_environment_fingerprint": history.get("environment_fingerprint"),
+        'history_verification_fingerprint': history.get('verification_fingerprint'),
+        'history_verification_contract_complete': verification_complete,
+        'history_verification_missing_count': history.get('verification_missing_count', 0),
+        'history_verification_mismatch_count': history.get('verification_mismatch_count', 0),
         "history_legacy_unscoped_count": _to_int(history.get("legacy_unscoped_count"), 0),
         "safe_rule": safe_marked,
         "manual_only": manual_only,
@@ -8061,7 +8073,7 @@ def _build_auto_execution_gate(
         "max_auto_risk_level": getattr(cfg.remediation, "max_auto_risk_level", "medium"),
         "requirements": [
             "诊断置信度 >= 90%",
-            "同类历史恢复成功率的统计置信下界达到配置阈值",
+            "同动作、同环境、同恢复验证标准的历史成功率统计置信下界达到配置阈值",
             "未检测到近期代码或发布变更",
             "自愈规则显式标记 safe_auto_execute/safe_rerun",
             "故障未标记 manual_only，且中高风险动作具备回滚操作",
@@ -8076,8 +8088,9 @@ def _recovery_scope_for_plan(
     target: Dict[str, Any],
     commands: List[str],
     namespace: str,
+    cfg: Any = None,
 ) -> Dict[str, Any]:
-    return build_recovery_scope(
+    scope = build_recovery_scope(
         commands=commands,
         cluster_id=body.get("cluster_id"),
         namespace=namespace,
@@ -8090,6 +8103,11 @@ def _recovery_scope_for_plan(
             or body.get("image")
         ),
     )
+    config = cfg if cfg is not None else _get_config()
+    policy = verification_contract(profiles=getattr(config.remediation, 'business_recovery_probes', []),
+        cluster_id=body.get('cluster_id'), namespace=namespace, service=str(target.get('service') or ''))
+    return {**scope, **policy, 'scope_version': 'recovery_scope_v2',
+            'scope_complete': bool(scope['scope_complete'] and policy['verification_contract_complete'])}
 
 
 def _scoped_recovery_history_stats(
@@ -8107,16 +8125,27 @@ def _scoped_recovery_history_stats(
         target=target,
         commands=commands,
         namespace=namespace,
+        cfg=cfg,
     )
     min_samples = _to_int(getattr(cfg.remediation, "auto_history_min_samples", 14), 14)
     try:
+        if not scope['scope_complete']:
+            raise ValueError('Recovery verification contract or action scope unavailable')
         stats = _get_fault_store().resolution_stats(
             fault_type=str(diagnosis.get("fault_type") or fault_type or ""),
             error_pattern=str(diagnosis.get("error_pattern") or ""),
             action_fingerprint=str(scope.get("action_fingerprint") or ""),
             environment_fingerprint=str(scope.get("environment_fingerprint") or ""),
+            verification_fingerprint=scope['verification_fingerprint'],
+            require_verification_contract=True,
             min_samples=min_samples,
         )
+        if (stats.get('verification_required') is not True or stats.get('verification_scope_complete') is not True
+                or stats.get('verification_fingerprint') != scope['verification_fingerprint']
+                or stats.get('action_fingerprint') != scope['action_fingerprint']
+                or stats.get('environment_fingerprint') != scope['environment_fingerprint']
+                or stats.get('scope_required') is not True or stats.get('scope_complete') is not True):
+            raise ValueError('History backend cannot provide verification-scoped statistics')
     except Exception:
         stats = {
             "history_kind": "recovery_outcome",
@@ -8125,6 +8154,11 @@ def _scoped_recovery_history_stats(
             "scope_version": scope.get("scope_version"),
             "action_fingerprint": scope.get("action_fingerprint"),
             "environment_fingerprint": scope.get("environment_fingerprint"),
+            'verification_required': True,
+            'verification_scope_complete': False,
+            'verification_fingerprint': scope.get('verification_fingerprint'),
+            'sample_count': 0, 'success_count': 0, 'failure_count': 0,
+            'sufficient_samples': False, 'verification_contract_unavailable': True,
         }
     return stats, scope
 
@@ -8915,11 +8949,22 @@ def _shell_sync(
             "stdout": stdout if keep_full_stdout else stdout[-4000:],
             "stderr": stderr[-4000:],
             "ok": result.returncode == 0,
+            # Only an observed normal shell exit supplies terminal failure
+            # evidence. Timeout/transport/signal conventions remain ambiguous;
+            # never infer dispatch certainty from the legacy ok/returncode pair.
+            "executed": True,
+            "execution_failure_confirmed": 0 < result.returncode < 124,
+            "outcome_unknown": result.returncode != 0 and not 0 < result.returncode < 124,
         }
     except subprocess.TimeoutExpired:
-        return {"command": effective_cmd, "returncode": 124, "stdout": "", "stderr": "timeout", "ok": False}
+        return {"command": effective_cmd, "returncode": 124, "stdout": "", "stderr": "timeout", "ok": False,
+                "outcome_unknown": True}
+    except OSError as e:
+        return {"command": effective_cmd, "returncode": 1, "stdout": "", "stderr": str(e), "ok": False,
+                "executed": False}
     except Exception as e:
-        return {"command": effective_cmd, "returncode": 1, "stdout": "", "stderr": str(e), "ok": False}
+        return {"command": effective_cmd, "returncode": 1, "stdout": "", "stderr": str(e), "ok": False,
+                "outcome_unknown": True}
 
 
 def _agent_skill_kubectl_runner(command: str, namespace: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -12517,8 +12562,22 @@ def _record_verified_recovery_outcome(
     recovered = verification.get("recovered")
     if recovered is not True and recovered is not False:
         return {"recorded": False, "reason": "recovery_not_verified", **recovery_scope}
+    if verification.get('status') not in {'verified', 'failed'}:
+        return {'recorded': False, 'reason': 'recovery_not_verified', **recovery_scope}
     if not recovery_scope.get("scope_complete"):
         return {"recorded": False, "reason": "recovery_scope_incomplete", **recovery_scope}
+    if (not valid_verification_fingerprint(recovery_scope.get('verification_fingerprint')) or
+            recovery_scope.get('verification_contract_version') != VERIFICATION_CONTRACT_VERSION):
+        return {'recorded': False, 'reason': 'verification_contract_missing', **recovery_scope}
+    if (verification.get('verification_fingerprint') != recovery_scope['verification_fingerprint'] or
+            verification.get('verification_contract_version') != VERIFICATION_CONTRACT_VERSION or
+            verification.get('verification_contract_complete') is not True or
+            verification.get('verification_level') != recovery_scope.get('verification_level')):
+        return {'recorded': False, 'reason': 'verification_contract_mismatch', **recovery_scope}
+    if recovered is True and verification.get('verification_level') in {'http_headers', 'json_assertions'} and (
+            verification.get('verification_scope') != 'infrastructure_and_business_http' or
+            verification.get('business_validation') != verification['verification_level']):
+        return {'recorded': False, 'reason': 'verification_contract_mismatch', **recovery_scope}
 
     diagnosis = suggestion.get("diagnosis_used") if isinstance(suggestion.get("diagnosis_used"), dict) else {}
     target = suggestion.get("target") if isinstance(suggestion.get("target"), dict) else {}
@@ -12553,6 +12612,9 @@ def _record_verified_recovery_outcome(
             "environment_fingerprint": recovery_scope.get("environment_fingerprint"),
             "scope_version": recovery_scope.get("scope_version"),
             "verification_status": verification.get("status"),
+            'verification_fingerprint': verification['verification_fingerprint'],
+            'verification_contract_version': verification['verification_contract_version'],
+            'verification_level': verification['verification_level'],
         },
     }
     try:
@@ -12704,6 +12766,7 @@ async def heal_execute(request: Request):
         target=target,
         commands=commands,
         namespace=namespace,
+        cfg=cfg,
     )
     actual_auto_gate = None
     ontology_proposal_id = str(body.get("ontology_proposal_id") or "")
@@ -12795,21 +12858,37 @@ async def heal_execute(request: Request):
         if not result.get("ok") and not dry_run:
             break
     action_success = all(r.get("ok") for r in results)
-    outcome_unknown = bool(ontology) and any(r.get("outcome_unknown") for r in results)
-    not_dispatched = bool(ontology) and any(r.get("executed") is False for r in results)
+    not_dispatched = any(r.get("executed") is False for r in results)
+    outcome_unknown = any(
+        r.get("outcome_unknown") or (not r.get("ok") and r.get("executed") is not False and not (
+            r.get("executed") is True and r.get("execution_failure_confirmed") is True))
+        for r in results
+    )
     try:
-        verification = await asyncio.to_thread(
-            _verify_heal_recovery,
-            namespace=namespace,
-            suggestion=suggestion,
-            commands=commands,
-            cluster_id=cluster_id,
-            dry_run=dry_run,
-            executed_success=action_success,
-        )
-        if not isinstance(verification, dict):
-            raise ValueError("Invalid recovery verification result")
-        if not dry_run and action_success:
+        if dry_run:
+            verification = {"status": "skipped", "reason": "dry_run", "recovered": None, "checks": []}
+        elif not action_success:
+            # A confirmed command failure is an unsuccessful recovery attempt
+            # under the planned acceptance contract. It does not assert that
+            # business probes ran or that their response was evaluated.
+            verification = {"status": "failed", "reason": "action_execution_failed", "recovered": False,
+                            "checks": [], "verification_scope": "action_execution",
+                            "verification_contract_basis": "planned_acceptance",
+                            **{k: recovery_scope.get(k) for k in (
+                                "verification_fingerprint", "verification_contract_version",
+                                "verification_contract_complete", "verification_level")}}
+        else:
+            verification = await asyncio.to_thread(
+                _verify_heal_recovery,
+                namespace=namespace,
+                suggestion=suggestion,
+                commands=commands,
+                cluster_id=cluster_id,
+                dry_run=dry_run,
+                executed_success=action_success,
+            )
+            if not isinstance(verification, dict):
+                raise ValueError("Invalid recovery verification result")
             verification = await asyncio.to_thread(
                 verify_business_recovery, verification,
                 profiles=getattr(cfg.remediation, "business_recovery_probes", []),
@@ -12897,6 +12976,13 @@ def _reverify_heal_run(run_id: str) -> Dict[str, Any]:
         if not isinstance(target, dict) or not target:
             raise HTTPException(409, "Original verification target missing; verify manually")
         previous = copy.deepcopy(run.get("verification"))
+        saved_scope = run.get('recovery_history_scope')
+        saved_scope = saved_scope if isinstance(saved_scope, dict) else {}
+        previous_policy = previous if isinstance(previous, dict) else {}
+        expected_contract = (run.get('verification_required_fingerprint') or
+                             saved_scope.get('verification_fingerprint') or previous_policy.get('verification_fingerprint'))
+        if valid_verification_fingerprint(expected_contract):
+            run['verification_required_fingerprint'] = expected_contract
         try:
             verification = _verify_heal_recovery(
                 namespace=run["namespace"], suggestion={"target": target},
@@ -12906,6 +12992,15 @@ def _reverify_heal_run(run_id: str) -> Dict[str, Any]:
                 profiles=getattr(_get_config().remediation, "business_recovery_probes", []),
                 cluster_id=run.get("cluster_id"), namespace=run["namespace"],
                 service=str(target.get("service") or ""))
+            if valid_verification_fingerprint(expected_contract) and verification.get('verification_fingerprint') != expected_contract:
+                if verification.get('recovered') is False and verification.get('verification_scope') == 'infrastructure':
+                    verification = {**verification, 'verification_contract_changed': True}
+                else:
+                    verification = {**verification, 'status': 'unknown', 'recovered': None,
+                                    'reason': 'verification_contract_changed'}
+            elif expected_contract and not valid_verification_fingerprint(expected_contract):
+                verification = {**verification, 'status': 'unknown', 'recovered': None,
+                                'reason': 'verification_contract_invalid'}
             # Never downgrade a prior business requirement to infrastructure-only success.
             if verification.get("recovered") is True and verification.get("verification_scope") != "infrastructure_and_business_http":
                 verification = {**verification, "status": "unknown", "recovered": None,

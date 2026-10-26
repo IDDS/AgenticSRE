@@ -42,7 +42,7 @@ COPY skill_runtime/ ./skill_runtime/
 COPY tools/ ./tools/
 COPY vllm_fault_injector/ ./vllm_fault_injector/
 COPY web_app/ ./web_app/
-COPY main.py mcp_server.py operational_ontology.py operational_lineage.py operational_provenance.py diagnostic_strategy.py README.md USER_MANUAL.md AGENTS.md ./
+COPY main.py mcp_server.py operational_ontology.py operational_lineage.py operational_provenance.py diagnostic_strategy.py recovery_verification.py README.md USER_MANUAL.md AGENTS.md ./
 
 VOLUME ["/app/data", "/app/logs"]
 

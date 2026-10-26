@@ -22,6 +22,7 @@ from configs.config_loader import load_config
 import configs.config_loader as config_loader_module
 from confidence_statistics import clopper_pearson_lower_bound
 from remediation_history import build_recovery_scope
+from recovery_verification import verification_contract
 from orchestrator.confidence_calibrator import calibrate_llm_fault_confidence, calibrate_rca_confidence
 from skill_runtime.confidence import (
     calibrate_llm_fault_confidence as calibrate_skill_llm_fault_confidence,
@@ -80,6 +81,10 @@ def test_heal_auto_execution_gate_requires_historical_safe_rule(monkeypatch) -> 
         diagnosis=diagnosis,
         cfg=cfg,
         recovery_history_stats={
+            **build_recovery_scope(commands=[s['command'] for s in suggestions],
+                                   namespace='default', target={'service': 'frontend'}),
+            **verification_contract(profiles=[], cluster_id='', namespace='default', service='frontend'),
+            'scope_required': True, 'verification_required': True, 'verification_scope_complete': True,
             "history_kind": "recovery_outcome",
             "sample_count": 20,
             "success_count": 20,

@@ -1,0 +1,893 @@
+FFFFFFFFFFF                                                              [100%]
+=================================== FAILURES ===================================
+___ test_execute_failure_accounting_uses_terminal_dispatch_evidence[failure] ___
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_execute_failure_accountin0', ru..., ssh_target='target', target_host='target')), <memory.fault_context_store.FaultContextStore object at 0x7f8e1c843470>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f8e1c840e30>
+mode = 'failure'
+
+    @pytest.mark.parametrize('mode', ['failure', 'timeout', 'transport', 'signal', 'inner_timeout',
+                                      'launch_error', 'unexpected_error', 'untyped', 'ontology_unknown',
+                                      'not_dispatched', 'dry_run'])
+    def test_execute_failure_accounting_uses_terminal_dispatch_evidence(history, monkeypatch, mode):
+        """Exercise the endpoint, native writer and persisted statistics, without real actions."""
+        import asyncio
+        import subprocess
+        cfg, store = history
+        cfg.kubernetes = SimpleNamespace(namespace='test', use_ssh=mode == 'transport',
+            ssh_jump_host='jump' if mode == 'transport' else '', ssh_target='target', target_host='target')
+        for key, value in dict(enabled=True, recommend_only=False, require_approval=True,
+                               dry_run=True, max_steps=5).items():
+            setattr(cfg.remediation, key, value)
+        monkeypatch.setattr(web, '_apply_cluster_to_cmd', lambda cmd, cluster_id: cmd)
+        suggestion = {'target': TARGET, 'namespace': 'test', 'fault_type': 'ServiceUnavailable',
+                      'diagnosis_gate': {'ready': True}, 'diagnosis_used': {'confidence': .99}}
+        monkeypatch.setattr(web, '_build_heal_suggestions', lambda body: suggestion)
+        monkeypatch.setattr(web, '_save_heal_run', lambda run: None)
+        probe_calls = []
+        def no_probe(*args, **kwargs):
+            probe_calls.append(True)
+            return {'status': 'skipped', 'reason': 'execution_failed', 'recovered': False}
+        monkeypatch.setattr(web, '_verify_heal_recovery', no_probe)
+        monkeypatch.setattr(web, 'verify_business_recovery', no_probe)
+        def shell(*args, **kwargs):
+            if mode == 'timeout':
+                raise subprocess.TimeoutExpired('controlled', 1)
+            if mode == 'launch_error':
+                raise OSError('controlled launch failure')
+            if mode == 'unexpected_error':
+                raise RuntimeError('controlled waiting failure')
+            rc = {'transport': 255, 'signal': -9, 'inner_timeout': 124}.get(mode, 1)
+            return SimpleNamespace(returncode=rc, stdout='', stderr='controlled')
+        monkeypatch.setattr(web.subprocess, 'run', shell)
+        if mode == 'untyped':
+            monkeypatch.setattr(web, '_shell_sync', lambda *args: {'ok': False, 'returncode': 1})
+        ontology = {'target': {'cluster_id': 'east'}} if mode in {'ontology_unknown', 'not_dispatched'} else None
+        monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda *args, **kwargs: ontology)
+        monkeypatch.setattr(web, '_verify_ontology_action', lambda *args: {})
+        monkeypatch.setattr(web, '_load_heal_runs', lambda: [{'id': 'proposal', 'dry_run': True,
+            'commands': COMMANDS, 'rollback_commands': [], 'ontology_action_context': ontology}])
+        monkeypatch.setattr(web, '_execute_ontology_command', lambda *args: {
+            'ok': False, 'executed': mode != 'not_dispatched',
+            'outcome_unknown': mode == 'ontology_unknown', 'execution_failure_confirmed': True})
+        class Request:
+            async def json(self):
+                return {'cluster_id': 'east', 'namespace': 'test', 'commands': COMMANDS,
+                        'dry_run': mode == 'dry_run', 'approved': True, 'ontology_proposal_id': 'proposal'}
+        if mode == 'failure':
+            for i in range(14):
+                add(store, i, policy=contract([profile()]))
+        runs = [asyncio.run(web.heal_execute(Request())) for _ in range(5 if mode == 'failure' else 1)]
+        # Reload actual JSON storage: no mock aggregate can hide a missing failure denominator.
+        monkeypatch.setattr(web, '_get_fault_store', lambda: FaultContextStore(cfg))
+        stats, _ = query(history)
+        run = runs[-1]
+        if mode == 'failure':
+>           assert (stats['sample_count'], stats['success_count'], stats['failure_count']) == (19, 14, 5)
+E           assert (14, 14, 0) == (19, 14, 5)
+E             
+E             At index 0 diff: 14 != 19
+E             Use -v to get more diff
+
+/tmp/test_execution_failure_regression.py:102: AssertionError
+___ test_execute_failure_accounting_uses_terminal_dispatch_evidence[timeout] ___
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_execute_failure_accountin1', ru..., ssh_target='target', target_host='target')), <memory.fault_context_store.FaultContextStore object at 0x7f8e1ccd5550>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f8e1ccd54f0>
+mode = 'timeout'
+
+    @pytest.mark.parametrize('mode', ['failure', 'timeout', 'transport', 'signal', 'inner_timeout',
+                                      'launch_error', 'unexpected_error', 'untyped', 'ontology_unknown',
+                                      'not_dispatched', 'dry_run'])
+    def test_execute_failure_accounting_uses_terminal_dispatch_evidence(history, monkeypatch, mode):
+        """Exercise the endpoint, native writer and persisted statistics, without real actions."""
+        import asyncio
+        import subprocess
+        cfg, store = history
+        cfg.kubernetes = SimpleNamespace(namespace='test', use_ssh=mode == 'transport',
+            ssh_jump_host='jump' if mode == 'transport' else '', ssh_target='target', target_host='target')
+        for key, value in dict(enabled=True, recommend_only=False, require_approval=True,
+                               dry_run=True, max_steps=5).items():
+            setattr(cfg.remediation, key, value)
+        monkeypatch.setattr(web, '_apply_cluster_to_cmd', lambda cmd, cluster_id: cmd)
+        suggestion = {'target': TARGET, 'namespace': 'test', 'fault_type': 'ServiceUnavailable',
+                      'diagnosis_gate': {'ready': True}, 'diagnosis_used': {'confidence': .99}}
+        monkeypatch.setattr(web, '_build_heal_suggestions', lambda body: suggestion)
+        monkeypatch.setattr(web, '_save_heal_run', lambda run: None)
+        probe_calls = []
+        def no_probe(*args, **kwargs):
+            probe_calls.append(True)
+            return {'status': 'skipped', 'reason': 'execution_failed', 'recovered': False}
+        monkeypatch.setattr(web, '_verify_heal_recovery', no_probe)
+        monkeypatch.setattr(web, 'verify_business_recovery', no_probe)
+        def shell(*args, **kwargs):
+            if mode == 'timeout':
+                raise subprocess.TimeoutExpired('controlled', 1)
+            if mode == 'launch_error':
+                raise OSError('controlled launch failure')
+            if mode == 'unexpected_error':
+                raise RuntimeError('controlled waiting failure')
+            rc = {'transport': 255, 'signal': -9, 'inner_timeout': 124}.get(mode, 1)
+            return SimpleNamespace(returncode=rc, stdout='', stderr='controlled')
+        monkeypatch.setattr(web.subprocess, 'run', shell)
+        if mode == 'untyped':
+            monkeypatch.setattr(web, '_shell_sync', lambda *args: {'ok': False, 'returncode': 1})
+        ontology = {'target': {'cluster_id': 'east'}} if mode in {'ontology_unknown', 'not_dispatched'} else None
+        monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda *args, **kwargs: ontology)
+        monkeypatch.setattr(web, '_verify_ontology_action', lambda *args: {})
+        monkeypatch.setattr(web, '_load_heal_runs', lambda: [{'id': 'proposal', 'dry_run': True,
+            'commands': COMMANDS, 'rollback_commands': [], 'ontology_action_context': ontology}])
+        monkeypatch.setattr(web, '_execute_ontology_command', lambda *args: {
+            'ok': False, 'executed': mode != 'not_dispatched',
+            'outcome_unknown': mode == 'ontology_unknown', 'execution_failure_confirmed': True})
+        class Request:
+            async def json(self):
+                return {'cluster_id': 'east', 'namespace': 'test', 'commands': COMMANDS,
+                        'dry_run': mode == 'dry_run', 'approved': True, 'ontology_proposal_id': 'proposal'}
+        if mode == 'failure':
+            for i in range(14):
+                add(store, i, policy=contract([profile()]))
+        runs = [asyncio.run(web.heal_execute(Request())) for _ in range(5 if mode == 'failure' else 1)]
+        # Reload actual JSON storage: no mock aggregate can hide a missing failure denominator.
+        monkeypatch.setattr(web, '_get_fault_store', lambda: FaultContextStore(cfg))
+        stats, _ = query(history)
+        run = runs[-1]
+        if mode == 'failure':
+            assert (stats['sample_count'], stats['success_count'], stats['failure_count']) == (19, 14, 5)
+            assert run['status'] == 'failed' and run['recovery_history_record']['recorded'] is True
+            assert run['verification']['reason'] == 'action_execution_failed'
+            assert run['verification']['verification_scope'] == 'action_execution'
+            assert 'business_validation' not in run['verification']
+            gate = web._build_auto_execution_gate(recipe={'safe_auto_execute': True}, suggestions=[{'risk': 'low'}],
+                diagnosis={'confidence': .99}, cfg=cfg, recovery_history_stats=stats)
+            assert gate['ready'] is False
+        else:
+            assert stats['sample_count'] == 0 and not run['recovery_history_record']['recorded']
+>           assert run['verification']['recovered'] is None
+E           assert False is None
+
+/tmp/test_execution_failure_regression.py:112: AssertionError
+__ test_execute_failure_accounting_uses_terminal_dispatch_evidence[transport] __
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_execute_failure_accountin2', ru..., ssh_target='target', target_host='target')), <memory.fault_context_store.FaultContextStore object at 0x7f8e1c84ebd0>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f8e1c84f260>
+mode = 'transport'
+
+    @pytest.mark.parametrize('mode', ['failure', 'timeout', 'transport', 'signal', 'inner_timeout',
+                                      'launch_error', 'unexpected_error', 'untyped', 'ontology_unknown',
+                                      'not_dispatched', 'dry_run'])
+    def test_execute_failure_accounting_uses_terminal_dispatch_evidence(history, monkeypatch, mode):
+        """Exercise the endpoint, native writer and persisted statistics, without real actions."""
+        import asyncio
+        import subprocess
+        cfg, store = history
+        cfg.kubernetes = SimpleNamespace(namespace='test', use_ssh=mode == 'transport',
+            ssh_jump_host='jump' if mode == 'transport' else '', ssh_target='target', target_host='target')
+        for key, value in dict(enabled=True, recommend_only=False, require_approval=True,
+                               dry_run=True, max_steps=5).items():
+            setattr(cfg.remediation, key, value)
+        monkeypatch.setattr(web, '_apply_cluster_to_cmd', lambda cmd, cluster_id: cmd)
+        suggestion = {'target': TARGET, 'namespace': 'test', 'fault_type': 'ServiceUnavailable',
+                      'diagnosis_gate': {'ready': True}, 'diagnosis_used': {'confidence': .99}}
+        monkeypatch.setattr(web, '_build_heal_suggestions', lambda body: suggestion)
+        monkeypatch.setattr(web, '_save_heal_run', lambda run: None)
+        probe_calls = []
+        def no_probe(*args, **kwargs):
+            probe_calls.append(True)
+            return {'status': 'skipped', 'reason': 'execution_failed', 'recovered': False}
+        monkeypatch.setattr(web, '_verify_heal_recovery', no_probe)
+        monkeypatch.setattr(web, 'verify_business_recovery', no_probe)
+        def shell(*args, **kwargs):
+            if mode == 'timeout':
+                raise subprocess.TimeoutExpired('controlled', 1)
+            if mode == 'launch_error':
+                raise OSError('controlled launch failure')
+            if mode == 'unexpected_error':
+                raise RuntimeError('controlled waiting failure')
+            rc = {'transport': 255, 'signal': -9, 'inner_timeout': 124}.get(mode, 1)
+            return SimpleNamespace(returncode=rc, stdout='', stderr='controlled')
+        monkeypatch.setattr(web.subprocess, 'run', shell)
+        if mode == 'untyped':
+            monkeypatch.setattr(web, '_shell_sync', lambda *args: {'ok': False, 'returncode': 1})
+        ontology = {'target': {'cluster_id': 'east'}} if mode in {'ontology_unknown', 'not_dispatched'} else None
+        monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda *args, **kwargs: ontology)
+        monkeypatch.setattr(web, '_verify_ontology_action', lambda *args: {})
+        monkeypatch.setattr(web, '_load_heal_runs', lambda: [{'id': 'proposal', 'dry_run': True,
+            'commands': COMMANDS, 'rollback_commands': [], 'ontology_action_context': ontology}])
+        monkeypatch.setattr(web, '_execute_ontology_command', lambda *args: {
+            'ok': False, 'executed': mode != 'not_dispatched',
+            'outcome_unknown': mode == 'ontology_unknown', 'execution_failure_confirmed': True})
+        class Request:
+            async def json(self):
+                return {'cluster_id': 'east', 'namespace': 'test', 'commands': COMMANDS,
+                        'dry_run': mode == 'dry_run', 'approved': True, 'ontology_proposal_id': 'proposal'}
+        if mode == 'failure':
+            for i in range(14):
+                add(store, i, policy=contract([profile()]))
+        runs = [asyncio.run(web.heal_execute(Request())) for _ in range(5 if mode == 'failure' else 1)]
+        # Reload actual JSON storage: no mock aggregate can hide a missing failure denominator.
+        monkeypatch.setattr(web, '_get_fault_store', lambda: FaultContextStore(cfg))
+        stats, _ = query(history)
+        run = runs[-1]
+        if mode == 'failure':
+            assert (stats['sample_count'], stats['success_count'], stats['failure_count']) == (19, 14, 5)
+            assert run['status'] == 'failed' and run['recovery_history_record']['recorded'] is True
+            assert run['verification']['reason'] == 'action_execution_failed'
+            assert run['verification']['verification_scope'] == 'action_execution'
+            assert 'business_validation' not in run['verification']
+            gate = web._build_auto_execution_gate(recipe={'safe_auto_execute': True}, suggestions=[{'risk': 'low'}],
+                diagnosis={'confidence': .99}, cfg=cfg, recovery_history_stats=stats)
+            assert gate['ready'] is False
+        else:
+            assert stats['sample_count'] == 0 and not run['recovery_history_record']['recorded']
+>           assert run['verification']['recovered'] is None
+E           assert False is None
+
+/tmp/test_execution_failure_regression.py:112: AssertionError
+___ test_execute_failure_accounting_uses_terminal_dispatch_evidence[signal] ____
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_execute_failure_accountin3', ru..., ssh_target='target', target_host='target')), <memory.fault_context_store.FaultContextStore object at 0x7f8e1c840fe0>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f8e1c843740>
+mode = 'signal'
+
+    @pytest.mark.parametrize('mode', ['failure', 'timeout', 'transport', 'signal', 'inner_timeout',
+                                      'launch_error', 'unexpected_error', 'untyped', 'ontology_unknown',
+                                      'not_dispatched', 'dry_run'])
+    def test_execute_failure_accounting_uses_terminal_dispatch_evidence(history, monkeypatch, mode):
+        """Exercise the endpoint, native writer and persisted statistics, without real actions."""
+        import asyncio
+        import subprocess
+        cfg, store = history
+        cfg.kubernetes = SimpleNamespace(namespace='test', use_ssh=mode == 'transport',
+            ssh_jump_host='jump' if mode == 'transport' else '', ssh_target='target', target_host='target')
+        for key, value in dict(enabled=True, recommend_only=False, require_approval=True,
+                               dry_run=True, max_steps=5).items():
+            setattr(cfg.remediation, key, value)
+        monkeypatch.setattr(web, '_apply_cluster_to_cmd', lambda cmd, cluster_id: cmd)
+        suggestion = {'target': TARGET, 'namespace': 'test', 'fault_type': 'ServiceUnavailable',
+                      'diagnosis_gate': {'ready': True}, 'diagnosis_used': {'confidence': .99}}
+        monkeypatch.setattr(web, '_build_heal_suggestions', lambda body: suggestion)
+        monkeypatch.setattr(web, '_save_heal_run', lambda run: None)
+        probe_calls = []
+        def no_probe(*args, **kwargs):
+            probe_calls.append(True)
+            return {'status': 'skipped', 'reason': 'execution_failed', 'recovered': False}
+        monkeypatch.setattr(web, '_verify_heal_recovery', no_probe)
+        monkeypatch.setattr(web, 'verify_business_recovery', no_probe)
+        def shell(*args, **kwargs):
+            if mode == 'timeout':
+                raise subprocess.TimeoutExpired('controlled', 1)
+            if mode == 'launch_error':
+                raise OSError('controlled launch failure')
+            if mode == 'unexpected_error':
+                raise RuntimeError('controlled waiting failure')
+            rc = {'transport': 255, 'signal': -9, 'inner_timeout': 124}.get(mode, 1)
+            return SimpleNamespace(returncode=rc, stdout='', stderr='controlled')
+        monkeypatch.setattr(web.subprocess, 'run', shell)
+        if mode == 'untyped':
+            monkeypatch.setattr(web, '_shell_sync', lambda *args: {'ok': False, 'returncode': 1})
+        ontology = {'target': {'cluster_id': 'east'}} if mode in {'ontology_unknown', 'not_dispatched'} else None
+        monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda *args, **kwargs: ontology)
+        monkeypatch.setattr(web, '_verify_ontology_action', lambda *args: {})
+        monkeypatch.setattr(web, '_load_heal_runs', lambda: [{'id': 'proposal', 'dry_run': True,
+            'commands': COMMANDS, 'rollback_commands': [], 'ontology_action_context': ontology}])
+        monkeypatch.setattr(web, '_execute_ontology_command', lambda *args: {
+            'ok': False, 'executed': mode != 'not_dispatched',
+            'outcome_unknown': mode == 'ontology_unknown', 'execution_failure_confirmed': True})
+        class Request:
+            async def json(self):
+                return {'cluster_id': 'east', 'namespace': 'test', 'commands': COMMANDS,
+                        'dry_run': mode == 'dry_run', 'approved': True, 'ontology_proposal_id': 'proposal'}
+        if mode == 'failure':
+            for i in range(14):
+                add(store, i, policy=contract([profile()]))
+        runs = [asyncio.run(web.heal_execute(Request())) for _ in range(5 if mode == 'failure' else 1)]
+        # Reload actual JSON storage: no mock aggregate can hide a missing failure denominator.
+        monkeypatch.setattr(web, '_get_fault_store', lambda: FaultContextStore(cfg))
+        stats, _ = query(history)
+        run = runs[-1]
+        if mode == 'failure':
+            assert (stats['sample_count'], stats['success_count'], stats['failure_count']) == (19, 14, 5)
+            assert run['status'] == 'failed' and run['recovery_history_record']['recorded'] is True
+            assert run['verification']['reason'] == 'action_execution_failed'
+            assert run['verification']['verification_scope'] == 'action_execution'
+            assert 'business_validation' not in run['verification']
+            gate = web._build_auto_execution_gate(recipe={'safe_auto_execute': True}, suggestions=[{'risk': 'low'}],
+                diagnosis={'confidence': .99}, cfg=cfg, recovery_history_stats=stats)
+            assert gate['ready'] is False
+        else:
+            assert stats['sample_count'] == 0 and not run['recovery_history_record']['recorded']
+>           assert run['verification']['recovered'] is None
+E           assert False is None
+
+/tmp/test_execution_failure_regression.py:112: AssertionError
+_ test_execute_failure_accounting_uses_terminal_dispatch_evidence[inner_timeout] _
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_execute_failure_accountin4', ru..., ssh_target='target', target_host='target')), <memory.fault_context_store.FaultContextStore object at 0x7f8e1ccd5d30>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f8e1c8439b0>
+mode = 'inner_timeout'
+
+    @pytest.mark.parametrize('mode', ['failure', 'timeout', 'transport', 'signal', 'inner_timeout',
+                                      'launch_error', 'unexpected_error', 'untyped', 'ontology_unknown',
+                                      'not_dispatched', 'dry_run'])
+    def test_execute_failure_accounting_uses_terminal_dispatch_evidence(history, monkeypatch, mode):
+        """Exercise the endpoint, native writer and persisted statistics, without real actions."""
+        import asyncio
+        import subprocess
+        cfg, store = history
+        cfg.kubernetes = SimpleNamespace(namespace='test', use_ssh=mode == 'transport',
+            ssh_jump_host='jump' if mode == 'transport' else '', ssh_target='target', target_host='target')
+        for key, value in dict(enabled=True, recommend_only=False, require_approval=True,
+                               dry_run=True, max_steps=5).items():
+            setattr(cfg.remediation, key, value)
+        monkeypatch.setattr(web, '_apply_cluster_to_cmd', lambda cmd, cluster_id: cmd)
+        suggestion = {'target': TARGET, 'namespace': 'test', 'fault_type': 'ServiceUnavailable',
+                      'diagnosis_gate': {'ready': True}, 'diagnosis_used': {'confidence': .99}}
+        monkeypatch.setattr(web, '_build_heal_suggestions', lambda body: suggestion)
+        monkeypatch.setattr(web, '_save_heal_run', lambda run: None)
+        probe_calls = []
+        def no_probe(*args, **kwargs):
+            probe_calls.append(True)
+            return {'status': 'skipped', 'reason': 'execution_failed', 'recovered': False}
+        monkeypatch.setattr(web, '_verify_heal_recovery', no_probe)
+        monkeypatch.setattr(web, 'verify_business_recovery', no_probe)
+        def shell(*args, **kwargs):
+            if mode == 'timeout':
+                raise subprocess.TimeoutExpired('controlled', 1)
+            if mode == 'launch_error':
+                raise OSError('controlled launch failure')
+            if mode == 'unexpected_error':
+                raise RuntimeError('controlled waiting failure')
+            rc = {'transport': 255, 'signal': -9, 'inner_timeout': 124}.get(mode, 1)
+            return SimpleNamespace(returncode=rc, stdout='', stderr='controlled')
+        monkeypatch.setattr(web.subprocess, 'run', shell)
+        if mode == 'untyped':
+            monkeypatch.setattr(web, '_shell_sync', lambda *args: {'ok': False, 'returncode': 1})
+        ontology = {'target': {'cluster_id': 'east'}} if mode in {'ontology_unknown', 'not_dispatched'} else None
+        monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda *args, **kwargs: ontology)
+        monkeypatch.setattr(web, '_verify_ontology_action', lambda *args: {})
+        monkeypatch.setattr(web, '_load_heal_runs', lambda: [{'id': 'proposal', 'dry_run': True,
+            'commands': COMMANDS, 'rollback_commands': [], 'ontology_action_context': ontology}])
+        monkeypatch.setattr(web, '_execute_ontology_command', lambda *args: {
+            'ok': False, 'executed': mode != 'not_dispatched',
+            'outcome_unknown': mode == 'ontology_unknown', 'execution_failure_confirmed': True})
+        class Request:
+            async def json(self):
+                return {'cluster_id': 'east', 'namespace': 'test', 'commands': COMMANDS,
+                        'dry_run': mode == 'dry_run', 'approved': True, 'ontology_proposal_id': 'proposal'}
+        if mode == 'failure':
+            for i in range(14):
+                add(store, i, policy=contract([profile()]))
+        runs = [asyncio.run(web.heal_execute(Request())) for _ in range(5 if mode == 'failure' else 1)]
+        # Reload actual JSON storage: no mock aggregate can hide a missing failure denominator.
+        monkeypatch.setattr(web, '_get_fault_store', lambda: FaultContextStore(cfg))
+        stats, _ = query(history)
+        run = runs[-1]
+        if mode == 'failure':
+            assert (stats['sample_count'], stats['success_count'], stats['failure_count']) == (19, 14, 5)
+            assert run['status'] == 'failed' and run['recovery_history_record']['recorded'] is True
+            assert run['verification']['reason'] == 'action_execution_failed'
+            assert run['verification']['verification_scope'] == 'action_execution'
+            assert 'business_validation' not in run['verification']
+            gate = web._build_auto_execution_gate(recipe={'safe_auto_execute': True}, suggestions=[{'risk': 'low'}],
+                diagnosis={'confidence': .99}, cfg=cfg, recovery_history_stats=stats)
+            assert gate['ready'] is False
+        else:
+            assert stats['sample_count'] == 0 and not run['recovery_history_record']['recorded']
+>           assert run['verification']['recovered'] is None
+E           assert False is None
+
+/tmp/test_execution_failure_regression.py:112: AssertionError
+_ test_execute_failure_accounting_uses_terminal_dispatch_evidence[launch_error] _
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_execute_failure_accountin5', ru..., ssh_target='target', target_host='target')), <memory.fault_context_store.FaultContextStore object at 0x7f8e1c84f230>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f8e1c84f800>
+mode = 'launch_error'
+
+    @pytest.mark.parametrize('mode', ['failure', 'timeout', 'transport', 'signal', 'inner_timeout',
+                                      'launch_error', 'unexpected_error', 'untyped', 'ontology_unknown',
+                                      'not_dispatched', 'dry_run'])
+    def test_execute_failure_accounting_uses_terminal_dispatch_evidence(history, monkeypatch, mode):
+        """Exercise the endpoint, native writer and persisted statistics, without real actions."""
+        import asyncio
+        import subprocess
+        cfg, store = history
+        cfg.kubernetes = SimpleNamespace(namespace='test', use_ssh=mode == 'transport',
+            ssh_jump_host='jump' if mode == 'transport' else '', ssh_target='target', target_host='target')
+        for key, value in dict(enabled=True, recommend_only=False, require_approval=True,
+                               dry_run=True, max_steps=5).items():
+            setattr(cfg.remediation, key, value)
+        monkeypatch.setattr(web, '_apply_cluster_to_cmd', lambda cmd, cluster_id: cmd)
+        suggestion = {'target': TARGET, 'namespace': 'test', 'fault_type': 'ServiceUnavailable',
+                      'diagnosis_gate': {'ready': True}, 'diagnosis_used': {'confidence': .99}}
+        monkeypatch.setattr(web, '_build_heal_suggestions', lambda body: suggestion)
+        monkeypatch.setattr(web, '_save_heal_run', lambda run: None)
+        probe_calls = []
+        def no_probe(*args, **kwargs):
+            probe_calls.append(True)
+            return {'status': 'skipped', 'reason': 'execution_failed', 'recovered': False}
+        monkeypatch.setattr(web, '_verify_heal_recovery', no_probe)
+        monkeypatch.setattr(web, 'verify_business_recovery', no_probe)
+        def shell(*args, **kwargs):
+            if mode == 'timeout':
+                raise subprocess.TimeoutExpired('controlled', 1)
+            if mode == 'launch_error':
+                raise OSError('controlled launch failure')
+            if mode == 'unexpected_error':
+                raise RuntimeError('controlled waiting failure')
+            rc = {'transport': 255, 'signal': -9, 'inner_timeout': 124}.get(mode, 1)
+            return SimpleNamespace(returncode=rc, stdout='', stderr='controlled')
+        monkeypatch.setattr(web.subprocess, 'run', shell)
+        if mode == 'untyped':
+            monkeypatch.setattr(web, '_shell_sync', lambda *args: {'ok': False, 'returncode': 1})
+        ontology = {'target': {'cluster_id': 'east'}} if mode in {'ontology_unknown', 'not_dispatched'} else None
+        monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda *args, **kwargs: ontology)
+        monkeypatch.setattr(web, '_verify_ontology_action', lambda *args: {})
+        monkeypatch.setattr(web, '_load_heal_runs', lambda: [{'id': 'proposal', 'dry_run': True,
+            'commands': COMMANDS, 'rollback_commands': [], 'ontology_action_context': ontology}])
+        monkeypatch.setattr(web, '_execute_ontology_command', lambda *args: {
+            'ok': False, 'executed': mode != 'not_dispatched',
+            'outcome_unknown': mode == 'ontology_unknown', 'execution_failure_confirmed': True})
+        class Request:
+            async def json(self):
+                return {'cluster_id': 'east', 'namespace': 'test', 'commands': COMMANDS,
+                        'dry_run': mode == 'dry_run', 'approved': True, 'ontology_proposal_id': 'proposal'}
+        if mode == 'failure':
+            for i in range(14):
+                add(store, i, policy=contract([profile()]))
+        runs = [asyncio.run(web.heal_execute(Request())) for _ in range(5 if mode == 'failure' else 1)]
+        # Reload actual JSON storage: no mock aggregate can hide a missing failure denominator.
+        monkeypatch.setattr(web, '_get_fault_store', lambda: FaultContextStore(cfg))
+        stats, _ = query(history)
+        run = runs[-1]
+        if mode == 'failure':
+            assert (stats['sample_count'], stats['success_count'], stats['failure_count']) == (19, 14, 5)
+            assert run['status'] == 'failed' and run['recovery_history_record']['recorded'] is True
+            assert run['verification']['reason'] == 'action_execution_failed'
+            assert run['verification']['verification_scope'] == 'action_execution'
+            assert 'business_validation' not in run['verification']
+            gate = web._build_auto_execution_gate(recipe={'safe_auto_execute': True}, suggestions=[{'risk': 'low'}],
+                diagnosis={'confidence': .99}, cfg=cfg, recovery_history_stats=stats)
+            assert gate['ready'] is False
+        else:
+            assert stats['sample_count'] == 0 and not run['recovery_history_record']['recorded']
+>           assert run['verification']['recovered'] is None
+E           assert False is None
+
+/tmp/test_execution_failure_regression.py:112: AssertionError
+_ test_execute_failure_accounting_uses_terminal_dispatch_evidence[unexpected_error] _
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_execute_failure_accountin6', ru..., ssh_target='target', target_host='target')), <memory.fault_context_store.FaultContextStore object at 0x7f8e1c84cec0>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f8e1c84ce60>
+mode = 'unexpected_error'
+
+    @pytest.mark.parametrize('mode', ['failure', 'timeout', 'transport', 'signal', 'inner_timeout',
+                                      'launch_error', 'unexpected_error', 'untyped', 'ontology_unknown',
+                                      'not_dispatched', 'dry_run'])
+    def test_execute_failure_accounting_uses_terminal_dispatch_evidence(history, monkeypatch, mode):
+        """Exercise the endpoint, native writer and persisted statistics, without real actions."""
+        import asyncio
+        import subprocess
+        cfg, store = history
+        cfg.kubernetes = SimpleNamespace(namespace='test', use_ssh=mode == 'transport',
+            ssh_jump_host='jump' if mode == 'transport' else '', ssh_target='target', target_host='target')
+        for key, value in dict(enabled=True, recommend_only=False, require_approval=True,
+                               dry_run=True, max_steps=5).items():
+            setattr(cfg.remediation, key, value)
+        monkeypatch.setattr(web, '_apply_cluster_to_cmd', lambda cmd, cluster_id: cmd)
+        suggestion = {'target': TARGET, 'namespace': 'test', 'fault_type': 'ServiceUnavailable',
+                      'diagnosis_gate': {'ready': True}, 'diagnosis_used': {'confidence': .99}}
+        monkeypatch.setattr(web, '_build_heal_suggestions', lambda body: suggestion)
+        monkeypatch.setattr(web, '_save_heal_run', lambda run: None)
+        probe_calls = []
+        def no_probe(*args, **kwargs):
+            probe_calls.append(True)
+            return {'status': 'skipped', 'reason': 'execution_failed', 'recovered': False}
+        monkeypatch.setattr(web, '_verify_heal_recovery', no_probe)
+        monkeypatch.setattr(web, 'verify_business_recovery', no_probe)
+        def shell(*args, **kwargs):
+            if mode == 'timeout':
+                raise subprocess.TimeoutExpired('controlled', 1)
+            if mode == 'launch_error':
+                raise OSError('controlled launch failure')
+            if mode == 'unexpected_error':
+                raise RuntimeError('controlled waiting failure')
+            rc = {'transport': 255, 'signal': -9, 'inner_timeout': 124}.get(mode, 1)
+            return SimpleNamespace(returncode=rc, stdout='', stderr='controlled')
+        monkeypatch.setattr(web.subprocess, 'run', shell)
+        if mode == 'untyped':
+            monkeypatch.setattr(web, '_shell_sync', lambda *args: {'ok': False, 'returncode': 1})
+        ontology = {'target': {'cluster_id': 'east'}} if mode in {'ontology_unknown', 'not_dispatched'} else None
+        monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda *args, **kwargs: ontology)
+        monkeypatch.setattr(web, '_verify_ontology_action', lambda *args: {})
+        monkeypatch.setattr(web, '_load_heal_runs', lambda: [{'id': 'proposal', 'dry_run': True,
+            'commands': COMMANDS, 'rollback_commands': [], 'ontology_action_context': ontology}])
+        monkeypatch.setattr(web, '_execute_ontology_command', lambda *args: {
+            'ok': False, 'executed': mode != 'not_dispatched',
+            'outcome_unknown': mode == 'ontology_unknown', 'execution_failure_confirmed': True})
+        class Request:
+            async def json(self):
+                return {'cluster_id': 'east', 'namespace': 'test', 'commands': COMMANDS,
+                        'dry_run': mode == 'dry_run', 'approved': True, 'ontology_proposal_id': 'proposal'}
+        if mode == 'failure':
+            for i in range(14):
+                add(store, i, policy=contract([profile()]))
+        runs = [asyncio.run(web.heal_execute(Request())) for _ in range(5 if mode == 'failure' else 1)]
+        # Reload actual JSON storage: no mock aggregate can hide a missing failure denominator.
+        monkeypatch.setattr(web, '_get_fault_store', lambda: FaultContextStore(cfg))
+        stats, _ = query(history)
+        run = runs[-1]
+        if mode == 'failure':
+            assert (stats['sample_count'], stats['success_count'], stats['failure_count']) == (19, 14, 5)
+            assert run['status'] == 'failed' and run['recovery_history_record']['recorded'] is True
+            assert run['verification']['reason'] == 'action_execution_failed'
+            assert run['verification']['verification_scope'] == 'action_execution'
+            assert 'business_validation' not in run['verification']
+            gate = web._build_auto_execution_gate(recipe={'safe_auto_execute': True}, suggestions=[{'risk': 'low'}],
+                diagnosis={'confidence': .99}, cfg=cfg, recovery_history_stats=stats)
+            assert gate['ready'] is False
+        else:
+            assert stats['sample_count'] == 0 and not run['recovery_history_record']['recorded']
+>           assert run['verification']['recovered'] is None
+E           assert False is None
+
+/tmp/test_execution_failure_regression.py:112: AssertionError
+___ test_execute_failure_accounting_uses_terminal_dispatch_evidence[untyped] ___
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_execute_failure_accountin7', ru..., ssh_target='target', target_host='target')), <memory.fault_context_store.FaultContextStore object at 0x7f8e1c84fe60>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f8e1c84fb60>
+mode = 'untyped'
+
+    @pytest.mark.parametrize('mode', ['failure', 'timeout', 'transport', 'signal', 'inner_timeout',
+                                      'launch_error', 'unexpected_error', 'untyped', 'ontology_unknown',
+                                      'not_dispatched', 'dry_run'])
+    def test_execute_failure_accounting_uses_terminal_dispatch_evidence(history, monkeypatch, mode):
+        """Exercise the endpoint, native writer and persisted statistics, without real actions."""
+        import asyncio
+        import subprocess
+        cfg, store = history
+        cfg.kubernetes = SimpleNamespace(namespace='test', use_ssh=mode == 'transport',
+            ssh_jump_host='jump' if mode == 'transport' else '', ssh_target='target', target_host='target')
+        for key, value in dict(enabled=True, recommend_only=False, require_approval=True,
+                               dry_run=True, max_steps=5).items():
+            setattr(cfg.remediation, key, value)
+        monkeypatch.setattr(web, '_apply_cluster_to_cmd', lambda cmd, cluster_id: cmd)
+        suggestion = {'target': TARGET, 'namespace': 'test', 'fault_type': 'ServiceUnavailable',
+                      'diagnosis_gate': {'ready': True}, 'diagnosis_used': {'confidence': .99}}
+        monkeypatch.setattr(web, '_build_heal_suggestions', lambda body: suggestion)
+        monkeypatch.setattr(web, '_save_heal_run', lambda run: None)
+        probe_calls = []
+        def no_probe(*args, **kwargs):
+            probe_calls.append(True)
+            return {'status': 'skipped', 'reason': 'execution_failed', 'recovered': False}
+        monkeypatch.setattr(web, '_verify_heal_recovery', no_probe)
+        monkeypatch.setattr(web, 'verify_business_recovery', no_probe)
+        def shell(*args, **kwargs):
+            if mode == 'timeout':
+                raise subprocess.TimeoutExpired('controlled', 1)
+            if mode == 'launch_error':
+                raise OSError('controlled launch failure')
+            if mode == 'unexpected_error':
+                raise RuntimeError('controlled waiting failure')
+            rc = {'transport': 255, 'signal': -9, 'inner_timeout': 124}.get(mode, 1)
+            return SimpleNamespace(returncode=rc, stdout='', stderr='controlled')
+        monkeypatch.setattr(web.subprocess, 'run', shell)
+        if mode == 'untyped':
+            monkeypatch.setattr(web, '_shell_sync', lambda *args: {'ok': False, 'returncode': 1})
+        ontology = {'target': {'cluster_id': 'east'}} if mode in {'ontology_unknown', 'not_dispatched'} else None
+        monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda *args, **kwargs: ontology)
+        monkeypatch.setattr(web, '_verify_ontology_action', lambda *args: {})
+        monkeypatch.setattr(web, '_load_heal_runs', lambda: [{'id': 'proposal', 'dry_run': True,
+            'commands': COMMANDS, 'rollback_commands': [], 'ontology_action_context': ontology}])
+        monkeypatch.setattr(web, '_execute_ontology_command', lambda *args: {
+            'ok': False, 'executed': mode != 'not_dispatched',
+            'outcome_unknown': mode == 'ontology_unknown', 'execution_failure_confirmed': True})
+        class Request:
+            async def json(self):
+                return {'cluster_id': 'east', 'namespace': 'test', 'commands': COMMANDS,
+                        'dry_run': mode == 'dry_run', 'approved': True, 'ontology_proposal_id': 'proposal'}
+        if mode == 'failure':
+            for i in range(14):
+                add(store, i, policy=contract([profile()]))
+        runs = [asyncio.run(web.heal_execute(Request())) for _ in range(5 if mode == 'failure' else 1)]
+        # Reload actual JSON storage: no mock aggregate can hide a missing failure denominator.
+        monkeypatch.setattr(web, '_get_fault_store', lambda: FaultContextStore(cfg))
+        stats, _ = query(history)
+        run = runs[-1]
+        if mode == 'failure':
+            assert (stats['sample_count'], stats['success_count'], stats['failure_count']) == (19, 14, 5)
+            assert run['status'] == 'failed' and run['recovery_history_record']['recorded'] is True
+            assert run['verification']['reason'] == 'action_execution_failed'
+            assert run['verification']['verification_scope'] == 'action_execution'
+            assert 'business_validation' not in run['verification']
+            gate = web._build_auto_execution_gate(recipe={'safe_auto_execute': True}, suggestions=[{'risk': 'low'}],
+                diagnosis={'confidence': .99}, cfg=cfg, recovery_history_stats=stats)
+            assert gate['ready'] is False
+        else:
+            assert stats['sample_count'] == 0 and not run['recovery_history_record']['recorded']
+>           assert run['verification']['recovered'] is None
+E           assert False is None
+
+/tmp/test_execution_failure_regression.py:112: AssertionError
+_ test_execute_failure_accounting_uses_terminal_dispatch_evidence[ontology_unknown] _
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_execute_failure_accountin8', ru..., ssh_target='target', target_host='target')), <memory.fault_context_store.FaultContextStore object at 0x7f8e1c84e990>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f8e1c84f920>
+mode = 'ontology_unknown'
+
+    @pytest.mark.parametrize('mode', ['failure', 'timeout', 'transport', 'signal', 'inner_timeout',
+                                      'launch_error', 'unexpected_error', 'untyped', 'ontology_unknown',
+                                      'not_dispatched', 'dry_run'])
+    def test_execute_failure_accounting_uses_terminal_dispatch_evidence(history, monkeypatch, mode):
+        """Exercise the endpoint, native writer and persisted statistics, without real actions."""
+        import asyncio
+        import subprocess
+        cfg, store = history
+        cfg.kubernetes = SimpleNamespace(namespace='test', use_ssh=mode == 'transport',
+            ssh_jump_host='jump' if mode == 'transport' else '', ssh_target='target', target_host='target')
+        for key, value in dict(enabled=True, recommend_only=False, require_approval=True,
+                               dry_run=True, max_steps=5).items():
+            setattr(cfg.remediation, key, value)
+        monkeypatch.setattr(web, '_apply_cluster_to_cmd', lambda cmd, cluster_id: cmd)
+        suggestion = {'target': TARGET, 'namespace': 'test', 'fault_type': 'ServiceUnavailable',
+                      'diagnosis_gate': {'ready': True}, 'diagnosis_used': {'confidence': .99}}
+        monkeypatch.setattr(web, '_build_heal_suggestions', lambda body: suggestion)
+        monkeypatch.setattr(web, '_save_heal_run', lambda run: None)
+        probe_calls = []
+        def no_probe(*args, **kwargs):
+            probe_calls.append(True)
+            return {'status': 'skipped', 'reason': 'execution_failed', 'recovered': False}
+        monkeypatch.setattr(web, '_verify_heal_recovery', no_probe)
+        monkeypatch.setattr(web, 'verify_business_recovery', no_probe)
+        def shell(*args, **kwargs):
+            if mode == 'timeout':
+                raise subprocess.TimeoutExpired('controlled', 1)
+            if mode == 'launch_error':
+                raise OSError('controlled launch failure')
+            if mode == 'unexpected_error':
+                raise RuntimeError('controlled waiting failure')
+            rc = {'transport': 255, 'signal': -9, 'inner_timeout': 124}.get(mode, 1)
+            return SimpleNamespace(returncode=rc, stdout='', stderr='controlled')
+        monkeypatch.setattr(web.subprocess, 'run', shell)
+        if mode == 'untyped':
+            monkeypatch.setattr(web, '_shell_sync', lambda *args: {'ok': False, 'returncode': 1})
+        ontology = {'target': {'cluster_id': 'east'}} if mode in {'ontology_unknown', 'not_dispatched'} else None
+        monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda *args, **kwargs: ontology)
+        monkeypatch.setattr(web, '_verify_ontology_action', lambda *args: {})
+        monkeypatch.setattr(web, '_load_heal_runs', lambda: [{'id': 'proposal', 'dry_run': True,
+            'commands': COMMANDS, 'rollback_commands': [], 'ontology_action_context': ontology}])
+        monkeypatch.setattr(web, '_execute_ontology_command', lambda *args: {
+            'ok': False, 'executed': mode != 'not_dispatched',
+            'outcome_unknown': mode == 'ontology_unknown', 'execution_failure_confirmed': True})
+        class Request:
+            async def json(self):
+                return {'cluster_id': 'east', 'namespace': 'test', 'commands': COMMANDS,
+                        'dry_run': mode == 'dry_run', 'approved': True, 'ontology_proposal_id': 'proposal'}
+        if mode == 'failure':
+            for i in range(14):
+                add(store, i, policy=contract([profile()]))
+        runs = [asyncio.run(web.heal_execute(Request())) for _ in range(5 if mode == 'failure' else 1)]
+        # Reload actual JSON storage: no mock aggregate can hide a missing failure denominator.
+        monkeypatch.setattr(web, '_get_fault_store', lambda: FaultContextStore(cfg))
+        stats, _ = query(history)
+        run = runs[-1]
+        if mode == 'failure':
+            assert (stats['sample_count'], stats['success_count'], stats['failure_count']) == (19, 14, 5)
+            assert run['status'] == 'failed' and run['recovery_history_record']['recorded'] is True
+            assert run['verification']['reason'] == 'action_execution_failed'
+            assert run['verification']['verification_scope'] == 'action_execution'
+            assert 'business_validation' not in run['verification']
+            gate = web._build_auto_execution_gate(recipe={'safe_auto_execute': True}, suggestions=[{'risk': 'low'}],
+                diagnosis={'confidence': .99}, cfg=cfg, recovery_history_stats=stats)
+            assert gate['ready'] is False
+        else:
+            assert stats['sample_count'] == 0 and not run['recovery_history_record']['recorded']
+            assert run['verification']['recovered'] is None
+            assert run['status'] == ('dry_run' if mode == 'dry_run' else
+                                     'blocked' if mode in {'launch_error', 'not_dispatched'} else 'outcome_unknown')
+>       assert not probe_calls, 'unsuccessful or undispatched actions must not run recovery probes'
+E       AssertionError: unsuccessful or undispatched actions must not run recovery probes
+E       assert not [True]
+
+/tmp/test_execution_failure_regression.py:115: AssertionError
+_ test_execute_failure_accounting_uses_terminal_dispatch_evidence[not_dispatched] _
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_execute_failure_accountin9', ru..., ssh_target='target', target_host='target')), <memory.fault_context_store.FaultContextStore object at 0x7f8e1ccd3440>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f8e1ccd1af0>
+mode = 'not_dispatched'
+
+    @pytest.mark.parametrize('mode', ['failure', 'timeout', 'transport', 'signal', 'inner_timeout',
+                                      'launch_error', 'unexpected_error', 'untyped', 'ontology_unknown',
+                                      'not_dispatched', 'dry_run'])
+    def test_execute_failure_accounting_uses_terminal_dispatch_evidence(history, monkeypatch, mode):
+        """Exercise the endpoint, native writer and persisted statistics, without real actions."""
+        import asyncio
+        import subprocess
+        cfg, store = history
+        cfg.kubernetes = SimpleNamespace(namespace='test', use_ssh=mode == 'transport',
+            ssh_jump_host='jump' if mode == 'transport' else '', ssh_target='target', target_host='target')
+        for key, value in dict(enabled=True, recommend_only=False, require_approval=True,
+                               dry_run=True, max_steps=5).items():
+            setattr(cfg.remediation, key, value)
+        monkeypatch.setattr(web, '_apply_cluster_to_cmd', lambda cmd, cluster_id: cmd)
+        suggestion = {'target': TARGET, 'namespace': 'test', 'fault_type': 'ServiceUnavailable',
+                      'diagnosis_gate': {'ready': True}, 'diagnosis_used': {'confidence': .99}}
+        monkeypatch.setattr(web, '_build_heal_suggestions', lambda body: suggestion)
+        monkeypatch.setattr(web, '_save_heal_run', lambda run: None)
+        probe_calls = []
+        def no_probe(*args, **kwargs):
+            probe_calls.append(True)
+            return {'status': 'skipped', 'reason': 'execution_failed', 'recovered': False}
+        monkeypatch.setattr(web, '_verify_heal_recovery', no_probe)
+        monkeypatch.setattr(web, 'verify_business_recovery', no_probe)
+        def shell(*args, **kwargs):
+            if mode == 'timeout':
+                raise subprocess.TimeoutExpired('controlled', 1)
+            if mode == 'launch_error':
+                raise OSError('controlled launch failure')
+            if mode == 'unexpected_error':
+                raise RuntimeError('controlled waiting failure')
+            rc = {'transport': 255, 'signal': -9, 'inner_timeout': 124}.get(mode, 1)
+            return SimpleNamespace(returncode=rc, stdout='', stderr='controlled')
+        monkeypatch.setattr(web.subprocess, 'run', shell)
+        if mode == 'untyped':
+            monkeypatch.setattr(web, '_shell_sync', lambda *args: {'ok': False, 'returncode': 1})
+        ontology = {'target': {'cluster_id': 'east'}} if mode in {'ontology_unknown', 'not_dispatched'} else None
+        monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda *args, **kwargs: ontology)
+        monkeypatch.setattr(web, '_verify_ontology_action', lambda *args: {})
+        monkeypatch.setattr(web, '_load_heal_runs', lambda: [{'id': 'proposal', 'dry_run': True,
+            'commands': COMMANDS, 'rollback_commands': [], 'ontology_action_context': ontology}])
+        monkeypatch.setattr(web, '_execute_ontology_command', lambda *args: {
+            'ok': False, 'executed': mode != 'not_dispatched',
+            'outcome_unknown': mode == 'ontology_unknown', 'execution_failure_confirmed': True})
+        class Request:
+            async def json(self):
+                return {'cluster_id': 'east', 'namespace': 'test', 'commands': COMMANDS,
+                        'dry_run': mode == 'dry_run', 'approved': True, 'ontology_proposal_id': 'proposal'}
+        if mode == 'failure':
+            for i in range(14):
+                add(store, i, policy=contract([profile()]))
+        runs = [asyncio.run(web.heal_execute(Request())) for _ in range(5 if mode == 'failure' else 1)]
+        # Reload actual JSON storage: no mock aggregate can hide a missing failure denominator.
+        monkeypatch.setattr(web, '_get_fault_store', lambda: FaultContextStore(cfg))
+        stats, _ = query(history)
+        run = runs[-1]
+        if mode == 'failure':
+            assert (stats['sample_count'], stats['success_count'], stats['failure_count']) == (19, 14, 5)
+            assert run['status'] == 'failed' and run['recovery_history_record']['recorded'] is True
+            assert run['verification']['reason'] == 'action_execution_failed'
+            assert run['verification']['verification_scope'] == 'action_execution'
+            assert 'business_validation' not in run['verification']
+            gate = web._build_auto_execution_gate(recipe={'safe_auto_execute': True}, suggestions=[{'risk': 'low'}],
+                diagnosis={'confidence': .99}, cfg=cfg, recovery_history_stats=stats)
+            assert gate['ready'] is False
+        else:
+            assert stats['sample_count'] == 0 and not run['recovery_history_record']['recorded']
+            assert run['verification']['recovered'] is None
+            assert run['status'] == ('dry_run' if mode == 'dry_run' else
+                                     'blocked' if mode in {'launch_error', 'not_dispatched'} else 'outcome_unknown')
+>       assert not probe_calls, 'unsuccessful or undispatched actions must not run recovery probes'
+E       AssertionError: unsuccessful or undispatched actions must not run recovery probes
+E       assert not [True]
+
+/tmp/test_execution_failure_regression.py:115: AssertionError
+___ test_execute_failure_accounting_uses_terminal_dispatch_evidence[dry_run] ___
+
+history = (namespace(memory=namespace(backend='json', db_path='/tmp/pytest-of-root/pytest-2/test_execute_failure_accountin10', r..., ssh_target='target', target_host='target')), <memory.fault_context_store.FaultContextStore object at 0x7f8e1c840b00>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f8e1c843710>
+mode = 'dry_run'
+
+    @pytest.mark.parametrize('mode', ['failure', 'timeout', 'transport', 'signal', 'inner_timeout',
+                                      'launch_error', 'unexpected_error', 'untyped', 'ontology_unknown',
+                                      'not_dispatched', 'dry_run'])
+    def test_execute_failure_accounting_uses_terminal_dispatch_evidence(history, monkeypatch, mode):
+        """Exercise the endpoint, native writer and persisted statistics, without real actions."""
+        import asyncio
+        import subprocess
+        cfg, store = history
+        cfg.kubernetes = SimpleNamespace(namespace='test', use_ssh=mode == 'transport',
+            ssh_jump_host='jump' if mode == 'transport' else '', ssh_target='target', target_host='target')
+        for key, value in dict(enabled=True, recommend_only=False, require_approval=True,
+                               dry_run=True, max_steps=5).items():
+            setattr(cfg.remediation, key, value)
+        monkeypatch.setattr(web, '_apply_cluster_to_cmd', lambda cmd, cluster_id: cmd)
+        suggestion = {'target': TARGET, 'namespace': 'test', 'fault_type': 'ServiceUnavailable',
+                      'diagnosis_gate': {'ready': True}, 'diagnosis_used': {'confidence': .99}}
+        monkeypatch.setattr(web, '_build_heal_suggestions', lambda body: suggestion)
+        monkeypatch.setattr(web, '_save_heal_run', lambda run: None)
+        probe_calls = []
+        def no_probe(*args, **kwargs):
+            probe_calls.append(True)
+            return {'status': 'skipped', 'reason': 'execution_failed', 'recovered': False}
+        monkeypatch.setattr(web, '_verify_heal_recovery', no_probe)
+        monkeypatch.setattr(web, 'verify_business_recovery', no_probe)
+        def shell(*args, **kwargs):
+            if mode == 'timeout':
+                raise subprocess.TimeoutExpired('controlled', 1)
+            if mode == 'launch_error':
+                raise OSError('controlled launch failure')
+            if mode == 'unexpected_error':
+                raise RuntimeError('controlled waiting failure')
+            rc = {'transport': 255, 'signal': -9, 'inner_timeout': 124}.get(mode, 1)
+            return SimpleNamespace(returncode=rc, stdout='', stderr='controlled')
+        monkeypatch.setattr(web.subprocess, 'run', shell)
+        if mode == 'untyped':
+            monkeypatch.setattr(web, '_shell_sync', lambda *args: {'ok': False, 'returncode': 1})
+        ontology = {'target': {'cluster_id': 'east'}} if mode in {'ontology_unknown', 'not_dispatched'} else None
+        monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda *args, **kwargs: ontology)
+        monkeypatch.setattr(web, '_verify_ontology_action', lambda *args: {})
+        monkeypatch.setattr(web, '_load_heal_runs', lambda: [{'id': 'proposal', 'dry_run': True,
+            'commands': COMMANDS, 'rollback_commands': [], 'ontology_action_context': ontology}])
+        monkeypatch.setattr(web, '_execute_ontology_command', lambda *args: {
+            'ok': False, 'executed': mode != 'not_dispatched',
+            'outcome_unknown': mode == 'ontology_unknown', 'execution_failure_confirmed': True})
+        class Request:
+            async def json(self):
+                return {'cluster_id': 'east', 'namespace': 'test', 'commands': COMMANDS,
+                        'dry_run': mode == 'dry_run', 'approved': True, 'ontology_proposal_id': 'proposal'}
+        if mode == 'failure':
+            for i in range(14):
+                add(store, i, policy=contract([profile()]))
+        runs = [asyncio.run(web.heal_execute(Request())) for _ in range(5 if mode == 'failure' else 1)]
+        # Reload actual JSON storage: no mock aggregate can hide a missing failure denominator.
+        monkeypatch.setattr(web, '_get_fault_store', lambda: FaultContextStore(cfg))
+        stats, _ = query(history)
+        run = runs[-1]
+        if mode == 'failure':
+            assert (stats['sample_count'], stats['success_count'], stats['failure_count']) == (19, 14, 5)
+            assert run['status'] == 'failed' and run['recovery_history_record']['recorded'] is True
+            assert run['verification']['reason'] == 'action_execution_failed'
+            assert run['verification']['verification_scope'] == 'action_execution'
+            assert 'business_validation' not in run['verification']
+            gate = web._build_auto_execution_gate(recipe={'safe_auto_execute': True}, suggestions=[{'risk': 'low'}],
+                diagnosis={'confidence': .99}, cfg=cfg, recovery_history_stats=stats)
+            assert gate['ready'] is False
+        else:
+            assert stats['sample_count'] == 0 and not run['recovery_history_record']['recorded']
+>           assert run['verification']['recovered'] is None
+E           assert False is None
+
+/tmp/test_execution_failure_regression.py:112: AssertionError
+=============================== warnings summary ===============================
+web_app/app.py:11179
+  /workspace/web_app/app.py:11179: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event('shutdown')
+
+../usr/local/lib/python3.12/site-packages/fastapi/applications.py:4675
+../usr/local/lib/python3.12/site-packages/fastapi/applications.py:4675
+  /usr/local/lib/python3.12/site-packages/fastapi/applications.py:4675: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+web_app/app.py:20604
+  /workspace/web_app/app.py:20604: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED ../tmp/test_execution_failure_regression.py::test_execute_failure_accounting_uses_terminal_dispatch_evidence[failure]
+FAILED ../tmp/test_execution_failure_regression.py::test_execute_failure_accounting_uses_terminal_dispatch_evidence[timeout]
+FAILED ../tmp/test_execution_failure_regression.py::test_execute_failure_accounting_uses_terminal_dispatch_evidence[transport]
+FAILED ../tmp/test_execution_failure_regression.py::test_execute_failure_accounting_uses_terminal_dispatch_evidence[signal]
+FAILED ../tmp/test_execution_failure_regression.py::test_execute_failure_accounting_uses_terminal_dispatch_evidence[inner_timeout]
+FAILED ../tmp/test_execution_failure_regression.py::test_execute_failure_accounting_uses_terminal_dispatch_evidence[launch_error]
+FAILED ../tmp/test_execution_failure_regression.py::test_execute_failure_accounting_uses_terminal_dispatch_evidence[unexpected_error]
+FAILED ../tmp/test_execution_failure_regression.py::test_execute_failure_accounting_uses_terminal_dispatch_evidence[untyped]
+FAILED ../tmp/test_execution_failure_regression.py::test_execute_failure_accounting_uses_terminal_dispatch_evidence[ontology_unknown]
+FAILED ../tmp/test_execution_failure_regression.py::test_execute_failure_accounting_uses_terminal_dispatch_evidence[not_dispatched]
+FAILED ../tmp/test_execution_failure_regression.py::test_execute_failure_accounting_uses_terminal_dispatch_evidence[dry_run]
+11 failed, 44 deselected, 4 warnings in 1.97s

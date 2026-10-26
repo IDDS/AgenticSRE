@@ -6965,6 +6965,9 @@ function renderHealRecipeAction(action, index) {
 
 function healVerificationBadge(verification) {
     if (!verification) return '';
+    if (verification.reason === 'action_execution_failed' && verification.verification_scope === 'action_execution') {
+        return '<span class="badge badge-danger">动作执行失败，业务未验证</span>';
+    }
     if (verification.status === 'skipped') {
         return '<span class="badge badge-info">验证跳过</span>';
     }
@@ -6973,6 +6976,9 @@ function healVerificationBadge(verification) {
             return '<span class="badge badge-warning">基础设施就绪，业务未验证</span>';
         }
         if (verification.verification_scope === 'infrastructure_and_business_http') {
+            if (verification.business_validation === 'json_assertions') {
+                return '<span class="badge badge-success">业务响应断言通过</span>';
+            }
             return '<span class="badge badge-success">业务 HTTP 探测通过</span>';
         }
         return '<span class="badge badge-success">已验证恢复</span>';

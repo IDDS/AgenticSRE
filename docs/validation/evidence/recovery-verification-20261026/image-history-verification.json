@@ -1,0 +1,38 @@
+{
+  "scope": "Actual packaged history reader/writer/gate with synthetic records; no live fault, action, or model",
+  "source_mounts": false,
+  "production_modified": false,
+  "phases": [
+    {
+      "phase": "legacy_only",
+      "samples": 0,
+      "excluded_legacy": 14,
+      "auto_ready": false
+    },
+    {
+      "phase": "matching_contract_after_restart",
+      "samples": 14,
+      "auto_ready": true
+    },
+    {
+      "phase": "contract_changed",
+      "samples": 0,
+      "excluded_other_contract": 14,
+      "auto_ready": false
+    },
+    {
+      "phase": "native_failed_outcome",
+      "samples": 1,
+      "failures": 1,
+      "auto_ready": false
+    },
+    {
+      "phase": "exception_recheck_keeps_original_contract",
+      "first_status": "verification_pending",
+      "second_status": "verification_pending",
+      "second_reason": "verification_contract_changed",
+      "history_recorded": false
+    }
+  ],
+  "status": "passed"
+}
