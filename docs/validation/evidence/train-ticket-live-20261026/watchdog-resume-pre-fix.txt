@@ -1,0 +1,59 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_____ test_delayed_injection_cannot_resume_after_unknown_watchdog_restore ______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7e70e5da9040>
+
+    def test_delayed_injection_cannot_resume_after_unknown_watchdog_restore(monkeypatch):
+        """Watchdog restores observed zero while the original caller awaits an acknowledgement."""
+        from types import SimpleNamespace
+        import scripts.live_recovery_control as control
+        live = deployment()
+        saved = snapshot(live, namespace='testbed', deployment='station')
+        attempts = []
+        monkeypatch.setattr(control, 'read_deployment', lambda _: copy.deepcopy(live))
+        def kubectl(args, **kwargs):
+            patch = json.loads(args[-1])
+            setting_zero = patch[-1].get('value') == 0
+            if setting_zero:
+                attempts.append(True)
+                live['spec']['replicas'] = 0
+                live['metadata']['resourceVersion'] = str(int(live['metadata']['resourceVersion']) + 1)
+                if len(attempts) == 1:
+                    # The watchdog completes before the suspended injection caller
+                    # observes its nonzero/unknown transport result.
+                    control.scale(saved, restore=True, fence_unknown=True)
+                    return SimpleNamespace(returncode=1)
+            else:
+                for op in patch:
+                    if op['op'] == 'replace' and op['path'] == '/spec/replicas':
+                        live['spec']['replicas'] = op['value']
+                    if op['op'] == 'add' and op['path'] == '/metadata/annotations':
+                        live['metadata']['annotations'] = op['value']
+                live['metadata']['resourceVersion'] = str(int(live['metadata']['resourceVersion']) + 1)
+            return SimpleNamespace(returncode=0)
+        monkeypatch.setattr(control.subprocess, 'run', kubectl)
+>       with pytest.raises(ValueError, match='experiment_already_fenced'):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+/tmp/test_watchdog_resume_race.py:297: Failed
+___________ test_injection_deadline_is_checked_again_before_dispatch ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7e70e5da8050>
+
+    def test_injection_deadline_is_checked_again_before_dispatch(monkeypatch):
+        import scripts.live_recovery_control as control
+        live = deployment()
+        saved = snapshot(live, namespace='testbed', deployment='station')
+        saved['injection_deadline_unix'] = 10
+        monkeypatch.setattr(control.time, 'time', lambda: 11)
+>       with pytest.raises(ValueError, match='injection_deadline_passed'):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+/tmp/test_watchdog_resume_race.py:308: Failed
+=========================== short test summary info ============================
+FAILED ../tmp/test_watchdog_resume_race.py::test_delayed_injection_cannot_resume_after_unknown_watchdog_restore
+FAILED ../tmp/test_watchdog_resume_race.py::test_injection_deadline_is_checked_again_before_dispatch
+2 failed, 28 deselected in 0.08s

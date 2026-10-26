@@ -79,6 +79,8 @@ Ontology 借鉴“对象—关系—动作”的组织思想：同一调查中�
 
 已完成的 [Train Ticket 实际故障注入](docs/validation/train-ticket-business-injection-20261023.md) 包含查询链上的有效网络延迟与丢包实验，分别记录健康基线、业务影响和连续恢复窗口，也保留业务未受明显影响的失败注入。它们验证了限定查询链的故障效果与恢复，**不代表完整预订交易或自动根因诊断已经验收**。当次真实模型服务返回 HTTP 402，诊断准确性仍未验证；根因推荐准确率及记忆带来的准确率提升仍需独立样本和冻结基线评估。
 
+[10 月 26 日站点查询实测](docs/validation/train-ticket-live-recovery-20261026.md) 已恢复真实模型访问，完成既有 Java 服务副本为零的两轮故障和恢复观测，并修复 YAML 证据不能进入结构化判据的问题。第二轮业务三个恢复窗口均成功，Agent+Skill 能确认空端点；具体缩零取证、独立审核和原生自愈仍未通过，门禁保持拒绝。实验控制器撤销故障不计为系统自愈。
+
 ## RCA 置信度校准
 
 AgenticSRE 不直接使用大模型自报的 confidence，而是将其作为 Raw 先验，再结合假设分支稳定性、多源证据、Judge/Critic 质量评审、根因具体性和可准入的历史诊断标签进行六因子校准。历史标签的来源与独立性需要单独审计。恢复是否成功不参与 RCA 置信度，它只用于判断某个恢复动作能否自动执行：
@@ -234,6 +236,7 @@ python main.py rca "pod CrashLoopBackOff" -n default
 | [docs/history-retrieval.md](docs/history-retrieval.md) | **使用者/开发** — 历史读取预算、失败与空结果区分、超时降级 |
 | [docs/business-recovery.md](docs/business-recovery.md) | **运维/开发** — JSON 业务响应断言、读取预算和恢复验证强度 |
 | [docs/recovery-verification-history.md](docs/recovery-verification-history.md) | **运维/评审** — 按动作、环境和恢复验证标准隔离历史与自动门禁 |
+| [docs/validation/train-ticket-live-recovery-20261026.md](docs/validation/train-ticket-live-recovery-20261026.md) | **测试/评审** — 实际站点服务故障、诊断门禁、冷启动恢复与结构化证据修复 |
 | [docs/feedback-contract.md](docs/feedback-contract.md) | **使用者/开发** — 反馈标签、审核准入、持久收据、重试与规则版本投票 |
 | [docs/memory-admission.md](docs/memory-admission.md) | **使用者/开发** — 记忆范围与时间准入、检索前过滤、通用规则审核版本及兼容边界 |
 | [docs/memory-candidates.md](docs/memory-candidates.md) | **使用者/开发** — 候选隔离、实际新增收据、人工版本审核、编辑后重审与停用历史 |

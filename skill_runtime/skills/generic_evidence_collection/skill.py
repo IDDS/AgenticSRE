@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 from typing import Any, Dict, List
 from skill_runtime.kubectl_safety import readonly_kubectl_args
 
@@ -67,6 +68,21 @@ def diagnose(context: Dict[str, Any]) -> Dict[str, Any]:
             if any(resource.split("/")[0].split(".")[0].casefold() in {"secret", "secrets"}
                    for arg in args for resource in arg.split(",")):
                 continue
+            # Structured consumers validate object identity and endpoint state
+            # from JSON. Model-selected YAML is valid kubectl syntax, but used
+            # to silently bypass those predicates. Normalize only get YAML;
+            # record and execute the resulting command, preserving scope guards.
+            if args[0] == 'get':
+                converted = False
+                for index, arg in enumerate(args):
+                    if arg in {'-o', '--output'} and index + 1 < len(args) and args[index + 1] in {'yaml', 'yml'}:
+                        args[index + 1] = 'json'
+                        converted = True
+                    elif arg in {'--output=yaml', '--output=yml'}:
+                        args[index] = '--output=json'
+                        converted = True
+                if converted:
+                    kubectl_command = shlex.join(args)
             verb = kubectl_command.split()[0] if kubectl_command.split() else ""
             if verb not in {"get", "describe", "logs", "top", "events", "cluster-info", "version"}:
                 continue

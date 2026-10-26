@@ -1,0 +1,31 @@
+{
+  "observed_at": "2026-10-26T11:20:19.462337+00:00",
+  "deployment_uid_unchanged": true,
+  "deployment_non_replica_spec_unchanged": true,
+  "desired_replicas": 1,
+  "ready_replicas": 1,
+  "fence_absent": true,
+  "production_images_unchanged": true,
+  "isolated_memory": [
+    {
+      "status": "ok",
+      "backend": "json",
+      "rules_count": 0,
+      "faults_count": 0
+    },
+    {
+      "status": "ok",
+      "backend": "json",
+      "rules_count": 0,
+      "faults_count": 0
+    }
+  ],
+  "native_heal_run_counts": [
+    0,
+    0
+  ],
+  "native_healing_executed": false,
+  "new_production_deployment": false,
+  "secret_files_exported": false,
+  "private_environment_metadata_exported": false
+}

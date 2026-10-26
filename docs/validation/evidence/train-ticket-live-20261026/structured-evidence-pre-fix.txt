@@ -1,0 +1,252 @@
+FFFFFFFF.                                                                [100%]
+=================================== FAILURES ===================================
+_ test_model_requested_yaml_reaches_structured_service_predicate[False--o yaml] _
+
+output = '-o yaml', ready = False
+
+    @pytest.mark.parametrize('output', ['-o yaml', '-o yml', '--output=yaml', '--output yml'])
+    @pytest.mark.parametrize('ready', [False, True])
+    def test_model_requested_yaml_reaches_structured_service_predicate(output, ready):
+        runtime = SkillExecutor.from_dir(SKILLS)
+        commands = []
+        def tool(tool, arguments, payload):
+            command = arguments['command']
+            commands.append(command)
+            obj = {'kind': 'Endpoints', 'metadata': {'name': 'api', 'namespace': 'audit', 'uid': 'endpoint-one'},
+                   'subsets': [{'addresses': [{'ip': '192.0.2.1'}]}] if ready else []}
+            # Model output format is honored by the real command runner. The
+            # collector must request JSON for the downstream structural contract.
+            body = json.dumps(obj) if 'json' in command else (
+                'kind: Endpoints\nmetadata:\n  name: api\n  namespace: audit\nsubsets: ' + json.dumps(obj['subsets']) + '\n')
+            return {'success': True, 'executed': True, 'data': body}
+        payload = {'namespace': 'audit', 'cluster_id': 'east', 'service': 'api',
+                   'message': '业务请求 HTTP 502',
+                   'investigation_commands': [f'kubectl get endpoints api {output}']}
+        collected = runtime.run('generic.evidence_collection', payload, stages=['detect', 'diagnose'],
+                                dry_run=True, tool_runner=tool).to_dict()
+        results = collected['stages']['diagnose']['output']['tool_results']
+>       assert len(commands) == 1 and 'json' in commands[0] and 'yaml' not in commands[0] and 'yml' not in commands[0]
+E       AssertionError: assert (1 == 1 and 'json' in 'get endpoints api -o yaml')
+E        +  where 1 = len(['get endpoints api -o yaml'])
+
+tests/test_structured_service_evidence.py:32: AssertionError
+_ test_model_requested_yaml_reaches_structured_service_predicate[False--o yml] _
+
+output = '-o yml', ready = False
+
+    @pytest.mark.parametrize('output', ['-o yaml', '-o yml', '--output=yaml', '--output yml'])
+    @pytest.mark.parametrize('ready', [False, True])
+    def test_model_requested_yaml_reaches_structured_service_predicate(output, ready):
+        runtime = SkillExecutor.from_dir(SKILLS)
+        commands = []
+        def tool(tool, arguments, payload):
+            command = arguments['command']
+            commands.append(command)
+            obj = {'kind': 'Endpoints', 'metadata': {'name': 'api', 'namespace': 'audit', 'uid': 'endpoint-one'},
+                   'subsets': [{'addresses': [{'ip': '192.0.2.1'}]}] if ready else []}
+            # Model output format is honored by the real command runner. The
+            # collector must request JSON for the downstream structural contract.
+            body = json.dumps(obj) if 'json' in command else (
+                'kind: Endpoints\nmetadata:\n  name: api\n  namespace: audit\nsubsets: ' + json.dumps(obj['subsets']) + '\n')
+            return {'success': True, 'executed': True, 'data': body}
+        payload = {'namespace': 'audit', 'cluster_id': 'east', 'service': 'api',
+                   'message': '业务请求 HTTP 502',
+                   'investigation_commands': [f'kubectl get endpoints api {output}']}
+        collected = runtime.run('generic.evidence_collection', payload, stages=['detect', 'diagnose'],
+                                dry_run=True, tool_runner=tool).to_dict()
+        results = collected['stages']['diagnose']['output']['tool_results']
+>       assert len(commands) == 1 and 'json' in commands[0] and 'yaml' not in commands[0] and 'yml' not in commands[0]
+E       AssertionError: assert (1 == 1 and 'json' in 'get endpoints api -o yml')
+E        +  where 1 = len(['get endpoints api -o yml'])
+
+tests/test_structured_service_evidence.py:32: AssertionError
+_ test_model_requested_yaml_reaches_structured_service_predicate[False---output=yaml] _
+
+output = '--output=yaml', ready = False
+
+    @pytest.mark.parametrize('output', ['-o yaml', '-o yml', '--output=yaml', '--output yml'])
+    @pytest.mark.parametrize('ready', [False, True])
+    def test_model_requested_yaml_reaches_structured_service_predicate(output, ready):
+        runtime = SkillExecutor.from_dir(SKILLS)
+        commands = []
+        def tool(tool, arguments, payload):
+            command = arguments['command']
+            commands.append(command)
+            obj = {'kind': 'Endpoints', 'metadata': {'name': 'api', 'namespace': 'audit', 'uid': 'endpoint-one'},
+                   'subsets': [{'addresses': [{'ip': '192.0.2.1'}]}] if ready else []}
+            # Model output format is honored by the real command runner. The
+            # collector must request JSON for the downstream structural contract.
+            body = json.dumps(obj) if 'json' in command else (
+                'kind: Endpoints\nmetadata:\n  name: api\n  namespace: audit\nsubsets: ' + json.dumps(obj['subsets']) + '\n')
+            return {'success': True, 'executed': True, 'data': body}
+        payload = {'namespace': 'audit', 'cluster_id': 'east', 'service': 'api',
+                   'message': '业务请求 HTTP 502',
+                   'investigation_commands': [f'kubectl get endpoints api {output}']}
+        collected = runtime.run('generic.evidence_collection', payload, stages=['detect', 'diagnose'],
+                                dry_run=True, tool_runner=tool).to_dict()
+        results = collected['stages']['diagnose']['output']['tool_results']
+>       assert len(commands) == 1 and 'json' in commands[0] and 'yaml' not in commands[0] and 'yml' not in commands[0]
+E       AssertionError: assert (1 == 1 and 'json' in 'get endpoints api --output=yaml')
+E        +  where 1 = len(['get endpoints api --output=yaml'])
+
+tests/test_structured_service_evidence.py:32: AssertionError
+_ test_model_requested_yaml_reaches_structured_service_predicate[False---output yml] _
+
+output = '--output yml', ready = False
+
+    @pytest.mark.parametrize('output', ['-o yaml', '-o yml', '--output=yaml', '--output yml'])
+    @pytest.mark.parametrize('ready', [False, True])
+    def test_model_requested_yaml_reaches_structured_service_predicate(output, ready):
+        runtime = SkillExecutor.from_dir(SKILLS)
+        commands = []
+        def tool(tool, arguments, payload):
+            command = arguments['command']
+            commands.append(command)
+            obj = {'kind': 'Endpoints', 'metadata': {'name': 'api', 'namespace': 'audit', 'uid': 'endpoint-one'},
+                   'subsets': [{'addresses': [{'ip': '192.0.2.1'}]}] if ready else []}
+            # Model output format is honored by the real command runner. The
+            # collector must request JSON for the downstream structural contract.
+            body = json.dumps(obj) if 'json' in command else (
+                'kind: Endpoints\nmetadata:\n  name: api\n  namespace: audit\nsubsets: ' + json.dumps(obj['subsets']) + '\n')
+            return {'success': True, 'executed': True, 'data': body}
+        payload = {'namespace': 'audit', 'cluster_id': 'east', 'service': 'api',
+                   'message': '业务请求 HTTP 502',
+                   'investigation_commands': [f'kubectl get endpoints api {output}']}
+        collected = runtime.run('generic.evidence_collection', payload, stages=['detect', 'diagnose'],
+                                dry_run=True, tool_runner=tool).to_dict()
+        results = collected['stages']['diagnose']['output']['tool_results']
+>       assert len(commands) == 1 and 'json' in commands[0] and 'yaml' not in commands[0] and 'yml' not in commands[0]
+E       AssertionError: assert (1 == 1 and 'json' in 'get endpoints api --output yml')
+E        +  where 1 = len(['get endpoints api --output yml'])
+
+tests/test_structured_service_evidence.py:32: AssertionError
+_ test_model_requested_yaml_reaches_structured_service_predicate[True--o yaml] _
+
+output = '-o yaml', ready = True
+
+    @pytest.mark.parametrize('output', ['-o yaml', '-o yml', '--output=yaml', '--output yml'])
+    @pytest.mark.parametrize('ready', [False, True])
+    def test_model_requested_yaml_reaches_structured_service_predicate(output, ready):
+        runtime = SkillExecutor.from_dir(SKILLS)
+        commands = []
+        def tool(tool, arguments, payload):
+            command = arguments['command']
+            commands.append(command)
+            obj = {'kind': 'Endpoints', 'metadata': {'name': 'api', 'namespace': 'audit', 'uid': 'endpoint-one'},
+                   'subsets': [{'addresses': [{'ip': '192.0.2.1'}]}] if ready else []}
+            # Model output format is honored by the real command runner. The
+            # collector must request JSON for the downstream structural contract.
+            body = json.dumps(obj) if 'json' in command else (
+                'kind: Endpoints\nmetadata:\n  name: api\n  namespace: audit\nsubsets: ' + json.dumps(obj['subsets']) + '\n')
+            return {'success': True, 'executed': True, 'data': body}
+        payload = {'namespace': 'audit', 'cluster_id': 'east', 'service': 'api',
+                   'message': '业务请求 HTTP 502',
+                   'investigation_commands': [f'kubectl get endpoints api {output}']}
+        collected = runtime.run('generic.evidence_collection', payload, stages=['detect', 'diagnose'],
+                                dry_run=True, tool_runner=tool).to_dict()
+        results = collected['stages']['diagnose']['output']['tool_results']
+>       assert len(commands) == 1 and 'json' in commands[0] and 'yaml' not in commands[0] and 'yml' not in commands[0]
+E       AssertionError: assert (1 == 1 and 'json' in 'get endpoints api -o yaml')
+E        +  where 1 = len(['get endpoints api -o yaml'])
+
+tests/test_structured_service_evidence.py:32: AssertionError
+_ test_model_requested_yaml_reaches_structured_service_predicate[True--o yml] __
+
+output = '-o yml', ready = True
+
+    @pytest.mark.parametrize('output', ['-o yaml', '-o yml', '--output=yaml', '--output yml'])
+    @pytest.mark.parametrize('ready', [False, True])
+    def test_model_requested_yaml_reaches_structured_service_predicate(output, ready):
+        runtime = SkillExecutor.from_dir(SKILLS)
+        commands = []
+        def tool(tool, arguments, payload):
+            command = arguments['command']
+            commands.append(command)
+            obj = {'kind': 'Endpoints', 'metadata': {'name': 'api', 'namespace': 'audit', 'uid': 'endpoint-one'},
+                   'subsets': [{'addresses': [{'ip': '192.0.2.1'}]}] if ready else []}
+            # Model output format is honored by the real command runner. The
+            # collector must request JSON for the downstream structural contract.
+            body = json.dumps(obj) if 'json' in command else (
+                'kind: Endpoints\nmetadata:\n  name: api\n  namespace: audit\nsubsets: ' + json.dumps(obj['subsets']) + '\n')
+            return {'success': True, 'executed': True, 'data': body}
+        payload = {'namespace': 'audit', 'cluster_id': 'east', 'service': 'api',
+                   'message': '业务请求 HTTP 502',
+                   'investigation_commands': [f'kubectl get endpoints api {output}']}
+        collected = runtime.run('generic.evidence_collection', payload, stages=['detect', 'diagnose'],
+                                dry_run=True, tool_runner=tool).to_dict()
+        results = collected['stages']['diagnose']['output']['tool_results']
+>       assert len(commands) == 1 and 'json' in commands[0] and 'yaml' not in commands[0] and 'yml' not in commands[0]
+E       AssertionError: assert (1 == 1 and 'json' in 'get endpoints api -o yml')
+E        +  where 1 = len(['get endpoints api -o yml'])
+
+tests/test_structured_service_evidence.py:32: AssertionError
+_ test_model_requested_yaml_reaches_structured_service_predicate[True---output=yaml] _
+
+output = '--output=yaml', ready = True
+
+    @pytest.mark.parametrize('output', ['-o yaml', '-o yml', '--output=yaml', '--output yml'])
+    @pytest.mark.parametrize('ready', [False, True])
+    def test_model_requested_yaml_reaches_structured_service_predicate(output, ready):
+        runtime = SkillExecutor.from_dir(SKILLS)
+        commands = []
+        def tool(tool, arguments, payload):
+            command = arguments['command']
+            commands.append(command)
+            obj = {'kind': 'Endpoints', 'metadata': {'name': 'api', 'namespace': 'audit', 'uid': 'endpoint-one'},
+                   'subsets': [{'addresses': [{'ip': '192.0.2.1'}]}] if ready else []}
+            # Model output format is honored by the real command runner. The
+            # collector must request JSON for the downstream structural contract.
+            body = json.dumps(obj) if 'json' in command else (
+                'kind: Endpoints\nmetadata:\n  name: api\n  namespace: audit\nsubsets: ' + json.dumps(obj['subsets']) + '\n')
+            return {'success': True, 'executed': True, 'data': body}
+        payload = {'namespace': 'audit', 'cluster_id': 'east', 'service': 'api',
+                   'message': '业务请求 HTTP 502',
+                   'investigation_commands': [f'kubectl get endpoints api {output}']}
+        collected = runtime.run('generic.evidence_collection', payload, stages=['detect', 'diagnose'],
+                                dry_run=True, tool_runner=tool).to_dict()
+        results = collected['stages']['diagnose']['output']['tool_results']
+>       assert len(commands) == 1 and 'json' in commands[0] and 'yaml' not in commands[0] and 'yml' not in commands[0]
+E       AssertionError: assert (1 == 1 and 'json' in 'get endpoints api --output=yaml')
+E        +  where 1 = len(['get endpoints api --output=yaml'])
+
+tests/test_structured_service_evidence.py:32: AssertionError
+_ test_model_requested_yaml_reaches_structured_service_predicate[True---output yml] _
+
+output = '--output yml', ready = True
+
+    @pytest.mark.parametrize('output', ['-o yaml', '-o yml', '--output=yaml', '--output yml'])
+    @pytest.mark.parametrize('ready', [False, True])
+    def test_model_requested_yaml_reaches_structured_service_predicate(output, ready):
+        runtime = SkillExecutor.from_dir(SKILLS)
+        commands = []
+        def tool(tool, arguments, payload):
+            command = arguments['command']
+            commands.append(command)
+            obj = {'kind': 'Endpoints', 'metadata': {'name': 'api', 'namespace': 'audit', 'uid': 'endpoint-one'},
+                   'subsets': [{'addresses': [{'ip': '192.0.2.1'}]}] if ready else []}
+            # Model output format is honored by the real command runner. The
+            # collector must request JSON for the downstream structural contract.
+            body = json.dumps(obj) if 'json' in command else (
+                'kind: Endpoints\nmetadata:\n  name: api\n  namespace: audit\nsubsets: ' + json.dumps(obj['subsets']) + '\n')
+            return {'success': True, 'executed': True, 'data': body}
+        payload = {'namespace': 'audit', 'cluster_id': 'east', 'service': 'api',
+                   'message': '业务请求 HTTP 502',
+                   'investigation_commands': [f'kubectl get endpoints api {output}']}
+        collected = runtime.run('generic.evidence_collection', payload, stages=['detect', 'diagnose'],
+                                dry_run=True, tool_runner=tool).to_dict()
+        results = collected['stages']['diagnose']['output']['tool_results']
+>       assert len(commands) == 1 and 'json' in commands[0] and 'yaml' not in commands[0] and 'yml' not in commands[0]
+E       AssertionError: assert (1 == 1 and 'json' in 'get endpoints api --output yml')
+E        +  where 1 = len(['get endpoints api --output yml'])
+
+tests/test_structured_service_evidence.py:32: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_structured_service_evidence.py::test_model_requested_yaml_reaches_structured_service_predicate[False--o yaml]
+FAILED tests/test_structured_service_evidence.py::test_model_requested_yaml_reaches_structured_service_predicate[False--o yml]
+FAILED tests/test_structured_service_evidence.py::test_model_requested_yaml_reaches_structured_service_predicate[False---output=yaml]
+FAILED tests/test_structured_service_evidence.py::test_model_requested_yaml_reaches_structured_service_predicate[False---output yml]
+FAILED tests/test_structured_service_evidence.py::test_model_requested_yaml_reaches_structured_service_predicate[True--o yaml]
+FAILED tests/test_structured_service_evidence.py::test_model_requested_yaml_reaches_structured_service_predicate[True--o yml]
+FAILED tests/test_structured_service_evidence.py::test_model_requested_yaml_reaches_structured_service_predicate[True---output=yaml]
+FAILED tests/test_structured_service_evidence.py::test_model_requested_yaml_reaches_structured_service_predicate[True---output yml]
+8 failed, 1 passed in 4.15s

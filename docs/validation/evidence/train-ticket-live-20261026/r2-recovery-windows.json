@@ -1,0 +1,20 @@
+[
+  {
+    "samples": 10,
+    "successes": 10,
+    "controls_healthy": true,
+    "p95_ms": 60.425
+  },
+  {
+    "samples": 10,
+    "successes": 10,
+    "controls_healthy": true,
+    "p95_ms": 56.549
+  },
+  {
+    "samples": 10,
+    "successes": 10,
+    "controls_healthy": true,
+    "p95_ms": 54.009
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "observed_at": "2026-10-26T09:39:00.764607+00:00",
+  "model": "deepseek-v4-pro",
+  "provider_requests": 1,
+  "ready": true,
+  "secrets_serialized": false,
+  "http_status": 200,
+  "text_present": true,
+  "reasoning_present": true,
+  "finish_reason": "stop",
+  "total_tokens": 106,
+  "elapsed_ms": 1414.604
+}

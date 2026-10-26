@@ -1,0 +1,60 @@
+{
+  "finished_at": "2026-10-26T10:56:18.522682+00:00",
+  "watchdog_armed": true,
+  "fault_dispatched": true,
+  "injection_outcome": "injected",
+  "restored": true,
+  "business_recovery_confirmed": true,
+  "baseline": {
+    "samples": 20,
+    "successes": 20,
+    "controls_healthy": true,
+    "p95_ms": 50.861
+  },
+  "fault": {
+    "samples": 5,
+    "successes": 0,
+    "controls_healthy": true,
+    "p95_ms": 3004.389
+  },
+  "diagnosis_runs": [
+    {
+      "mode": "multi",
+      "requested_at": "2026-10-26T10:52:47.592575+00:00",
+      "run_id": "rca-2a3e88b7",
+      "status": "running",
+      "duration_s": 167.995
+    },
+    {
+      "mode": "skill",
+      "requested_at": "2026-10-26T10:52:47.619649+00:00",
+      "run_id": "rca-f876aeaf",
+      "status": "completed",
+      "duration_s": 22.586,
+      "completed_at": "2026-10-26T10:53:10.230777+00:00"
+    }
+  ],
+  "action_attempts": [
+    {
+      "mode": "multi",
+      "executed": false,
+      "reason": "ontology_gate_not_ready",
+      "blockers": []
+    },
+    {
+      "mode": "skill",
+      "executed": false,
+      "reason": "ontology_gate_not_ready",
+      "blockers": [
+        "target_incarnation_unresolved",
+        "target_resource_version_missing",
+        "independent_review_required",
+        "diagnosis_gate_not_allowed"
+      ]
+    }
+  ],
+  "error": null,
+  "accuracy_requires_independent_review": true,
+  "production_replaced": false,
+  "model_accuracy_claimed": false
+}

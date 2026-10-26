@@ -1,0 +1,74 @@
+{
+  "passed": true,
+  "runs": [
+    {
+      "id": "rca-4798c161",
+      "phase": "healthy-control",
+      "mode": "multi",
+      "status": "completed",
+      "port": 18112,
+      "history_opened": true,
+      "strategy_readable": true,
+      "html_report_readable": true,
+      "displayed_result_chars": 1648
+    },
+    {
+      "id": "rca-76f35702",
+      "phase": "healthy-control",
+      "mode": "skill",
+      "status": "failed",
+      "port": 18112,
+      "history_opened": true,
+      "strategy_readable": true,
+      "html_report_readable": true,
+      "displayed_result_chars": 388
+    },
+    {
+      "id": "rca-4c1d9234",
+      "phase": "station-fault-r1",
+      "mode": "multi",
+      "status": "completed",
+      "port": 18112,
+      "history_opened": true,
+      "strategy_readable": true,
+      "html_report_readable": true,
+      "displayed_result_chars": 1057
+    },
+    {
+      "id": "rca-04d35254",
+      "phase": "station-fault-r1",
+      "mode": "skill",
+      "status": "failed",
+      "port": 18112,
+      "history_opened": true,
+      "strategy_readable": true,
+      "html_report_readable": true,
+      "displayed_result_chars": 379
+    },
+    {
+      "id": "rca-2a3e88b7",
+      "phase": "station-fault-r2",
+      "mode": "multi",
+      "status": "completed",
+      "port": 18114,
+      "history_opened": true,
+      "strategy_readable": true,
+      "html_report_readable": true,
+      "displayed_result_chars": 2282
+    },
+    {
+      "id": "rca-f876aeaf",
+      "phase": "station-fault-r2",
+      "mode": "skill",
+      "status": "completed",
+      "port": 18114,
+      "history_opened": true,
+      "strategy_readable": true,
+      "html_report_readable": true,
+      "displayed_result_chars": 641
+    }
+  ],
+  "page_errors": [],
+  "writes": [],
+  "scope": "Read saved diagnosis history/strategy/report; no new diagnosis or healing requested"
+}

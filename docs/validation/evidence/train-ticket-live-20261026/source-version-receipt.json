@@ -1,0 +1,24 @@
+{
+  "final_snapshot": "live-recovery-regression-20261026-r5",
+  "files": 854,
+  "sha256": {
+    "recovery_verification.py": "75e816cc2bf5aceb4e83a2155d6044ac085e5802542e4de196795d24879c4a8e",
+    "memory/fault_context_store.py": "177cea9b01f67f71fc356db8121158b78b644125b2d7cad0ad89084fb5484f8a",
+    "web_app/app.py": "f90e87523329bd6931a84a2fb97b7aed2ff5871b76f414ebec67850ab5a988df",
+    "skill_runtime/skills/generic_evidence_collection/skill.py": "8b3e00ce1c702cdc4e8497b430499e53f98e90ec728ebdb578c2ba1d724dfd9c",
+    "scripts/live_recovery_control.py": "200bb20626522ddee4db01348bebeee903b2ff2268c851b626378cf75601fbee",
+    "scripts/validate_live_business_recovery.py": "371e763de2c76f2dadeeb6872d603a94617e5985a7ac485c75ad78ea15ea614c",
+    "tests/test_live_recovery_control.py": "e49028ae3a7f065f55aed76a78361d204e4697cd3755fa81f79f5ac207ba062e",
+    "tests/test_structured_service_evidence.py": "488853edd3152058edfd1d79056b81f9cb5d2c5b4f8370ab68bddb07b5acff31"
+  },
+  "live_r2_harness": {
+    "scripts/live_recovery_control.py": "ecdfc97cd32d348d7e7f164fedd46ce9b05c88c1f92a846f5136756692615c1b",
+    "scripts/validate_live_business_recovery.py": "fce5107e18e2be7be728d43189a28dba6b14fe284eba96972098cbda607ec7ef",
+    "tests/test_live_recovery_control.py": "a5924ebc61a53acd3e589e76ebd403c7a5d74c8c7cb9739a1c7495bcd1e713a3",
+    "tests/test_structured_service_evidence.py": "488853edd3152058edfd1d79056b81f9cb5d2c5b4f8370ab68bddb07b5acff31",
+    "skill_runtime/skills/generic_evidence_collection/skill.py": "8b3e00ce1c702cdc4e8497b430499e53f98e90ec728ebdb578c2ba1d724dfd9c"
+  },
+  "live_and_final_application_copy_bytes_identical": true,
+  "copy_source_files": 424,
+  "post_live_change": "r5 host control race/deadline fix and controlled regressions; application runtime unchanged"
+}
