@@ -133,7 +133,8 @@ Generate a remediation plan:
             verification = {"status": "error", "error": str(exc)}
         state = verification.get("overall_status", verification.get("status")) if isinstance(verification, dict) else None
         checks = verification.get("checks", {}) if isinstance(verification, dict) else {}
-        known_healthy = state in ("healthy", "ok") and isinstance(checks, dict) and all(
+        required_checks = {"nodes", "pods", "services", "events", "resources"}
+        known_healthy = state in ("healthy", "ok") and isinstance(checks, dict) and required_checks <= checks.keys() and all(
             isinstance(item, dict) and item.get("status") in ("healthy", "ok")
             for item in checks.values())
         record.update(verification=verification,
