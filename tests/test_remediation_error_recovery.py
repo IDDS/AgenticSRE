@@ -31,7 +31,8 @@ def setup(monkeypatch, tmp_path):
     model = SimpleNamespace(json_chat=lambda *a, **kw: copy.deepcopy(PLAN))
     def agent():
         obj=RemediationAgent(model, registry, cfg)
-        obj._verify_health=lambda: {'status': 'healthy'}
+        obj._verify_health=lambda: {'status': 'healthy', 'checks': {
+            name: {'status': 'healthy'} for name in ('nodes', 'pods', 'services', 'events', 'resources')}}
         return obj
     monkeypatch.setattr(dashboard, '_RCA_HISTORY_FILE', tmp_path/'history.json')
     monkeypatch.setitem(dashboard._state, 'rca_runs', {})
@@ -71,6 +72,16 @@ def test_unhealthy_verification_is_not_execution_success(setup):
     agent._verify_health=lambda: {'status':'error', 'error':'health unavailable'}
     result=asyncio.run(agent.remediate({}, confidence=1, approved=True))
     assert result['status'] != 'executed'
+    assert result['requires_manual_review'] is True
+
+
+@pytest.mark.parametrize('checks', [None, {}, {'pods': {}}, {'pods': {'status': 'unknown'}},
+    {'pods': {'status': 'healthy'}}])
+def test_missing_or_unknown_health_checks_do_not_certify_recovery(setup, checks):
+    agent = setup.agent()
+    agent._verify_health = lambda: {'status': 'healthy', 'checks': checks}
+    result = asyncio.run(agent.remediate({}, confidence=1, approved=True))
+    assert result['status'] == 'verification_failed'
     assert result['requires_manual_review'] is True
 
 
