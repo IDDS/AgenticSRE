@@ -1,0 +1,25 @@
+{
+  "temporary_containers_removed": [
+    "agenticsre-service-evidence-20261027",
+    "agenticsre-service-evidence-20261027-r2",
+    "agenticsre-service-evidence-20261027-r3",
+    "agenticsre-service-evidence-20261027-r4",
+    "agenticsre-service-evidence-web-20261027-r4",
+    "agenticsre-service-evidence-skill-20261027-r4"
+  ],
+  "ownership_verified": true,
+  "production": [
+    {
+      "name": "agenticsre",
+      "image_unchanged": true,
+      "health": "healthy"
+    },
+    {
+      "name": "agenticsre-skill-runtime",
+      "image_unchanged": true,
+      "health": "healthy"
+    }
+  ],
+  "evidence_and_images_preserved": true,
+  "unrelated_containers_touched": false
+}

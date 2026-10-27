@@ -4,6 +4,7 @@ import re
 import shlex
 from typing import Any, Dict, List
 from skill_runtime.kubectl_safety import readonly_kubectl_args
+from skill_runtime.service_evidence import collect_service_evidence, MAX_TOOL_CALLS
 
 
 def _payload(context: Dict[str, Any]) -> Dict[str, Any]:
@@ -51,8 +52,23 @@ def diagnose(context: Dict[str, Any]) -> Dict[str, Any]:
     commands = _target_commands(payload)
     tool_results = []
     tools = context.get("tools")
+    service_scope = None
+    if tools and hasattr(tools, "execute") and payload.get('collect_service_topology') is True and payload.get('service'):
+        tool_results, service_scope = collect_service_evidence(tools, payload)
     if tools and hasattr(tools, "execute"):
-        for command in commands:
+        # Preserve the Agent's additional discriminating checks (for example
+        # logs/events on a healthy-looking backend) within the shared call cap.
+        limit = MAX_TOOL_CALLS if service_scope is not None else 4
+        # If even the Service read is unavailable (RBAC/client capability),
+        # keep the previous read-only investigation available. Its scope gap
+        # remains unresolved and cannot bind a root object. A known selectorless
+        # Service must never trigger the default namespace-wide fallback.
+        unavailable = service_scope is not None and 'service_unavailable' in service_scope.get('gaps', [])
+        extra_commands = (commands if service_scope is None or payload.get('investigation_commands') or unavailable
+                          else ['kubectl '+c.removeprefix('kubectl ') for c in service_scope.get('supplemental_commands', [])])
+        for command in extra_commands:
+            if len(tool_results) >= limit:
+                break
             stripped = command.strip()
             if not stripped.startswith("kubectl "):
                 continue
@@ -87,7 +103,7 @@ def diagnose(context: Dict[str, Any]) -> Dict[str, Any]:
             if verb not in {"get", "describe", "logs", "top", "events", "cluster-info", "version"}:
                 continue
             tool_results.append(tools.execute("kubectl", command=kubectl_command, namespace=_namespace(payload)))
-            if len(tool_results) >= 4:
+            if len(tool_results) >= limit:
                 break
         # Model-proposed names/selectors are hypotheses too. Empty selections do
         # not establish that a workload is absent: discover actual Pod names and
@@ -96,7 +112,7 @@ def diagnose(context: Dict[str, Any]) -> Dict[str, Any]:
             sample = str(result.get("data") or result.get("sample") or "").strip()
             return result.get("executed") and result.get("success") and sample and not sample.startswith("No resources found")
 
-        if tool_results and not any(useful(result) for result in tool_results):
+        if service_scope is None and tool_results and not any(useful(result) for result in tool_results):
             discovery = "get pods -o jsonpath='{.items[*].metadata.name}'"
             inventory = tools.execute("kubectl", command=discovery, namespace=_namespace(payload))
             tool_results.append(inventory)
@@ -123,4 +139,5 @@ def diagnose(context: Dict[str, Any]) -> Dict[str, Any]:
         "root_cause_component": payload.get("deployment") or payload.get("service") or _namespace(payload),
         "commands": commands,
         "tool_results": tool_results,
+        **({'service_scope': service_scope} if service_scope is not None else {}),
     }

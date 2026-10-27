@@ -81,6 +81,8 @@ Ontology 借鉴“对象—关系—动作”的组织思想：同一调查中�
 
 [10 月 26 日站点查询实测](docs/validation/train-ticket-live-recovery-20261026.md) 已恢复真实模型访问，完成既有 Java 服务副本为零的两轮故障和恢复观测，并修复 YAML 证据不能进入结构化判据的问题。第二轮业务三个恢复窗口均成功，Agent+Skill 能确认空端点；具体缩零取证、独立审核和原生自愈仍未通过，门禁保持拒绝。实验控制器撤销故障不计为系统自愈。
 
+[10 月 27 日后续验收](docs/validation/service-evidence-binding-20261027.md) 补齐真实 selector 定向取证及 Agent+Skill 根因身份导出。一次真实缩零中，Agent+Skill 约 27 秒定位实际 Deployment 并绑定 UID/版本，三个业务恢复窗口均成功；独立复核与原生自愈仍未通过，多智能体在 165 秒预算内未完成。单例定位成功不代表总体准确率或效率收益。
+
 ## RCA 置信度校准
 
 AgenticSRE 不直接使用大模型自报的 confidence，而是将其作为 Raw 先验，再结合假设分支稳定性、多源证据、Judge/Critic 质量评审、根因具体性和可准入的历史诊断标签进行六因子校准。历史标签的来源与独立性需要单独审计。恢复是否成功不参与 RCA 置信度，它只用于判断某个恢复动作能否自动执行：
@@ -237,6 +239,7 @@ python main.py rca "pod CrashLoopBackOff" -n default
 | [docs/business-recovery.md](docs/business-recovery.md) | **运维/开发** — JSON 业务响应断言、读取预算和恢复验证强度 |
 | [docs/recovery-verification-history.md](docs/recovery-verification-history.md) | **运维/评审** — 按动作、环境和恢复验证标准隔离历史与自动门禁 |
 | [docs/validation/train-ticket-live-recovery-20261026.md](docs/validation/train-ticket-live-recovery-20261026.md) | **测试/评审** — 实际站点服务故障、诊断门禁、冷启动恢复与结构化证据修复 |
+| [docs/validation/service-evidence-binding-20261027.md](docs/validation/service-evidence-binding-20261027.md) | **测试/评审** — 零 Pod 定向取证、根因 UID/版本绑定与真实站点复验 |
 | [docs/feedback-contract.md](docs/feedback-contract.md) | **使用者/开发** — 反馈标签、审核准入、持久收据、重试与规则版本投票 |
 | [docs/memory-admission.md](docs/memory-admission.md) | **使用者/开发** — 记忆范围与时间准入、检索前过滤、通用规则审核版本及兼容边界 |
 | [docs/memory-candidates.md](docs/memory-candidates.md) | **使用者/开发** — 候选隔离、实际新增收据、人工版本审核、编辑后重审与停用历史 |
@@ -308,6 +311,7 @@ AgenticSRE/
 │   ├── app.py               # 独立 Skill Runtime API
 │   ├── workflow.py          # detect/diagnose/heal/verify 编排与主 Skill 选择
 │   ├── service_topology.py  # 两条链路共享的拓扑投影与有证据的 Service 关系
+│   ├── service_evidence.py  # 固定字段取证、真实 selector 候选与显式根因身份校验
 │   └── skills/              # K8s、LLM、DB、工具类 Skills
 ├── observability/           # 智能体可观测性
 │   ├── tracer.py            # 执行追踪器
@@ -324,4 +328,4 @@ AgenticSRE/
 
 ## 版本与验证
 
-最近已上线的 2026-10-22 版本见[发布核验](docs/validation/agentic-sre-release-20261022.md)，不等同于当前 GitHub 源码快照。当前 Service 拓扑发布候选已在远端禁网容器中通过 **37 项专项与 2,060 项完整回归**，并通过应用 COPY 层导入检查；尚未替换生产服务。这些结果不能替代真实模型诊断准确率或记忆收益验收。
+最近已上线的 2026-10-22 版本见[发布核验](docs/validation/agentic-sre-release-20261022.md)，不等同于当前 GitHub 源码快照。10 月 27 日冻结候选已在远端禁网容器中通过 **310 项专项与 2,292 项完整回归**，425 个应用 COPY 源文件与实测镜像一致；尚未替换生产服务。真实站点缩零已验证单例定位与独立恢复，独立复核及原生自愈仍待完成；不能据此宣称总体诊断准确率、记忆收益或 MTTR 改善。

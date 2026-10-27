@@ -1,0 +1,15 @@
+{
+  "snapshot": "service-evidence-20261027-r4",
+  "files": 876,
+  "sha256": {
+    "orchestrator/skill_agent.py": "d4133ccb4447dcfa94f5da884cd6ad7ed306792055a1462bbcbd763e170063b4",
+    "skill_runtime/service_evidence.py": "3c062580b02f96b9607305a2debb689891e0a9e3f5da526ec49ee9625059eae8",
+    "skill_runtime/service_topology.py": "b55a8ac92f0aaf7dcbb38a02f42b80dabf474ed5480796c1c478584d14cc1856",
+    "skill_runtime/skills/generic_evidence_collection/skill.py": "9449bcf1a47aae4dd25ec7f97819188648b35257a52ccef56018cfd73599c352",
+    "tests/test_service_evidence_collection.py": "e3855e34152a59eb9d4ff19c7255694b08744f62249a46d0c2f432f54ccd9fe7",
+    "scripts/live_recovery_control.py": "200bb20626522ddee4db01348bebeee903b2ff2268c851b626378cf75601fbee",
+    "scripts/validate_live_business_recovery.py": "371e763de2c76f2dadeeb6872d603a94617e5985a7ac485c75ad78ea15ea614c"
+  },
+  "application_copy_bytes_match_live_image": true,
+  "post_test_changes": "documentation and selected evidence only"
+}

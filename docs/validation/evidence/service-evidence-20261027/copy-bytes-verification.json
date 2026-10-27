@@ -1,0 +1,7 @@
+{
+  "status": "passed",
+  "image": "agenticsre:service-evidence-20261027-r4",
+  "source_mounts": false,
+  "files": 425,
+  "content_sha256": "e62ae4c20ac3799352a4fedc1d41d06af2e975151ead476f2ee911cc5302acff"
+}

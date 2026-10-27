@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "runs": [
+    {
+      "id": "rca-63107ffd",
+      "phase": "station-fault-r1",
+      "mode": "multi",
+      "status": "completed",
+      "port": 18114,
+      "history_opened": true,
+      "strategy_readable": true,
+      "html_report_readable": true,
+      "displayed_result_chars": 2315
+    },
+    {
+      "id": "rca-b3c83af5",
+      "phase": "station-fault-r1",
+      "mode": "skill",
+      "status": "completed",
+      "port": 18114,
+      "history_opened": true,
+      "strategy_readable": true,
+      "html_report_readable": true,
+      "displayed_result_chars": 727
+    }
+  ],
+  "page_errors": [],
+  "writes": [],
+  "scope": "Read saved diagnosis history/strategy/report; no new diagnosis or healing requested"
+}

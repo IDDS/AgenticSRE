@@ -1,0 +1,104 @@
+{
+  "observed_at": "2026-10-27T01:45:16.982480+00:00",
+  "later_snapshot_not_new_fault": true,
+  "records": [
+    {
+      "mode": "multi",
+      "id": "rca-63107ffd",
+      "status": "completed",
+      "budget_status": "running",
+      "duration_s_at_budget": 165.364,
+      "root_cause": "Deployment/ts-station-service 在 train-ticket 命名空间中被观测到 desired_replicas=0 且 ready_replicas=0，导致 Service/ts-station-service 的 Endpoints 无就绪地址，ts-ui-dashboard 的 GET /api/v1/stationservice/stations 请求无法路由到可用后端并返回 502。缩容的具体触发者/机制（手动操作、CI/CD、HPA、资源配额等）仍缺乏 Kubernetes Events、审计日志或 HPA 配置证据，无法确定。",
+      "confidence": 0.65,
+      "root_entity": {
+        "namespace": "train-ticket",
+        "kind": "Deployment",
+        "name": "ts-station-service"
+      },
+      "root_entity_uid_present": true,
+      "root_entity_version_present": false,
+      "root_entity_validation": {
+        "observed": false,
+        "scope": "identity_from_run_observations_only",
+        "status": "identity_type_not_covered"
+      },
+      "diagnosis_status": "requires_review",
+      "automation_gate": {
+        "allowed": false,
+        "blockers": [
+          "unresolved_investigation_gaps",
+          "quality_review_required"
+        ]
+      },
+      "service_scope": {
+        "status": null,
+        "candidate_workloads": null,
+        "selected_pod_count": null,
+        "gaps": null,
+        "is_causal_proof": null
+      },
+      "committed_commands": 0,
+      "action_context": {
+        "recorded_conditions_met": false,
+        "blockers": [
+          "independent_review_required",
+          "diagnosis_gate_not_allowed"
+        ],
+        "target": {
+          "namespace": "train-ticket",
+          "kind": "Deployment",
+          "name": "ts-station-service"
+        },
+        "uid_bound": true,
+        "resource_version_present": true
+      }
+    },
+    {
+      "mode": "skill",
+      "id": "rca-b3c83af5",
+      "status": "completed",
+      "budget_status": "completed",
+      "duration_s_at_budget": 26.707,
+      "root_cause": "Service ts-station-service 的 Endpoints 为空，且其 Deployment ts-station-service 的 replicas 为 0，导致没有可用后端 Pod 接收流量，ts-ui-dashboard 调用该服务时返回 502。",
+      "confidence": 0.72,
+      "root_entity": {
+        "namespace": "train-ticket",
+        "kind": "Deployment",
+        "name": "ts-station-service"
+      },
+      "root_entity_uid_present": true,
+      "root_entity_version_present": true,
+      "root_entity_validation": {
+        "status": "identity_bound",
+        "is_causal_proof": false,
+        "independent_review_required": true
+      },
+      "diagnosis_status": null,
+      "automation_gate": null,
+      "service_scope": {
+        "status": "collected",
+        "candidate_workloads": [
+          "ts-station-service"
+        ],
+        "selected_pod_count": 0,
+        "gaps": [],
+        "is_causal_proof": false
+      },
+      "committed_commands": 16,
+      "action_context": {
+        "recorded_conditions_met": false,
+        "blockers": [
+          "independent_review_required",
+          "diagnosis_gate_not_allowed"
+        ],
+        "target": {
+          "namespace": "train-ticket",
+          "kind": "Deployment",
+          "name": "ts-station-service"
+        },
+        "uid_bound": true,
+        "resource_version_present": true
+      }
+    }
+  ]
+}

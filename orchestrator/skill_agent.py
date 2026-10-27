@@ -18,6 +18,9 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from skill_runtime.executor import SkillExecutor
 from skill_runtime.kubectl_safety import readonly_kubectl_args
+from skill_runtime.service_evidence import (
+    decode_projection, projection_request, evidence_sample, evidence_observed_at, observed_entity_catalog, bind_root_entity,
+)
 from tools.base_tool import ToolResult
 from orchestrator.confidence_calibrator import calibrate_rca_confidence
 from diagnostic_strategy import InvestigationController, tool_evidence_catalog
@@ -56,7 +59,7 @@ class SkillAgentResult:
             and isinstance(self.skill_runtime_result.get("diagnosis"), dict)
             else {}
         )
-        workflow = self.agent_evidence.get("agent_workflow") if isinstance(self.agent_evidence, dict) else {}
+        workflow = (self.agent_evidence.get("agent_workflow") or {}) if isinstance(self.agent_evidence, dict) else {}
         return {
             "status": self.status,
             "query": self.query,
@@ -65,6 +68,8 @@ class SkillAgentResult:
             "root_cause": diagnosis.get("root_cause") or "",
             "fault_type": diagnosis.get("fault_type") or "",
             "confidence": diagnosis.get("confidence"),
+            "root_entity": diagnosis.get("root_entity"),
+            "root_entity_validation": diagnosis.get("root_entity_validation") or {},
             "hypotheses": workflow.get("hypotheses") or [],
             "hypothesis_generation": workflow.get("hypothesis_generation") or {},
             "verification_plan": workflow.get("verification_plan") or {},
@@ -181,6 +186,9 @@ class SkillAgent:
         if skill_result:
             commands = evidence["agent_evidence_collection"]["commands"]
             for run in skill_result.get("skill_runtime", {}).get("runs", []):
+                collected_scope = (run.get('stages', {}).get('diagnose', {}).get('output') or {}).get('service_scope')
+                if isinstance(collected_scope, dict):
+                    evidence['agent_evidence_collection']['service_scope'] = collected_scope
                 seen = set()
                 for trace in run.get("trace", []):
                     for call in trace.get("tool_calls", []):
@@ -210,12 +218,13 @@ class SkillAgent:
                             "skill_run_id": run.get("run_id"), "stage": trace.get("stage")})
                         if not self._skill_owned_investigation:
                             continue
-                        sample = str(call.get("data") or call.get("sample") or "")[:12000]
+                        sample = evidence_sample(call.get("data") or call.get("sample") or "")
                         if any(c.get("command") == command and c.get("sample") == sample for c in commands):
                             continue
                         commands.append({**call, "command": call.get("args", {}).get("command", ""),
                             "sample": sample,
-                            "cluster_id": (workflow.get("payload") or {}).get("cluster_id", ""),
+                            "timestamp": evidence_observed_at(call.get('data')) or call.get('timestamp') or '',
+                            "cluster_id": (workflow.get("payload") or {}).get("cluster_id") or (workflow.get('payload') or {}).get('target_cluster_id') or '',
                             "namespace": request.namespace})
         if not skill_result:
             return SkillAgentResult("failed", request.query, request.namespace,
@@ -522,6 +531,10 @@ class SkillAgent:
             return None
 
         run_payload = dict(payload)
+        # Skills consume the canonical cluster_id, including their typed
+        # evidence predicates. Canonicalize the accepted caller alias once.
+        if not run_payload.get('cluster_id') and run_payload.get('target_cluster_id'):
+            run_payload['cluster_id'] = run_payload['target_cluster_id']
         run_payload["agent_evidence"] = evidence
         run_payload["message"] = request.query
         run_payload["namespace"] = request.namespace or payload.get("namespace") or "default"
@@ -546,7 +559,8 @@ class SkillAgent:
             "selected_skills": [call["skill_id"] for call in normalized_calls[:3]],
         })
         for call in normalized_calls[:3]:
-            call_payload = {**run_payload, **call["target"], "investigation_commands": call["commands"]}
+            call_payload = {**run_payload, **call["target"], "investigation_commands": call["commands"],
+                            "collect_service_topology": bool(run_payload.get('service') or call['target'].get('service'))}
             # Existing diagnostic Skills can consume evidence collected by a
             # reusable Skill until they implement their own controlled tools.
             if self._skill_owned_investigation and call["skill_id"] not in {
@@ -560,11 +574,14 @@ class SkillAgent:
                     tool_runner=self._skill_tool_runner(request.namespace)).to_dict()
                 supplementary_runs.append(helper)
                 helper_output = helper.get("stages", {}).get("diagnose", {}).get("output", {})
+                if isinstance(helper_output.get('service_scope'), dict):
+                    evidence['agent_evidence_collection']['service_scope'] = helper_output['service_scope']
                 for item in helper_output.get("tool_results", []):
                     evidence["agent_evidence_collection"]["commands"].append({**item,
                         "command": item.get("args", {}).get("command", ""),
-                        "sample": str(item.get("data") or item.get("sample") or "")[:12000],
-                        "cluster_id": payload.get("cluster_id", ""), "namespace": request.namespace})
+                        "sample": evidence_sample(item.get("data") or item.get("sample") or ""),
+                        "timestamp": evidence_observed_at(item.get('data')) or item.get('timestamp') or '',
+                        "cluster_id": payload.get("cluster_id") or payload.get('target_cluster_id') or '', "namespace": request.namespace})
                 call_payload["agent_evidence"] = evidence
             self._emit({
                 "event": "tool_call",
@@ -1068,6 +1085,11 @@ class SkillAgent:
         hypothesis_before = json.loads(json.dumps(hypotheses, default=str))
         hypothesis_catalog = tool_evidence_catalog(command_records)
         success_commands = [item for item in command_records if isinstance(item, dict) and item.get("success")]
+        workflow_payload = request.skill_workflow.get('payload') or {}
+        entity_catalog = observed_entity_catalog(command_records,
+            workflow_payload.get('cluster_id') or workflow_payload.get('target_cluster_id') or '',
+            request.namespace or workflow_payload.get('namespace') or 'default')
+        service_scope = (evidence.get('agent_evidence_collection') or {}).get('service_scope')
         reasoning_chain = (
             f"Agent 首先形成 {len(hypotheses)} 个候选根因；随后按验证计划执行 "
             f"{len(command_records)} 个只读检查，并调用 {primary_skill or '由 Agent 选择的 Skill'}。"
@@ -1092,7 +1114,7 @@ class SkillAgent:
                 "command": item.get("command"),
                 "success": bool(item.get("success")),
                 "summary": str(item.get("summary") or "")[:400],
-                "sample": str(item.get("sample") or "")[:sample_limit],
+                "sample": evidence_sample(item.get('data') or item.get("sample") or "", sample_limit),
             }
             for item in command_records
             if isinstance(item, dict)
@@ -1121,6 +1143,8 @@ class SkillAgent:
         reasoning_payload = {
             # Put observed outputs first so prompt size limits cannot leave the
             # model with only hypotheses and an unexecuted-looking plan.
+            "observed_entity_catalog": entity_catalog,
+            "service_scope": service_scope,
             "readonly_checks": readonly_checks,
             "hypothesis_evidence_catalog": hypothesis_catalog,
             "currently_ready_pods": self._observed_ready_pods(command_records),
@@ -1139,6 +1163,7 @@ class SkillAgent:
             "output_schema": {
                 "root_cause": "自包含的中文结论：已证实的完整对象名、当前异常状态及因果关系；证据不足则明确说明",
                 "confidence": 0.0,
+                "root_entity": "从 observed_entity_catalog 原样选择 cluster_id/namespace/kind/name/uid/resource_version；根因对象未证实则为 null",
                 "reasoning_chain": "中文证据链",
                 "evidence": ["关键证据"],
                 "hypothesis_assessments": [{"id":"已有 H 编号", "confidence":0.5,
@@ -1166,6 +1191,9 @@ class SkillAgent:
                         "currently_ready_pods 来自当前成功执行的 Pod 状态查询；这些 Pod 的旧 Warning 或启动时"
                         "readiness 失败事件不能证明当前仍未就绪。必须优先采用当前状态和故障窗口日志。"
                         "证据不足时必须明确说明，不得伪造根因。只返回 JSON。"
+                        "root_entity 只能原样选择已观测目录中的完整身份，不能从名称惯例或根因文字推断 UID。"
+                        "matches_workload_template 只是标签匹配，不是运行期所有权或因果证明；"
+                        "service_scope 非 collected 时不得选择根因对象。身份绑定也不代表独立复核通过。"
                         "逐项评估 hypotheses，在 hypothesis_assessments 中只引用 hypothesis_evidence_catalog 的完整 ID；"
                         "没有引用不能确认或排除候选，采集失败不等于反驳。历史知识只用于候选，不是当前观测。"
                     ),
@@ -1314,6 +1342,12 @@ class SkillAgent:
                 ):
                     updated_diagnosis["evidence"] = llm_reasoning.get("evidence")
                 skill_result["diagnosis"] = updated_diagnosis
+
+        bound_entity, entity_validation = bind_root_entity((llm_reasoning or {}).get('root_entity'),
+                                                         entity_catalog, service_scope)
+        if isinstance(skill_result, dict):
+            skill_result.setdefault('diagnosis', {}).update(root_entity=bound_entity,
+                                                         root_entity_validation=entity_validation)
 
         reasoned_fault_type = self._align_fault_type_with_reasoned_root(
             root,
@@ -1624,6 +1658,7 @@ class SkillAgent:
                 "confidence": value.get("confidence_score", value.get("confidence", value.get("置信度"))),
                 "reasoning_chain": value.get("reasoning_chain") or value.get("reasoning") or value.get("推理链") or "",
                 "evidence": evidence if isinstance(evidence, list) else [str(evidence)],
+                **({'root_entity': value['root_entity']} if isinstance(value.get('root_entity'), dict) else {}),
                 **({"hypothesis_assessments": value["hypothesis_assessments"]}
                    if isinstance(value.get("hypothesis_assessments"),list) else {}),
             }
@@ -2318,6 +2353,20 @@ class SkillAgent:
         except ValueError as exc:
             record.update(error="tool_policy_denied", summary=str(exc))
             return record
+        def captured_output(stdout):
+            try:
+                if projection_request(command, namespace) is not None:
+                    data = json.dumps(decode_projection(command, namespace, stdout), ensure_ascii=False)
+                    return data, evidence_sample(data)
+            except (ValueError, TypeError, IndexError):
+                record.update(success=False, error='invalid_service_projection',
+                              summary='结构化取证输出不完整或身份不匹配，不能作为成功观测。')
+                # Keep a useful failure sample without carrying malformed or
+                # unprojected stdout into evidence/history.
+                from shlex import split
+                target = split(command)[1]
+                return '', 'invalid_service_projection: '+target
+            return stdout[:65536], stdout[:12000]
         if self.kubectl_runner:
             try:
                 runner_result = self.kubectl_runner(command, namespace, payload)
@@ -2327,12 +2376,14 @@ class SkillAgent:
                 record["source"] = "cluster_kubectl"
                 return record
             if isinstance(runner_result, dict):
-                ok = bool(runner_result.get("ok", runner_result.get("success", False)))
+                ok = (bool(runner_result.get("ok", runner_result.get("success", False)))
+                      and runner_result.get('executed') is not False and not runner_result.get('outcome_unknown'))
                 stdout = str(runner_result.get("stdout") or runner_result.get("data") or "")
                 stderr = str(runner_result.get("stderr") or runner_result.get("error") or "")
                 record.update({
                     "success": ok,
-                    "executed": True,
+                    "executed": runner_result.get('executed') is not False,
+                    "outcome_unknown": bool(runner_result.get('outcome_unknown')),
                     "source": "cluster_kubectl",
                     "actual_command": runner_result.get("command") or f"kubectl {command}",
                     "returncode": runner_result.get("returncode"),
@@ -2344,6 +2395,8 @@ class SkillAgent:
                     "data": stdout[:65536],
                     "sample": (stdout or stderr)[:12000],
                 })
+                if ok:
+                    record['data'], record['sample'] = captured_output(stdout)
                 return record
         if not kubectl_available:
             record["summary"] = f"kubectl 工具不可用，已记录计划命令: kubectl {command} -n {namespace}"
@@ -2360,6 +2413,8 @@ class SkillAgent:
         text = str(tool_result.data or tool_result.error or "")
         record["data"] = text[:65536]
         record["sample"] = text[:12000]
+        if tool_result.success:
+            record['data'], record['sample'] = captured_output(text)
         return record
 
     def _k8s_readonly_commands(self, payload: Dict[str, Any]) -> List[str]:

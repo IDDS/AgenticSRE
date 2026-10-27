@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from .service_evidence import project_endpoint_subsets
 
 
 RESOURCE_KINDS = {'Service', 'EndpointSlice', 'Endpoints', 'Pod', 'ReplicaSet',
@@ -74,6 +75,12 @@ def project_resource(resource):
     status = _dict(resource.get('status'))
     projected['status'] = {k: copy.deepcopy(status[k]) for k in
         ('phase', 'readyReplicas', 'availableReplicas', 'containerStatuses', 'podIP', 'podIPs') if k in status}
+    if resource['kind'] == 'Endpoints':
+        try:
+            projected['subsets'] = project_endpoint_subsets(resource.get('subsets'))
+        except ValueError:
+            complete = False
+            projected['subsets'] = []
     if resource['kind'] == 'EndpointSlice':
         endpoints = resource.get('endpoints')
         explicit_nil = 'endpoints' in resource and endpoints is None

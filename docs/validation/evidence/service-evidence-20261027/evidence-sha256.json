@@ -1,0 +1,16 @@
+{
+  "README.md": "506316a2314e7e2c181fb463f759f1d55a40c2a23d426f392c3053107c594af8",
+  "browser.json": "1b741215a283d45b77fee9fe809010dd985e0c39b3a13ae1e61aa49359746d55",
+  "business-readiness.json": "81307963a595e38d279aea8d65b4ae9cdff451629f52ed045f312999c1294a75",
+  "cleanup-verification.json": "a8fb2af6153c62b5dc11c6a3346a0bc09f0f388f0251919d017a28128ea4d4ec",
+  "copy-bytes-verification.json": "d81813979d58b151129e544cd4822bd6aee699f29ea0a9697f348fecdca1b3ac",
+  "diagnosis-snapshots.json": "eb7c5df365519c3554b1a08f7fb106c92714ac0f36942160a4002d8f89fce53d",
+  "full.txt": "f3b656a513582896f5c8b1dec50fc4cd2302766a80a3a26aa7f4f2e04f563477",
+  "own-resources-cleanup.json": "1a366ec00b3a4d0a54ee7c0945f2382497cb36c476a5175a73d6ce097643b19f",
+  "packaged-verification.json": "4679f2c1be1d67805aade3aa57501b2ff9e3ead6bb2ce42430186e7127633414",
+  "packaging-verification.json": "5a580759d5254c3d0c8e8c11f2c3ef9a19ff9fcbee21b5711b54bc776d51420d",
+  "recovery-windows.json": "f5a4bd7ee11d71490211ae8cbcccbabd99098b0dc3d45c516314afd20ce1f89f",
+  "source-version-receipt.json": "849490cc9f87f9c29e162dc9d4d4c486d6689a00a762398daefe4ccaad053419",
+  "summary.json": "027997d229447fcdf3537b66b16b6e4d9d48f0b4d9034ad08df312d053650843",
+  "targeted.txt": "0e4c41c2d81d0bbfa8b084ce789e0db459773e1fcb41d14e1147c017c6504eaf"
+}
