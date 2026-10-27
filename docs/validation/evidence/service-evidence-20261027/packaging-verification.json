@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "source_mounts": false,
+  "web_app_imported": true,
+  "module_sha256": {
+    "skill_runtime/service_evidence.py": "3c062580b02f96b9607305a2debb689891e0a9e3f5da526ec49ee9625059eae8",
+    "skill_runtime/service_topology.py": "b55a8ac92f0aaf7dcbb38a02f42b80dabf474ed5480796c1c478584d14cc1856",
+    "orchestrator/skill_agent.py": "d4133ccb4447dcfa94f5da884cd6ad7ed306792055a1462bbcbd763e170063b4",
+    "recovery_verification.py": "75e816cc2bf5aceb4e83a2155d6044ac085e5802542e4de196795d24879c4a8e",
+    "memory/fault_context_store.py": "177cea9b01f67f71fc356db8121158b78b644125b2d7cad0ad89084fb5484f8a",
+    "web_app/app.py": "f90e87523329bd6931a84a2fb97b7aed2ff5871b76f414ebec67850ab5a988df",
+    "skill_runtime/skills/generic_evidence_collection/skill.py": "9449bcf1a47aae4dd25ec7f97819188648b35257a52ccef56018cfd73599c352"
+  },
+  "build_scope": "actual_application_COPY_with_existing_dependencies",
+  "production_replaced": false,
+  "image_id": "sha256:3bf914e6cd6b7d7e52c65199a87dbf6d87d16f0d0ecf68c6150e915c6a27064a"
+}

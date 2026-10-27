@@ -1,0 +1,58 @@
+{
+  "finished_at": "2026-10-27T01:44:38.000091+00:00",
+  "watchdog_armed": true,
+  "fault_dispatched": true,
+  "injection_outcome": "injected",
+  "restored": true,
+  "business_recovery_confirmed": true,
+  "baseline": {
+    "samples": 20,
+    "successes": 20,
+    "controls_healthy": true,
+    "p95_ms": 61.554
+  },
+  "fault": {
+    "samples": 5,
+    "successes": 0,
+    "controls_healthy": true,
+    "p95_ms": 3004.153
+  },
+  "diagnosis_runs": [
+    {
+      "mode": "multi",
+      "requested_at": "2026-10-27T01:41:08.210466+00:00",
+      "run_id": "rca-63107ffd",
+      "status": "running",
+      "duration_s": 165.364
+    },
+    {
+      "mode": "skill",
+      "requested_at": "2026-10-27T01:41:08.238520+00:00",
+      "run_id": "rca-b3c83af5",
+      "status": "completed",
+      "duration_s": 26.707,
+      "completed_at": "2026-10-27T01:41:35.021358+00:00"
+    }
+  ],
+  "action_attempts": [
+    {
+      "mode": "multi",
+      "executed": false,
+      "reason": "ontology_gate_not_ready",
+      "blockers": []
+    },
+    {
+      "mode": "skill",
+      "executed": false,
+      "reason": "ontology_gate_not_ready",
+      "blockers": [
+        "independent_review_required",
+        "diagnosis_gate_not_allowed"
+      ]
+    }
+  ],
+  "error": null,
+  "accuracy_requires_independent_review": true,
+  "production_replaced": false,
+  "model_accuracy_claimed": false
+}
