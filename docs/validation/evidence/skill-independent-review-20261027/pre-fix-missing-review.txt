@@ -1,0 +1,16 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____ test_separate_review_call_consumes_observations_and_exports_verdict ______
+
+    def test_separate_review_call_consumes_observations_and_exports_verdict():
+        result, stages, prompts = reason()
+>       assert stages == ['reasoning', 'independent_review']
+E       AssertionError: assert ['reasoning'] == ['reasoning',...ndent_review']
+E         
+E         Right contains one more item: 'independent_review'
+E         Use -v to get more diff
+
+tests/test_skill_independent_review.py:64: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_skill_independent_review.py::test_separate_review_call_consumes_observations_and_exports_verdict
+1 failed in 1.22s

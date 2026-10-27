@@ -1,0 +1,13 @@
+{
+  "snapshot": "skill-review-20261027-r6",
+  "files": 894,
+  "sha256": {
+    "operational_ontology.py": "86988f126552159142190c216dae4f1b576ee0bffcab0d20cd593e6b10a6e265",
+    "orchestrator/skill_agent.py": "008525490206a3665ed967abc3dd1aeae9729fea7ac9bf93875f5a8420455bfb",
+    "orchestrator/skill_review.py": "8772a84285d45ce04cafa8f312b28397ed9d1ab052cafd83c61572d3a4fea2aa",
+    "skill_runtime/tool_context.py": "78a3deac5bf41d8f6067087bdd1c3ff68617d82bfe34026be92417907643c8d5",
+    "tests/test_skill_independent_review.py": "ece4f0b88d7cfe37e8a75459d9c15a2810a8d788ae44a1c075e867a182d22c50"
+  },
+  "application_copy_source_files": 426,
+  "post_test_changes": "README, documentation and selected receipts only"
+}

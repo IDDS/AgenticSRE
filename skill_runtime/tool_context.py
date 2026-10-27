@@ -9,6 +9,7 @@ the Agent side.
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 from .kubectl_safety import readonly_kubectl_args
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
@@ -65,6 +66,7 @@ class SkillToolContext:
 
         ok = bool(result.get("ok", result.get("success", False)))
         request.update({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "success": ok,
             "executed": bool(result.get("executed", True)),
             "duration_ms": int((time.time() - started) * 1000),

@@ -1,0 +1,11 @@
+{
+  "early_records_preserved": true,
+  "early_r3_model_score": 0.75,
+  "early_r3_needs_review": false,
+  "not_current_validation_pass": true,
+  "failure_found": "Current zero replicas/selector matching were used to over-reject historical resource or port hypotheses.",
+  "current_policy": "Without observed typed falsification, contradiction is qualified as uncertain; asserted rejections stay blocked.",
+  "current_history_case": "Old missing time/unreviewed output is not backfilled or certified.",
+  "new_fault_injection": false,
+  "general_diagnosis_accuracy_measured": false
+}
