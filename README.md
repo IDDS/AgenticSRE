@@ -41,7 +41,7 @@ AgenticSRE 将告警压缩、假设驱动诊断、运维对象建模、受控处
 | 调查上下文 | [Ontology](operational_ontology.py) 保存对象、观测、关系和动作契约；[记忆模块](memory/) 提供有范围、有生命周期的历史知识；轨迹与事件支持过程显示和审核 |
 | 工具与执行 | [观测工具](tools/observability.py) 和 [K8s 工具](tools/k8s_tools.py) 访问真实后端；写操作还必须通过对应入口的诊断、权限、审批、风险及目标版本条件，执行后另行验证恢复 |
 
-两条诊断链路共享部分工具、数据契约和存储能力，但不具备完全相同的审核覆盖。多智能体链路已有竞争假设的独立角色复核；Agent+Skill 尚缺等价独立 Judge 时，相关真实对象动作保持阻断。独立角色可以使用同一模型，不能理解为独立模型或已知真值。独立 Skill Runtime 未启动时可使用本进程桥接 fallback，事件会记录实际运行方式，详见 [Agent+Skill 集成](skill_runtime/README.md#agentskill-集成)。
+两条诊断链路共享部分工具、数据契约和存储能力，但不具备完全相同的审核覆盖。多智能体已有竞争假设复核；Agent+Skill 已接入有界的[独立角色证据复核](docs/skill-independent-review.md)，核对已提交观测、候选、引用和传输完整性，并把结果用于校准及过程记录。缺口保持待审核，真实对象动作仍须后续执行准入。独立角色可以使用同一模型，不能理解为独立模型、人工审核或已知真值。独立 Skill Runtime 未启动时可使用本进程桥接 fallback，事件会记录实际运行方式，详见 [Agent+Skill 集成](skill_runtime/README.md#agentskill-集成)。
 
 Ontology 借鉴“对象—关系—动作”的组织思想：同一调查中，Pod、Service、控制器等对象以集群、namespace、UID 等身份关联观测；候选假设引用观测，动作引用服务端保存的调查与对象版本。Service 后端关系核对实际 selector、ownerReference 和 EndpointSlice targetRef，保留缺口及两端证据，不把结构关联当作故障因果。对象页还提供**跨调查观测历史**：按 UID 汇集当前保留记录，在所选调查的采集时间上限内比较共同字段，单独展示同名重建实例、采集缺口和来源。这是有限保留记录的只读视图，尚不是持续采集的历史 CMDB，也没有完成外部 Git、镜像注册表和 CI/CD 事实核验。详见 [运维 Ontology 与对象动作](docs/operational-ontology.md)及[历史功能验收](docs/validation/ontology-history-20261026.md)。
 
@@ -82,6 +82,8 @@ Ontology 借鉴“对象—关系—动作”的组织思想：同一调查中�
 [10 月 26 日站点查询实测](docs/validation/train-ticket-live-recovery-20261026.md) 已恢复真实模型访问，完成既有 Java 服务副本为零的两轮故障和恢复观测，并修复 YAML 证据不能进入结构化判据的问题。第二轮业务三个恢复窗口均成功，Agent+Skill 能确认空端点；具体缩零取证、独立审核和原生自愈仍未通过，门禁保持拒绝。实验控制器撤销故障不计为系统自愈。
 
 [10 月 27 日后续验收](docs/validation/service-evidence-binding-20261027.md) 补齐真实 selector 定向取证及 Agent+Skill 根因身份导出。一次真实缩零中，Agent+Skill 约 27 秒定位实际 Deployment 并绑定 UID/版本，三个业务恢复窗口均成功；独立复核与原生自愈仍未通过，多智能体在 165 秒预算内未完成。单例定位成功不代表总体准确率或效率收益。
+
+[独立复核后续验收](docs/validation/skill-independent-review-20261027.md) 已接通审查、校准和持久化，并修复过度排除及证据遗漏边界。真实模型拒绝了健康观测上的错误缩零结论；旧故障记录和根因未知的有限健康判断仍保持待审。本轮没有新增故障或执行动作，原生闭环仍待完成。
 
 ## RCA 置信度校准
 
@@ -240,6 +242,8 @@ python main.py rca "pod CrashLoopBackOff" -n default
 | [docs/recovery-verification-history.md](docs/recovery-verification-history.md) | **运维/评审** — 按动作、环境和恢复验证标准隔离历史与自动门禁 |
 | [docs/validation/train-ticket-live-recovery-20261026.md](docs/validation/train-ticket-live-recovery-20261026.md) | **测试/评审** — 实际站点服务故障、诊断门禁、冷启动恢复与结构化证据修复 |
 | [docs/validation/service-evidence-binding-20261027.md](docs/validation/service-evidence-binding-20261027.md) | **测试/评审** — 零 Pod 定向取证、根因 UID/版本绑定与真实站点复验 |
+| [docs/skill-independent-review.md](docs/skill-independent-review.md) | **开发/评审** — Agent+Skill 独立角色、候选反证、响应完整性与失败处理 |
+| [docs/validation/skill-independent-review-20261027.md](docs/validation/skill-independent-review-20261027.md) | **测试/评审** — 复核反例、当前观测控制与历史重放限制 |
 | [docs/feedback-contract.md](docs/feedback-contract.md) | **使用者/开发** — 反馈标签、审核准入、持久收据、重试与规则版本投票 |
 | [docs/memory-admission.md](docs/memory-admission.md) | **使用者/开发** — 记忆范围与时间准入、检索前过滤、通用规则审核版本及兼容边界 |
 | [docs/memory-candidates.md](docs/memory-candidates.md) | **使用者/开发** — 候选隔离、实际新增收据、人工版本审核、编辑后重审与停用历史 |
@@ -306,6 +310,7 @@ AgenticSRE/
 │   ├── pipeline.py          # 五阶段Pipeline
 │   ├── daemon.py            # 7×24守护进程
 │   ├── skill_bridge.py      # Agent 调用 Skill Runtime 的桥接层
+│   ├── skill_review.py      # 独立角色证据复核、候选限制与完整性守卫
 │   └── session.py           # 会话状态管理
 ├── skill_runtime/           # Skill Runtime 与 SKILL.md/skill.py 技能目录
 │   ├── app.py               # 独立 Skill Runtime API
@@ -328,4 +333,4 @@ AgenticSRE/
 
 ## 版本与验证
 
-最近已上线的 2026-10-22 版本见[发布核验](docs/validation/agentic-sre-release-20261022.md)，不等同于当前 GitHub 源码快照。10 月 27 日冻结候选已在远端禁网容器中通过 **310 项专项与 2,292 项完整回归**，425 个应用 COPY 源文件与实测镜像一致；尚未替换生产服务。真实站点缩零已验证单例定位与独立恢复，独立复核及原生自愈仍待完成；不能据此宣称总体诊断准确率、记忆收益或 MTTR 改善。
+最近已上线的 2026-10-22 版本见[发布核验](docs/validation/agentic-sre-release-20261022.md)，不等同于当前 GitHub 源码快照。10 月 27 日独立复核冻结候选已在远端禁网容器中通过 **422 项专项与 2,358 项完整回归**，并通过实际应用镜像导入检查；尚未替换生产服务。真实站点缩零已验证单例定位与独立恢复，独立复核现已接通但真实控制仍保留待审，原生自愈尚未完成；不能据此宣称总体诊断准确率、记忆收益或 MTTR 改善。

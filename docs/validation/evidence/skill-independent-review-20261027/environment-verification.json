@@ -1,0 +1,18 @@
+{
+  "production": [
+    {
+      "name": "agenticsre",
+      "image_unchanged": true,
+      "health": "healthy"
+    },
+    {
+      "name": "agenticsre-skill-runtime",
+      "image_unchanged": true,
+      "health": "healthy"
+    }
+  ],
+  "production_deployment_changed": false,
+  "new_fault_injections": 0,
+  "actions_dispatched": 0,
+  "private_configuration_persisted": false
+}

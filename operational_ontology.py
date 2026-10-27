@@ -201,7 +201,8 @@ def _command_observations(call: dict) -> list[dict]:
     rows = _rows(data.get("items")) if _text(data.get("kind")).endswith("List") else [data]
     observations = []
     for row in rows:
-        if not isinstance(row, dict) or row.get("kind") not in set(KINDS.values()) or not _dict(row.get("metadata")).get("name"):
+        if (not isinstance(row, dict) or not isinstance(row.get('kind'), str)
+                or row['kind'] not in set(KINDS.values()) or not _dict(row.get("metadata")).get("name")):
             continue
         # This projection needs identity/topology/status, never env values,
         # Secret contents, credentials or last-applied configuration annotations.

@@ -1,0 +1,274 @@
+{
+  "schema": "skill-review-historical-replay/v1",
+  "cases": [
+    {
+      "case": "historical_fault",
+      "source_sha256": "7d1ea04e637f747197dc430e5d0431df635ab80789cb30666f8387186bc8a9d5",
+      "counterfactual_claim": false,
+      "source_is_historical": true,
+      "new_fault_injection": false,
+      "needs_review": true,
+      "score": 0.0,
+      "review_blockers": [
+        "review_observation_time_missing",
+        "unreviewed_tool_output",
+        "candidate_review_incomplete",
+        "no_observations",
+        "reviewer_unavailable"
+      ],
+      "feedback": null,
+      "skill_review": {
+        "schema": "skill-independent-review/v1",
+        "input_sha256": "556c8302b13cf85bc147f91514585ad44d533f4cc10dbefffb4d71c95325ef82",
+        "input_bytes": 11176,
+        "source_observation_count": 10,
+        "review_state_count": 4,
+        "observation_aliases": [
+          {
+            "id": "obs-b9459e5c3f3a5e6fdc501a7e",
+            "same_state_as": "obs-49bb667490fbaba5249bfe8d",
+            "collected_at": "2026-10-27T01:41:22.302547+00:00"
+          },
+          {
+            "id": "obs-dc5173dd926ebdfc368ccf44",
+            "same_state_as": "obs-49bb667490fbaba5249bfe8d",
+            "collected_at": "2026-10-27T01:41:23.301333+00:00"
+          },
+          {
+            "id": "obs-32103a33bdebee4ade333080",
+            "same_state_as": "obs-07e9a56343ca6a894397d18e",
+            "collected_at": "2026-10-27T01:41:23.469903+00:00"
+          },
+          {
+            "id": "obs-674c295497683c3bd7e2ebda",
+            "same_state_as": "obs-5a8cff40d5113df5c17c4546",
+            "collected_at": "2026-10-27T01:41:24.033645+00:00"
+          },
+          {
+            "id": "obs-c5b360f1cf5ef9d188d4241d",
+            "same_state_as": "obs-a461cb67bc118f13a74ae333",
+            "collected_at": "2026-10-27T01:41:24.208982+00:00"
+          },
+          {
+            "id": "obs-47dc82e64c2c0ac4f08d1640",
+            "same_state_as": "obs-49bb667490fbaba5249bfe8d",
+            "collected_at": "2026-10-27T01:41:24.374563+00:00"
+          }
+        ],
+        "unrelated_resource_observations": 94,
+        "invalid_observation_times": 1,
+        "started_at": "2026-10-27T05:32:44.107482+00:00",
+        "finished_at": "2026-10-27T05:32:44.142670+00:00",
+        "duration_s": 0.035,
+        "recording_status": "skipped_input_incomplete",
+        "independent_role_call": false,
+        "same_model_possible": true,
+        "human_review": false,
+        "execution_authorized": false,
+        "entailment_is_model_judgment": true
+      },
+      "hypothesis_review": null,
+      "action_authorized": false,
+      "provider_receipt": null,
+      "model_request_events": 0,
+      "model_result_events": 0
+    },
+    {
+      "case": "healthy_observations_with_false_zero_claim",
+      "source_sha256": "d4f342a22a36c95a2bed0d0aff33f97a427d371b54d9bc57d4c0d796fecac63a",
+      "counterfactual_claim": true,
+      "source_is_historical": false,
+      "new_fault_injection": false,
+      "needs_review": true,
+      "score": 0.0,
+      "review_blockers": [
+        "root_observation_not_cited",
+        "missing_or_invalid_evidence_citations",
+        "unsupported_claims",
+        "unresolved_contradictions"
+      ],
+      "feedback": "结论声称 Deployment 期望副本为 0，但所有观测均显示 replicas=1，且 Endpoints 有可用地址，直接矛盾。",
+      "skill_review": {
+        "schema": "skill-independent-review/v1",
+        "input_sha256": "bb0ed3c7f92acdb1a66c2950ede7e146a0f320f3db202d1f90c74137c83a9300",
+        "input_bytes": 9635,
+        "source_observation_count": 6,
+        "review_state_count": 5,
+        "observation_aliases": [
+          {
+            "id": "obs-45b5595d36bdcf44af8c5d56",
+            "same_state_as": "obs-d80280e43dac5cae90922e65",
+            "collected_at": "2026-10-27T05:31:06.626852+00:00"
+          }
+        ],
+        "unrelated_resource_observations": 48,
+        "invalid_observation_times": 0,
+        "started_at": "2026-10-27T05:32:44.362716+00:00",
+        "finished_at": "2026-10-27T05:32:48.773434+00:00",
+        "duration_s": 4.411,
+        "recording_status": "recorded",
+        "independent_role_call": true,
+        "same_model_possible": true,
+        "human_review": false,
+        "execution_authorized": false,
+        "entailment_is_model_judgment": true
+      },
+      "hypothesis_review": {
+        "recording_status": "recorded",
+        "items": [
+          {
+            "id": "H1",
+            "description": "Deployment/ts-station-service 的期望副本为 0，导致 Service 没有可用后端。",
+            "proposer_status": "active",
+            "proposer_confidence": 0.8,
+            "status": "uncertain",
+            "reviewer_status": "contradicted",
+            "rationale_limits": [
+              "direct_falsification_not_observed"
+            ],
+            "verification_test": "",
+            "verified_test_evidence_ids": [],
+            "host_test_evidence_ids": [],
+            "supporting_evidence_ids": [],
+            "contradicting_evidence_ids": [
+              "obs-8ba44f58fa3ea494b5a89241",
+              "obs-e896f0a28dee665eaefad839",
+              "obs-bb4b1dba816d6e3a11e2d75d"
+            ],
+            "reason": "观测显示 Deployment 副本数为 1 且就绪，Endpoints 有可用地址，与假设矛盾。",
+            "missing_evidence": [
+              "Deployment 副本数被修改为 0 的事件记录",
+              "Endpoints 为空或不可用的观测",
+              "需要同对象和事故时间窗的直接反证，不能以当前状态或缺少信号排除机制。"
+            ],
+            "next_agents": [
+              "event_agent"
+            ],
+            "validation_errors": [],
+            "assertion_requires_review": false,
+            "assertion_verified": false
+          }
+        ],
+        "candidate_count": 1,
+        "validated_count": 1,
+        "blockers": [],
+        "all_candidates_reviewed": true,
+        "semantics": {
+          "same_model_may_fill_separate_roles": true,
+          "human_review": false,
+          "entailment_is_model_judgment": true,
+          "execution_authorized": false
+        }
+      },
+      "action_authorized": false,
+      "provider_receipt": {
+        "schema_version": 1,
+        "source": "provider_response",
+        "completion_status": "complete",
+        "finish_reason": "stop",
+        "refusal_present": false,
+        "tool_call_present": false
+      },
+      "model_request_events": 1,
+      "model_result_events": 1
+    },
+    {
+      "case": "current_healthy_bounded_condition",
+      "source_sha256": "d4f342a22a36c95a2bed0d0aff33f97a427d371b54d9bc57d4c0d796fecac63a",
+      "counterfactual_claim": false,
+      "source_is_historical": false,
+      "new_fault_injection": false,
+      "needs_review": true,
+      "score": 0.6,
+      "review_blockers": [],
+      "feedback": "结论明确承认当前证据不足以确定根因，逻辑连贯，但缺乏具体根因和后续行动建议。",
+      "skill_review": {
+        "schema": "skill-independent-review/v1",
+        "input_sha256": "fad74907c0048f2ec62fd8ba2f9cc426999963e581f4a96a84dc6f7dff873a3a",
+        "input_bytes": 9685,
+        "source_observation_count": 6,
+        "review_state_count": 5,
+        "observation_aliases": [
+          {
+            "id": "obs-45b5595d36bdcf44af8c5d56",
+            "same_state_as": "obs-d80280e43dac5cae90922e65",
+            "collected_at": "2026-10-27T05:31:06.626852+00:00"
+          }
+        ],
+        "unrelated_resource_observations": 48,
+        "invalid_observation_times": 0,
+        "started_at": "2026-10-27T05:32:48.994626+00:00",
+        "finished_at": "2026-10-27T05:32:54.187781+00:00",
+        "duration_s": 5.193,
+        "recording_status": "recorded",
+        "independent_role_call": true,
+        "same_model_possible": true,
+        "human_review": false,
+        "execution_authorized": false,
+        "entailment_is_model_judgment": true
+      },
+      "hypothesis_review": {
+        "recording_status": "recorded",
+        "items": [
+          {
+            "id": "H1",
+            "description": "当前结构状态不支持部署缩零，具体根因未知",
+            "proposer_status": "active",
+            "proposer_confidence": 0.5,
+            "status": "supported",
+            "reviewer_status": "supported",
+            "rationale_limits": [],
+            "verification_test": "",
+            "verified_test_evidence_ids": [],
+            "host_test_evidence_ids": [],
+            "supporting_evidence_ids": [
+              "obs-d80280e43dac5cae90922e65",
+              "obs-bb4b1dba816d6e3a11e2d75d",
+              "obs-8ba44f58fa3ea494b5a89241",
+              "obs-e896f0a28dee665eaefad839",
+              "obs-5faa766929ab7a5caf9bb27d"
+            ],
+            "contradicting_evidence_ids": [],
+            "reason": "观测显示 Deployment 期望副本为1且就绪为1，Endpoints 有就绪地址，与缩零状态不符，因此当前结构状态不支持缩零，具体根因未知。",
+            "missing_evidence": [
+              "事件日志（如 Deployment 缩零事件）",
+              "Pod 状态和事件",
+              "控制器日志"
+            ],
+            "next_agents": [
+              "event_agent"
+            ],
+            "validation_errors": [],
+            "assertion_requires_review": false,
+            "assertion_verified": false
+          }
+        ],
+        "candidate_count": 1,
+        "validated_count": 1,
+        "blockers": [],
+        "all_candidates_reviewed": true,
+        "semantics": {
+          "same_model_may_fill_separate_roles": true,
+          "human_review": false,
+          "entailment_is_model_judgment": true,
+          "execution_authorized": false
+        }
+      },
+      "action_authorized": false,
+      "provider_receipt": {
+        "schema_version": 1,
+        "source": "provider_response",
+        "completion_status": "complete",
+        "finish_reason": "stop",
+        "refusal_present": false,
+        "tool_call_present": false
+      },
+      "model_request_events": 1,
+      "model_result_events": 1
+    }
+  ],
+  "production_modified": false,
+  "configuration_persisted": false,
+  "status": "completed",
+  "replay_script_sha256": "309bf72ddfbc6875bee230f48d58d46c3617662754c3409cf058fb1e3e9fe572"
+}

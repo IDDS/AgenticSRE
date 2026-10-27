@@ -1,0 +1,7 @@
+{
+  "status": "passed",
+  "image": "agenticsre:skill-review-20261027-r6",
+  "source_mounts": false,
+  "files": 426,
+  "content_sha256": "a4b330ecca8ce02c5d0f14767916236a8afb7e61b8c85c1d89e849df8e570f89"
+}

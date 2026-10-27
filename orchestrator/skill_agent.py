@@ -22,7 +22,9 @@ from skill_runtime.service_evidence import (
     decode_projection, projection_request, evidence_sample, evidence_observed_at, observed_entity_catalog, bind_root_entity,
 )
 from tools.base_tool import ToolResult
+from tools.llm_receipt import JSONCompletion
 from orchestrator.confidence_calibrator import calibrate_rca_confidence
+from orchestrator.skill_review import review_skill_diagnosis
 from diagnostic_strategy import InvestigationController, tool_evidence_catalog
 
 
@@ -70,6 +72,9 @@ class SkillAgentResult:
             "confidence": diagnosis.get("confidence"),
             "root_entity": diagnosis.get("root_entity"),
             "root_entity_validation": diagnosis.get("root_entity_validation") or {},
+            "judge": diagnosis.get('judge') or {},
+            "diagnosis_status": diagnosis.get('diagnosis_status', 'unreviewed'),
+            "automation_gate": diagnosis.get('automation_gate') or {},
             "hypotheses": workflow.get("hypotheses") or [],
             "hypothesis_generation": workflow.get("hypothesis_generation") or {},
             "verification_plan": workflow.get("verification_plan") or {},
@@ -1373,6 +1378,34 @@ class SkillAgent:
                 "summary": "最终根因已由当前只读证据证实，已校正与根因冲突的故障类型。",
             })
 
+        from agents.hypothesis_agent import Hypothesis, HypothesisAgent
+        typed = [Hypothesis(id=str(h.get("id") or f"H{i+1}"), description=str(h.get("description") or ""),
+            confidence=float(h.get("confidence") or 0), service=str(h.get("service") or ""),
+            fault_type=str(h.get("fault_type") or ""), source=str(h.get("source") or "llm")) for i,h in enumerate(hypotheses)]
+        assessor = HypothesisAgent(None)
+        assessor.set_evidence_catalog(hypothesis_catalog)
+        assessed = assessor._grounded_updates(typed, {"hypotheses": (llm_reasoning or {}).get("hypothesis_assessments", [])}, False, 6)
+        review_event_start = len(self.events)
+        judge = review_skill_diagnosis(root_cause=root, reasoning=reasoning_chain, confidence=confidence,
+            root_entity=bound_entity, commands=command_records,
+            cluster_id=workflow_payload.get('cluster_id') or workflow_payload.get('target_cluster_id') or '',
+            namespace=request.namespace or workflow_payload.get('namespace') or 'default',
+            service_scope=service_scope, hypotheses=[h.to_dict() for h in assessed],
+            call_model=lambda messages: self._call_llm_json('independent_review', messages, max_tokens=1800,
+                request_timeout_s=self.llm_hypothesis_timeout_s, max_retries=0, require_complete=True))
+        judge['skill_review']['provider_receipt'] = next((e.get('provider_receipt') for e in reversed(self.events[review_event_start:])
+            if e.get('event') in ('llm_independent_review_result','llm_independent_review_incomplete')), None)
+        review_record = {'event': 'hypothesis_independent_review', 'stage': 'agent_skill_final_review',
+            **(judge.get('hypothesis_review') or {}), 'needs_review': judge['needs_review'],
+            'review_blockers': judge['review_blockers'], 'skill_review': judge['skill_review']}
+        self._emit(review_record)
+        self._emit({'event': 'judge', 'data': judge})
+        if isinstance(skill_result, dict):
+            skill_result['diagnosis'].update(judge=judge,
+                diagnosis_status='requires_review' if judge['needs_review'] else 'reviewed',
+                automation_gate={'allowed': False, 'blockers': list(dict.fromkeys(
+                    ['skill_action_contract_required', *judge['review_blockers']]))})
+
         calibration = calibrate_rca_confidence(
             {
                 "root_cause": root,
@@ -1386,6 +1419,7 @@ class SkillAgent:
             },
             evidence=self._confidence_evidence(payload, evidence, skill_result),
             hypotheses=hypotheses,
+            judge_result=judge,
             history_stats=(self._last_context.get("history_stats") if isinstance(self._last_context, dict) else {}),
         )
         confidence = calibration["confidence"]
@@ -1413,16 +1447,7 @@ class SkillAgent:
         })
 
         workflow = evidence.setdefault("agent_workflow", {})
-        # Reuse the existing reasoning response; do not add speculative tool or
-        # model calls. Missing assessments remain explicit rather than inferred
-        # by matching root-cause prose against hypothesis descriptions.
-        from agents.hypothesis_agent import Hypothesis, HypothesisAgent
-        typed = [Hypothesis(id=str(h.get("id") or f"H{i+1}"),description=str(h.get("description") or ""),
-            confidence=float(h.get("confidence") or 0),service=str(h.get("service") or ""),
-            fault_type=str(h.get("fault_type") or ""),source=str(h.get("source") or "llm")) for i,h in enumerate(hypotheses)]
-        assessor=HypothesisAgent(None)
-        assessor.set_evidence_catalog(hypothesis_catalog)
-        assessed=assessor._grounded_updates(typed,{"hypotheses":(llm_reasoning or {}).get("hypothesis_assessments",[])},False,6)
+        # Proposer updates remain distinct from the independent final review.
         control=InvestigationController([],max_iterations=1,confidence_threshold=0.85)
         generation=getattr(self,"_generation_record",None) or control.record_generation(hypothesis_before,mode="agent_skill")
         strategy_record=control.decide(iteration=1,before=hypothesis_before,after=[h.to_dict() for h in assessed],
@@ -1430,6 +1455,7 @@ class SkillAgent:
             results={"skill_agent":{"error":not bool(success_commands)}},plan=verification_plan)
         strategy_record["mode"]="skill_owned_single_pass"
         evidence["diagnostic_strategy"]={"generation":generation,"rounds":[strategy_record],
+            "independent_reviews": [review_record],
             "stop_reason":strategy_record["decision"]["reason"],"cross_incident_policy_learned":False,
             "adaptive_skill_replanning_enabled":False}
         self._emit(strategy_record)
@@ -1583,6 +1609,9 @@ class SkillAgent:
         messages: List[Dict[str, str]],
         *,
         max_tokens: int,
+        request_timeout_s: Optional[float] = None,
+        max_retries: Optional[int] = None,
+        require_complete: bool = False,
     ) -> Optional[Dict[str, Any]]:
         if not self.llm_client:
             return None
@@ -1594,14 +1623,40 @@ class SkillAgent:
             "summary": f"Agent 正在调用 LLM 执行 {stage}。",
         })
         executor = ThreadPoolExecutor(max_workers=1)
+        options = {}
+        if request_timeout_s is not None: options['request_timeout_s'] = request_timeout_s
+        if max_retries is not None: options['max_retries'] = max_retries
+        if require_complete: options['with_receipt'] = True
         future = executor.submit(
             self._json_chat_bounded,
             messages,
             temperature=0.1,
             max_tokens=max_tokens,
+            **options,
         )
         try:
             result = future.result(timeout=self.llm_hypothesis_timeout_s)
+            receipt = None
+            if isinstance(result, JSONCompletion) and isinstance(result.provider, dict):
+                provider = result.provider
+                receipt = {
+                    'schema_version': 1 if type(provider.get('schema_version')) is int and provider['schema_version']==1 else None,
+                    'source': 'provider_response' if provider.get('source')=='provider_response' else 'unverified',
+                    'completion_status': provider.get('completion_status') if provider.get('completion_status') in
+                        ('complete','truncated','filtered','incomplete','refused','tool_call','invalid_choices') else 'unknown',
+                    'finish_reason': provider.get('finish_reason') if provider.get('finish_reason') in
+                        ('stop','length','content_filter','tool_calls','function_call') else 'unknown',
+                    'refusal_present': provider.get('refusal_present') if type(provider.get('refusal_present')) is bool else None,
+                    'tool_call_present': provider.get('tool_call_present') if type(provider.get('tool_call_present')) is bool else None,
+                }
+            if isinstance(result, JSONCompletion): result = result.data
+            if require_complete and (not isinstance(receipt, dict) or receipt.get('schema_version') != 1 or receipt.get('source') != 'provider_response'
+                    or receipt.get('completion_status') != 'complete' or receipt.get('finish_reason') != 'stop'
+                    or receipt.get('refusal_present') is not False or receipt.get('tool_call_present') is not False):
+                self._emit({'event': f'llm_{stage}_incomplete', 'source': self.name, 'success': False,
+                    'provider_receipt': receipt,
+                    'summary': '复核响应没有可验证的完整停止收据，保持待审核。'})
+                return None
             if isinstance(result, dict) and result and not result.get("parse_error"):
                 self._emit({
                     "event": f"llm_{stage}_result",
@@ -1609,6 +1664,7 @@ class SkillAgent:
                     "success": True,
                     "summary": f"Agent 已完成 LLM {stage}。",
                     "response_keys": sorted(result.keys()),
+                    **({'provider_receipt': receipt} if require_complete else {}),
                     "duration_s": round(time.monotonic() - started, 3),
                     "response_preview": json.dumps(result, ensure_ascii=False, default=str)[:2000],
                 })
@@ -1638,8 +1694,11 @@ class SkillAgent:
     def _json_chat_bounded(self, messages, **kwargs):
         # Optional controls also support injected clients with older signatures.
         parameters = inspect.signature(self.llm_client.json_chat).parameters
-        if "thinking" in parameters or any(p.kind == p.VAR_KEYWORD for p in parameters.values()):
+        variadic = any(p.kind == p.VAR_KEYWORD for p in parameters.values())
+        if "thinking" in parameters or variadic:
             kwargs["thinking"] = False
+        for option in ('request_timeout_s', 'max_retries', 'with_receipt'):
+            if option not in parameters and not variadic: kwargs.pop(option, None)
         return self.llm_client.json_chat(messages, **kwargs)
 
     def _normalize_reasoning_result(self, value: Any, depth: int = 0) -> Optional[Dict[str, Any]]:
