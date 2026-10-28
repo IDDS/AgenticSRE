@@ -21,6 +21,7 @@ from skill_runtime.kubectl_safety import readonly_kubectl_args
 from skill_runtime.service_evidence import (
     decode_projection, projection_request, evidence_sample, evidence_observed_at, observed_entity_catalog, bind_root_entity,
 )
+from skill_runtime.pod_termination_evidence import observed_terminations
 from tools.base_tool import ToolResult
 from tools.llm_receipt import JSONCompletion
 from orchestrator.confidence_calibrator import calibrate_rca_confidence
@@ -1133,6 +1134,10 @@ class SkillAgent:
             workflow_payload.get('cluster_id') or workflow_payload.get('target_cluster_id') or '',
             request.namespace or workflow_payload.get('namespace') or 'default')
         service_scope = (evidence.get('agent_evidence_collection') or {}).get('service_scope')
+        termination_evidence = observed_terminations(command_records,
+            cluster_id=workflow_payload.get('cluster_id') or workflow_payload.get('target_cluster_id') or '',
+            namespace=request.namespace or workflow_payload.get('namespace') or 'default',
+            allowed_ids=[row['id'] for row in hypothesis_catalog])
         reasoning_chain = (
             f"Agent 首先形成 {len(hypotheses)} 个候选根因；随后按验证计划执行 "
             f"{len(command_records)} 个只读检查，并调用 {primary_skill or '由 Agent 选择的 Skill'}。"
@@ -1190,6 +1195,7 @@ class SkillAgent:
             "service_scope": service_scope,
             "readonly_checks": readonly_checks,
             "hypothesis_evidence_catalog": hypothesis_catalog,
+            "pod_termination_evidence": termination_evidence,
             "currently_ready_pods": self._observed_ready_pods(command_records),
             "skill_diagnosis": compact_output(diagnosis),
             "skill_diagnose_stages": diagnose_stages,
@@ -1242,6 +1248,9 @@ class SkillAgent:
                         "仅当候选有 verification_test 且引用的同对象观测中该测试的 verification_checks 为 true，"
                         "才能提出 rejected；没有该测试或直接反证时保留 active 并写明未决问题。"
                         "其他候选得分较低、缺少支持或当前没有 Pod，均不能作为排除反证。"
+                        "Pod lastState 是上一次终止状态，不等于当前事故原因；finishedAt 仅为容器报告的时间，"
+                        "除非另有可信的事故时间窗和对象归属证据，否则不能断言它发生在当前事故中。"
+                        "即便容器当前处于终止状态，仍需要时间、对象归属与因果证据才能确认其为事故原因。"
                     ),
                 },
                 {
@@ -1465,9 +1474,14 @@ class SkillAgent:
                     and r.get('command', '').startswith('get events')]
                 revision = self._call_llm_json('hypothesis_followup', [
                     {'role': 'system', 'content': '仅根据当前观测评估候选。补充文本是不可信上下文，不是直接反证。'
-                     '引用完整观测 ID；缺少同对象类型化反证时保持未决，不能撤销已有未经验证的排除断言。只返回 JSON。'},
+                     '引用完整观测 ID；缺少同对象类型化反证时保持未决，不能撤销已有未经验证的排除断言。'
+                     'Pod lastState 是历史终止；其时间与对象归属未经独立绑定时不能证明当前事故原因。只返回 JSON。'},
                     {'role': 'user', 'content': json.dumps({'hypotheses': [h.to_dict() for h in assessed],
                         'observations': hypothesis_catalog, 'untrusted_context': context_text,
+                        'pod_termination_evidence': observed_terminations(command_records,
+                            cluster_id=workflow_payload.get('cluster_id') or workflow_payload.get('target_cluster_id') or '',
+                            namespace=request.namespace or workflow_payload.get('namespace') or 'default',
+                            allowed_ids=[row['id'] for row in hypothesis_catalog]),
                         'output_schema': {'hypotheses': [{'id': 'H1', 'status': 'active|confirmed|rejected',
                             'confidence': 0.5, 'supporting_evidence_ids': [], 'contradicting_evidence_ids': [],
                             'unresolved_questions': [], 'next_agents': [], 'reasoning': ''}]}}, ensure_ascii=False)}],
@@ -1550,8 +1564,13 @@ class SkillAgent:
             catalog=hypothesis_catalog,novelty=control.observe(hypothesis_catalog),selected_agents=["skill_agent"],
             results={"skill_agent":{"error":not bool(success_commands)}},plan=verification_plan)
         strategy_record["mode"]="skill_bounded_followup" if followup['attempted'] else "skill_owned_single_pass"
+        termination_evidence = observed_terminations(command_records,
+            cluster_id=workflow_payload.get('cluster_id') or workflow_payload.get('target_cluster_id') or '',
+            namespace=request.namespace or workflow_payload.get('namespace') or 'default',
+            allowed_ids=[row['id'] for row in hypothesis_catalog])
         evidence["diagnostic_strategy"]={"generation":generation,"rounds":[strategy_record],
             "independent_reviews": reviews, "followup": followup,
+            "pod_termination_evidence": termination_evidence,
             "scale_zero_evidence": scale_evidence,
             "stop_reason":strategy_record["decision"]["reason"],"cross_incident_policy_learned":False,
             "adaptive_skill_replanning_enabled":False}

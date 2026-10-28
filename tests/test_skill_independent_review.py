@@ -631,3 +631,22 @@ def test_skill_followup_executes_and_rechecks_without_erasing_rejection(monkeypa
     candidate = strategy['rounds'][0]['after'][0]
     assert candidate['proposed_status'] == 'rejected' and 'unverified_rejection' in candidate['validation_errors']
     assert result['diagnosis']['judge']['needs_review'] and not result['diagnosis']['automation_gate']['allowed']
+
+
+def test_pod_previous_termination_reaches_reasoning_review_and_strategy_without_becoming_cause():
+    rows = commands()
+    pod = {'kind':'Pod','projection':PROJECTION,'metadata':{'namespace':'shop','name':'engine-pod',
+        'uid':'pod-uid','resourceVersion':'pod-version'},'status':{'phase':'Running','containerStatuses':[
+        {'name':'app','state':{'running':{}},'lastState':{'terminated':{'reason':'OOMKilled',
+            'exitCode':137,'finishedAt':'2026-10-27T01:59:00Z'}}}]}}
+    rows.append({'command':projection_command('Pod','shop','engine-pod'),'namespace':'shop','cluster_id':'east',
+        'success':True,'executed':True,'timestamp':AT,'data':json.dumps(pod)})
+    result, stages, prompts = reason(records=rows)
+    initial = json.loads(prompts[0][-1]['content'])['pod_termination_evidence']
+    item = initial['items'][0]
+    assert item['state']=='previous_state' and item['pod_uid']=='pod-uid' and item['reason']=='OOMKilled'
+    assert not item['causality_proven'] and not initial['incident_window_bound']
+    assert 'independent_review' in stages and 'Pod lastState describes a previous termination' in prompts[-1][-1]['content']
+    final = result['diagnostic_strategy']['pod_termination_evidence']
+    assert final['items'][0]['observation_id']==item['observation_id']
+    assert not final['execution_authorized'] and not final['absence_is_refutation']
