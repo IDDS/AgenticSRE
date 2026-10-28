@@ -15,6 +15,9 @@ from skill_runtime.kubectl_safety import readonly_kubectl_args
 from skill_runtime.ontology_history import collection_time
 
 MAX_COMMANDS = 128
+# Input and output have separate caps: a complete evidence snapshot may be
+# larger than a concise reviewer verdict. The prompt retains its own hard cap.
+MAX_REVIEW_INPUT_BYTES = 16000
 MAX_REVIEW_BYTES = 12000
 MAX_PROMPT_BYTES = 32000
 
@@ -166,7 +169,7 @@ def review_skill_diagnosis(*, root_cause, reasoning, confidence, root_entity, co
     try:
         encoded = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, allow_nan=False)
         input_bytes = len(encoded.encode())
-        if input_bytes > MAX_REVIEW_BYTES:
+        if input_bytes > MAX_REVIEW_INPUT_BYTES:
             blockers.append('review_input_exceeds_budget')
         digest = hashlib.sha256(encoded.encode()).hexdigest()
     except (ValueError, TypeError):

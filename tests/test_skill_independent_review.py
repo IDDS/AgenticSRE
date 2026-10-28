@@ -189,6 +189,22 @@ def test_command_cap_and_input_byte_cap_do_not_silently_review_a_prefix():
     assert 'review_input_exceeds_budget' in result['judge']['review_blockers']
 
 
+def test_complete_medium_evidence_snapshot_can_reach_independent_reviewer():
+    rows = commands()
+    labels = {f'label-{i}': 'v' * 35 for i in range(36)}
+    service = json.loads(rows[0]['data'])
+    deployment = json.loads(rows[2]['data'])
+    service['spec']['selector'].update(labels)
+    deployment['spec']['template']['metadata']['labels'].update(labels)
+    rows[0]['data'], rows[2]['data'] = json.dumps(service), json.dumps(deployment)
+    result, stages, _ = reason(records=rows)
+    size = result['judge']['skill_review']['input_bytes']
+    assert 12000 < size <= 16000
+    assert stages == ['reasoning', 'independent_review']
+    assert result['judge']['skill_review']['review_state_count'] == 3
+    assert 'review_input_exceeds_budget' not in result['judge']['review_blockers']
+
+
 def test_review_output_byte_cap_stays_closed_and_json_safe():
     result, _, _ = reason(review_answer(feedback='x'*13000))
     assert result['judge']['needs_review']
