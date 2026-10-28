@@ -8992,7 +8992,8 @@ def _agent_skill_kubectl_runner(command: str, namespace: str, payload: Dict[str,
         result = subprocess.run(argv, shell=False, capture_output=True, text=True,
                                 timeout=15 if args[0] in {"logs", "top"} else 10)
         return {"ok": result.returncode == 0, "returncode": result.returncode,
-                "stdout": result.stdout.strip(), "stderr": result.stderr.strip(),
+                "stdout": result.stdout, "stderr": result.stderr.strip(),
+                "output_complete": result.returncode == 0 and not result.stderr.strip(),
                 "command": shlex.join(argv)}
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         return {"ok": False, "executed": False, "returncode": 126, "stdout": "", "stderr": str(exc)}

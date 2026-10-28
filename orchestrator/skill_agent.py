@@ -2446,6 +2446,7 @@ class SkillAgent:
                 record.update({
                     "success": ok,
                     "executed": runner_result.get('executed') is not False,
+                    "output_complete": ok and runner_result.get('output_complete') is True and len(stdout) <= 1200,
                     "outcome_unknown": bool(runner_result.get('outcome_unknown')),
                     "source": "cluster_kubectl",
                     "actual_command": runner_result.get("command") or f"kubectl {command}",

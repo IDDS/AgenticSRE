@@ -1,6 +1,7 @@
 """Independent Skill review contracts; synthetic fixtures are not live faults."""
 import copy
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -392,6 +393,107 @@ def test_only_a_complete_empty_get_inventory_receipt_is_ignored():
     rows[-1]['data'] += '\nWarning: actual error'
     result, _, _=reason(records=rows)
     assert result['judge']['needs_review']
+
+
+def _review_with_text_context(rows, *, response_mode='valid'):
+    from orchestrator.skill_review import review_skill_diagnosis
+    calls=[]
+    def model(messages):
+        calls.append(messages)
+        prompt=messages[-1]['content']
+        ids=re.findall(r'"id":\s*"(ctx-[0-9a-f]{24})"', prompt)
+        reviews=[{'id':identifier,'status':'no_observed_conflict'} for identifier in ids]
+        if response_mode=='missing': reviews=[]
+        if response_mode=='uncertain': reviews[0]['status']='uncertain'
+        if response_mode=='conflict': reviews[0]['status']='conflict'
+        if response_mode=='invalid_id': reviews[0]['id']=[]
+        if response_mode=='duplicate': reviews=reviews+reviews
+        return review_answer(context_reviews=reviews)
+    root={'cluster_id':'east','namespace':'shop','kind':'Deployment','name':'engine',
+          'uid':'engine-Deployment-uid','resource_version':'opaque-a'}
+    result=review_skill_diagnosis(root_cause='Deployment engine 当前副本为零',reasoning='当前对象已读取',
+        confidence=.9,root_entity=root,commands=rows,cluster_id='east',namespace='shop',
+        service_scope={'status':'collected','candidate_workloads':['engine']},hypotheses=[],call_model=model)
+    return result,calls
+
+
+@pytest.mark.parametrize('command,text', [
+    ('describe service gateway -n shop', 'Name: gateway\nSelector: backend=engine\nEvents: <none>\n'),
+    ('get events -n shop --field-selector involvedObject.name=gateway',
+     'LAST SEEN TYPE REASON OBJECT MESSAGE\n1m Warning Failed Service/gateway example\n'),
+    ('get events -n shop --field-selector=involvedObject.uid=engine-Deployment-uid --sort-by=.lastTimestamp',
+     'LAST SEEN TYPE REASON OBJECT MESSAGE\n1m Warning Failed Deployment/engine example\n'),
+    ('get events -n shop --field-selector involvedObject.uid=gateway-Service-uid',
+     'LAST SEEN TYPE REASON OBJECT MESSAGE\n1m Warning Failed Service/gateway example\n'),
+])
+def test_complete_scoped_text_is_reviewed_as_unbound_context(command,text):
+    rows=commands(); rows.append({**copy.deepcopy(rows[0]),'command':command,'data':text,'sample':text,
+                                  'output_complete':True})
+    result,calls=_review_with_text_context(rows)
+    assert len(calls)==1 and not result['needs_review']
+    assert json.dumps(text, ensure_ascii=False) in calls[0][-1]['content']
+    assert ('uid_selector_unverified_rows' if 'involvedObject.uid' in command else 'name_only_unverified') in calls[0][-1]['content']
+    assert len(result['skill_review']['text_context_ids']) == 1
+    assert all('ctx-' not in fact['id'] for fact in result['review_evidence'])
+    assert result['skill_review']['execution_authorized'] is False
+
+
+@pytest.mark.parametrize('change', [
+    {'output_complete':False}, {'output_complete':None}, {'timestamp':''}, {'sample':'truncated'},
+    {'data':'x'*1201,'sample':'x'*1201}, {'command':'describe service other -n shop'},
+    {'command':'describe service gateway -n other'}, {'command':'describe service gateway -n shop --show-events=false'},
+    {'command':'get events -n shop --field-selector involvedObject.name=other'},
+    {'command':'get events -n shop --field-selector=involvedObject.uid=unobserved'},
+    {'command':'logs deployment/engine -n shop'},
+])
+def test_unattested_unscoped_or_incomplete_text_remains_blocked(change):
+    text='Name: gateway\nEvents: <none>\n'
+    rows=commands(); rows.append({**copy.deepcopy(rows[0]),'command':'describe service gateway -n shop',
+        'data':text,'sample':text,'output_complete':True,**change})
+    result,calls=_review_with_text_context(rows)
+    assert not calls and result['needs_review']
+    assert 'unreviewed_tool_output' in result['review_blockers']
+
+
+@pytest.mark.parametrize('mode',['missing','uncertain','conflict','invalid_id','duplicate'])
+def test_text_context_requires_an_exact_unambiguous_model_assessment(mode):
+    text='Name: gateway\nEvents: <none>\n'
+    rows=commands(); rows.append({**copy.deepcopy(rows[0]),'command':'describe service gateway -n shop',
+                                  'data':text,'sample':text,'output_complete':True})
+    result,calls=_review_with_text_context(rows,response_mode=mode)
+    assert len(calls)==1 and result['needs_review']
+    assert 'text_context_review_incomplete_or_conflicting' in result['review_blockers']
+
+
+def test_context_completion_attestation_is_forwarded_without_defaulting_to_true():
+    from skill_runtime.tool_context import SkillToolContext
+    for attested,expected in [(True,True),(False,False),(None,False)]:
+        context=SkillToolContext(runner=lambda *a,**k:{'executed':True,'success':True,
+            'data':'text','output_complete':attested})
+        result=context.execute('kubectl',command='describe service gateway -n shop',namespace='shop')
+        assert result['output_complete'] is expected and context.calls[0]['output_complete'] is expected
+
+
+@pytest.mark.parametrize('attested,stdout,expected', [(True,'complete\n',True),
+    (False,'complete\n',False),(None,'complete\n',False),(True,'x'*1201,False)])
+def test_host_rejects_unattested_or_oversized_text_completion(attested,stdout,expected):
+    agent=SkillAgent(registry=None,skills_dir=ROOT/'skill_runtime/skills',
+        kubectl_runner=lambda *a:{'ok':True,'executed':True,'stdout':stdout,'output_complete':attested})
+    record=agent._run_kubectl('describe service gateway -n shop','shop',kubectl_available=True,
+                              payload={'cluster_id':'east'})
+    assert record['success'] and record['output_complete'] is expected
+    assert record['data']==stdout
+
+
+@pytest.mark.parametrize('returncode,stderr,expected',[(0,'',True),(0,'warning',False),(1,'failure',False)])
+def test_cluster_runner_attests_only_complete_success_without_stderr(monkeypatch,returncode,stderr,expected):
+    from types import SimpleNamespace
+    import web_app.app as web
+    monkeypatch.setattr(web,'_get_config',lambda:SimpleNamespace(kubernetes=SimpleNamespace(use_ssh=False)))
+    monkeypatch.setattr(web.subprocess,'run',lambda *a,**k:SimpleNamespace(
+        returncode=returncode,stdout='result\n',stderr=stderr))
+    record=web._agent_skill_kubectl_runner('describe service gateway -n shop','shop',{})
+    assert record['output_complete'] is expected and record['stdout']=='result\n'
 
 
 def test_malformed_resource_kind_is_a_serializable_review_refusal():

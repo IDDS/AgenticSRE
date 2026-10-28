@@ -1,0 +1,116 @@
+{
+  "fault_injected": true,
+  "watchdog_armed": true,
+  "baseline": {
+    "samples": 20,
+    "successes": 20,
+    "controls_healthy": true,
+    "p95_ms": 59.272
+  },
+  "fault": {
+    "samples": 5,
+    "successes": 0,
+    "controls_healthy": true,
+    "p95_ms": 3004.397
+  },
+  "diagnosis": {
+    "duration_s": 28.911,
+    "confidence": 0.611,
+    "matches_injected_target": true,
+    "review_blockers": [
+      "candidate_review_incomplete",
+      "asserted_hypothesis_not_independently_verified"
+    ],
+    "independent_review_called": true,
+    "review_recording_status": "recorded",
+    "provider_complete": true,
+    "text_context_ids": [
+      "ctx-ed605c6175fcf0ecff6d1a66",
+      "ctx-62e7e81e85abc398f7966db9"
+    ],
+    "context_reviews": [
+      {
+        "id": "ctx-ed605c6175fcf0ecff6d1a66",
+        "status": "no_observed_conflict"
+      },
+      {
+        "id": "ctx-62e7e81e85abc398f7966db9",
+        "status": "no_observed_conflict"
+      }
+    ],
+    "hypotheses": [
+      {
+        "id": "H1",
+        "status": "confirmed",
+        "proposed_status": "confirmed",
+        "validation_errors": [],
+        "unresolved_count": 0
+      },
+      {
+        "id": "H2",
+        "status": "active",
+        "proposed_status": "rejected",
+        "validation_errors": [
+          "falsification_test_not_observed",
+          "unverified_rejection"
+        ],
+        "unresolved_count": 1
+      },
+      {
+        "id": "H3",
+        "status": "active",
+        "proposed_status": "rejected",
+        "validation_errors": [
+          "falsification_test_not_observed",
+          "unverified_rejection"
+        ],
+        "unresolved_count": 1
+      }
+    ]
+  },
+  "automatic_recovery": {
+    "status": "blocked",
+    "reason": "ontology_action_not_ready",
+    "blockers": [
+      "independent_review_required",
+      "diagnosis_gate_not_allowed"
+    ],
+    "real_heal_runs": 0
+  },
+  "control_restore": {
+    "outcome": "restored",
+    "business_recovery_confirmed": true,
+    "windows": [
+      {
+        "samples": 10,
+        "successes": 10,
+        "controls_healthy": true,
+        "p95_ms": 61.869
+      },
+      {
+        "samples": 10,
+        "successes": 10,
+        "controls_healthy": true,
+        "p95_ms": 54.164
+      },
+      {
+        "samples": 10,
+        "successes": 10,
+        "controls_healthy": true,
+        "p95_ms": 49.935
+      }
+    ]
+  },
+  "source_sha256": {
+    "summary.json": "c8f5e6cbbba27882f124d04407c8008d370eb77fc4b3e3b76381322400028335",
+    "fault-skill-run.json": "2992ef9503affd3c1a2f242c1487665708bfb58d335e478facea1629ec8b6715",
+    "native-auto-recovery.json": "b5d11cbf4a6cf2064c88544abd3ab5fb90faf80b65d99e4ec0e487a0a8e8bc96",
+    "baseline.json": "fa5b672203862a01ad4e33dfd93e45e1800087b478c282901ab1bd27cfbe8dc6",
+    "recovery-windows.json": "819d40b0628ae5a4bd49d3ec14056e292b9281e319583ea7630f8fbf4cdfa662",
+    "fallback-restoration.json": "cf97d33fd4f7a49666069ca2cfa9bc31d68c503be7ef9055531ab42537dc6784",
+    "cleanup-complete.json": "a3f77698f5b50f2c32c7aa26845e5d968eab3f5ab783a74624b96800d2c99e54",
+    "contract.json": "7a56ab3bd6a498d20759f3df1d2261eed2e9a57dbfd9093d7de7ed8404d5c8cf"
+  },
+  "production_modified": false,
+  "autonomous_recovery_accepted": false
+}
