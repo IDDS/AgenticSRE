@@ -47,6 +47,60 @@ def test_fully_cited_resolved_leader_can_still_proceed_to_review():
     assert record['decision']['execution_authorized'] is False
 
 
+def test_low_score_unverified_rejection_is_scheduled_and_survives_gate():
+    pending=candidate('H2',confidence=.1,status='active',supporting_evidence_ids=[],
+        proposed_status='rejected',validation_errors=['unverified_rejection'],
+        unresolved_questions=['缺少同对象直接反证'],next_agents=['log_agent'])
+    record=decide([candidate(),pending])
+    assert record['readiness']['unverified_rejection_ids']==['H2']
+    assert record['decision']['reason']=='resolve_investigation_gaps'
+    assert record['decision']['next_agents'][0]=='log_agent'
+    final,judge=apply_investigation_readiness_gate({'confidence':.95},{'needs_review':False},[record])
+    assert final['investigation_gaps']['unverified_rejection_ids']==['H2']
+    assert judge['needs_review'] and final['confidence']==.65
+
+
+def test_unverified_rejection_stops_when_no_source_or_budget_remains():
+    pending=candidate('H2',confidence=.1,status='active',proposed_status='rejected',
+        validation_errors=['unverified_rejection'],next_agents=['log_agent'])
+    for kwargs,reason in [({'agents':['event_agent']},'unresolved_gaps_no_eligible_sources'),
+                          ({'budget':0},'model_budget_exhausted'),
+                          ({'iteration':3},'iteration_limit_reached')]:
+        record=decide([candidate(),pending],**kwargs)
+        assert record['decision']['reason']==reason
+        assert record['readiness']['unverified_rejection_ids']==['H2']
+
+
+@pytest.mark.parametrize('refs', [[], ['obs-1'], ['invented']])
+def test_failed_rejection_preserves_safe_followup_hints(refs):
+    from agents.hypothesis_agent import Hypothesis,HypothesisAgent
+    hypothesis=Hypothesis('H2','连接失败机制待核验',.1)
+    agent=HypothesisAgent(None)
+    agent.set_evidence_catalog([{'id':'obs-1'}])
+    result=agent._grounded_updates([hypothesis],{'hypotheses':[{
+        'id':'H2','confidence':.1,'status':'rejected','supporting_evidence_ids':[],
+        'contradicting_evidence_ids':refs,'unresolved_questions':['需要目标日志'],
+        'next_agents':['log_agent','unknown_agent']}]},False,5)[0]
+    assert result.status=='active' and result.proposed_status=='rejected'
+    assert 'unverified_rejection' in result.validation_errors
+    assert '需要目标日志' in result.unresolved_questions and result.next_agents==['log_agent']
+    record=decide([candidate(),result.to_dict()])
+    assert record['decision']['next_agents'][0]=='log_agent'
+
+
+def test_failed_rejection_does_not_discard_existing_questions_at_limit():
+    from agents.hypothesis_agent import Hypothesis,HypothesisAgent
+    questions=[f'原有问题 {i}' for i in range(6)]
+    hypothesis=Hypothesis('H2','连接失败机制待核验',.1,unresolved_questions=questions.copy())
+    agent=HypothesisAgent(None)
+    agent.set_evidence_catalog([])
+    result=agent._grounded_updates([hypothesis],{'hypotheses':[{
+        'id':'H2','confidence':.1,'status':'rejected','supporting_evidence_ids':[],
+        'contradicting_evidence_ids':[],'unresolved_questions':['新增问题'],
+        'next_agents':['log_agent']}]},False,5)[0]
+    assert result.unresolved_questions==questions and result.next_agents==['log_agent']
+
+
 @pytest.mark.parametrize('changes', [
     {'confidence': .8}, {'status': 'rejected'}, {'supporting_evidence_ids': []},
     {'supporting_evidence_ids': ['invented']}, {'contradicting_evidence_ids': ['obs-1']},
@@ -246,8 +300,8 @@ def test_real_engine_collects_discriminator_and_keeps_unresolved_gate(monkeypatc
                 {'id':'H1','status':'confirmed','confidence':.97,'supporting_evidence_ids':refs,
                  'contradicting_evidence_ids':[],'unresolved_questions':[] if cleared else ['需要日志区分两种机制'],
                  'next_agents':[] if cleared else ['log_agent']},
-                {'id':'H2','status':'rejected' if cleared else 'active','confidence':.0 if cleared else .94,
-                 'supporting_evidence_ids':[] if cleared else refs,'contradicting_evidence_ids':refs if cleared else [],
+                {'id':'H2','status':'active','confidence':.0 if cleared else .94,
+                 'supporting_evidence_ids':[] if cleared else refs,'contradicting_evidence_ids':[],
                  'unresolved_questions':[],'next_agents':[] if cleared else ['trace_agent']}]})
         return json.dumps({'root_cause':'controlled fixture: checkout 机制待核验','confidence':.98,
             'fault_type':'application','reasoning_chain':'controlled model, not cluster truth'})

@@ -559,12 +559,18 @@ New Evidence:
         rows = result.get("hypotheses") if isinstance(result.get("hypotheses"),list) else []
         updates = {str(row.get("id")):row for row in rows if isinstance(row,dict)}
         counts = Counter(str(row.get("id")) for row in rows if isinstance(row,dict))
-        def retain_unverified_rejection(hyp, previous=None):
+        def retain_unverified_rejection(hyp, previous=None, followup=None):
             if previous:
                 for field_name, value in previous.items():
                     setattr(hyp, field_name, value)
             hyp.proposed_status = 'rejected'
             hyp.status = 'active'
+            if followup is not None:
+                questions, sources = followup
+                hyp.unresolved_questions = list(dict.fromkeys([
+                    *hyp.unresolved_questions, *(q.strip()[:300] for q in questions if q.strip())]))[:6]
+                hyp.next_agents = list(dict.fromkeys([
+                    *hyp.next_agents, *(a for a in sources if a in AGENTS)]))[:3]
             if 'unverified_rejection' not in hyp.validation_errors:
                 hyp.validation_errors.append('unverified_rejection')
             question = '需要同对象、同事故时间窗的直接反证，才能排除该候选。'
@@ -603,7 +609,9 @@ New Evidence:
             if errors:
                 # Do not let an unsupported model update change the ranking.
                 if requested_status == 'rejected' or pending_rejection:
-                    retain_unverified_rejection(hyp, previous)
+                    valid_followup = (isinstance(questions,list) and all(isinstance(q,str) for q in questions)
+                        and isinstance(next_agents,list) and all(isinstance(a,str) for a in next_agents))
+                    retain_unverified_rejection(hyp, previous, (questions, next_agents) if valid_followup else None)
                 continue
             score=update.get("confidence")
             if type(score) not in (int,float) or not math.isfinite(score) or not 0<=score<=1:
@@ -620,11 +628,11 @@ New Evidence:
             if status == "rejected" and not oppose or status == "confirmed" and not support:
                 hyp.validation_errors.append("status_requires_matching_evidence_reference")
                 if status == 'rejected' or pending_rejection:
-                    retain_unverified_rejection(hyp, previous)
+                    retain_unverified_rejection(hyp, previous, (questions, next_agents))
                 continue
             if status=='rejected' and not falsification_evidence(hyp.to_dict(),self.evidence_catalog,oppose):
                 hyp.validation_errors.append('falsification_test_not_observed')
-                retain_unverified_rejection(hyp, previous)
+                retain_unverified_rejection(hyp, previous, (questions, next_agents))
                 continue
             if pending_rejection and status != 'rejected':
                 retain_unverified_rejection(hyp, previous)
