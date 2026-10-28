@@ -4507,11 +4507,17 @@ function renderStrategyAudit(data) {
     const limits={absence_or_indirect_rationale_is_not_refutation:'未提及或间接理由不能作为反证',falsification_test_not_observed:'未引用满足条件的完整声明检查',typed_test_contradicts_support:'完整声明检查与模型支持判断冲突'};
     const sourceStates={untried:'尚未尝试',failed:'采集失败或结果未知',observed:'已取得可引用观测',no_citable_observations:'采集完成，当前范围内无可引用观测'};
     const sourceReasons={hypothesis_requested_failed_source_retry:'候选仍需该来源补证，安排有限重试',hypothesis_requested_untried_source:'候选建议检查尚未尝试的来源',bounded_failed_source_retry:'此前采集失败，重试次数尚未用完',untried_source:'检查尚未尝试的信息来源'};
-    const readinessReasons={no_active_hypothesis:'当前没有未排除候选',leading_hypothesis_not_grounded:'主候选缺少有效且无冲突的当前引用',leading_hypothesis_not_confirmed_above_threshold:'主候选尚未达到转审状态与评分条件',leading_hypothesis_open_questions:'主候选仍有待回答的问题',close_supported_alternatives:'评分接近的其他候选也有当前引用，仍需区分',requested_source_retry_pending:'主候选请求的失败来源尚未补齐，重试仍受来源额度限制'};
+    const readinessReasons={no_active_hypothesis:'当前没有未排除候选',leading_hypothesis_not_grounded:'主候选缺少有效且无冲突的当前引用',leading_hypothesis_not_confirmed_above_threshold:'主候选尚未达到转审状态与评分条件',leading_hypothesis_open_questions:'主候选仍有待回答的问题',close_supported_alternatives:'评分接近的其他候选也有当前引用，仍需区分',unverified_candidate_rejections:'候选的排除结论缺少直接反证',requested_source_retry_pending:'主候选请求的失败来源尚未补齐，重试仍受来源额度限制'};
+    const followupReasons={no_unverified_rejection:'没有待核实的排除断言',target_identity_or_scope_unresolved:'目标身份或范围尚未确定，未执行补证',invalid_target_identity:'目标身份无效，未执行补证',followup_budget_exhausted:'补证时间预算已用尽',followup_read_timeout:'只读查询超时，结果未知',followup_read_failed:'只读查询失败或结果未知',target_changed_or_unverifiable:'目标身份或资源版本变化，需重新诊断',followup_collected_review_required:'只读补证已采集，仍需依据独立复核与最终门禁判断'};
     return `<strong>假设产生与调查调整</strong><p>初始置信度用于候选排序；引用存在不等于支持关系或因果已成立。最终仍须独立审核。</p>
         ${data.scale_zero_evidence ? `<p>缩零取证：${data.scale_zero_evidence.eligible_for_further_review === true ? '结构化观测满足进一步核验条件' : '证据不足，继续保留缺口'}；不代表根因已证明或允许执行。
             ${(Array.isArray(data.scale_zero_evidence.blockers) ? data.scale_zero_evidence.blockers : []).map(escapeHtml).join('；')}</p>` : ''}
-        ${data.adaptive_skill_replanning_enabled===false?'<p>当前 Agent+Skill 为专项 Skill 单轮取证与候选复核，尚未启用自适应 Skill 重规划。</p>':''}
+        ${data.adaptive_skill_replanning_enabled===false?(data.followup?.attempted?'<p>已尝试一次受限只读补证；自适应 Skill 重规划尚未启用。</p>':'<p>当前未执行受限补证，自适应 Skill 重规划尚未启用。</p>'):''}
+        ${data.followup?`<details class="skill-raw-fold"><summary>受限补证 · ${data.followup.attempted?'已尝试':'未执行'}</summary>
+            <p>涉及候选：${(data.followup.candidate_ids||[]).map(escapeHtml).join('、')||'无'}；${escapeHtml(followupReasons[data.followup.stop_reason]||data.followup.stop_reason||'状态未记录')}。</p>
+            ${(data.followup.commands||[]).map(c=>`<p><code>${escapeHtml(c.command||'')}</code> · ${c.executed===true?(c.success===true?'执行成功':'执行失败'):'未确认执行'}</p>`).join('')}
+            ${data.followup.reassessment_received===true?'<p>已收到补证后的候选重新评估；仍须以最终复核为准。</p>':data.followup.reassessment_received===false?'<p>未收到有效的补证后评估，保留原有缺口。</p>':''}
+            <p>补证和候选评估均不授权执行动作。</p></details>`:''}
         <details class="skill-raw-fold"><summary>初始候选 · ${(generation.items||[]).length} 项</summary>
         ${(generation.items||[]).map(h=>`<p>${escapeHtml(h.id||'')} · ${escapeHtml(source[h.source]||h.source||'来源未记录')} · ${escapeHtml(formatConfidence(h.confidence))}<br>${escapeHtml(h.description||'')}
             ${h.supports_if?`<br>支持条件：${escapeHtml(h.supports_if)}`:''}${h.refutes_if?`<br>反驳条件：${escapeHtml(Array.isArray(h.refutes_if)?h.refutes_if.join('；'):h.refutes_if)}`:''}</p>`).join('')}</details>
@@ -4522,6 +4528,7 @@ function renderStrategyAudit(data) {
                 <p>待满足条件：${(r.readiness.blockers||[]).map(code=>escapeHtml(readinessReasons[code]||code)).join('；')||'没有已记录的阻断项'}。</p>
                 ${(r.readiness.open_questions||[]).map(question=>`<p>待判别问题：${escapeHtml(question)}</p>`).join('')}
                 ${r.readiness.close_alternative_ids?.length?`<p>需继续区分的候选：${r.readiness.close_alternative_ids.map(id=>escapeHtml(id)).join('、')}。</p>`:''}
+                ${r.readiness.unverified_rejection_ids?.length?`<p>排除结论尚未核实的候选：${r.readiness.unverified_rejection_ids.map(id=>escapeHtml(id)).join('、')}。</p>`:''}
                 <p>候选评分差值用于保守安排补证，不是校准概率，也不说明候选必然互斥。调查停止不等于缺口已解决。</p></details>`:'<p>此旧轮次未保存补证与停止条件，不能倒推当时已经满足。</p>'}
             ${r.source_states?`<details class="skill-raw-fold"><summary>取证来源状态与重试</summary>
                 ${Object.entries(r.source_states).map(([agent,s])=>`<p>${escapeHtml(rcaAgentLabel(agent))} · ${escapeHtml(sourceStates[s.status]||s.status||'状态未知')} · 尝试 ${escapeHtml(String(s.attempts||0))} 次${s.last_iteration?`，最近在第 ${escapeHtml(String(s.last_iteration))} 轮` : ''}。
@@ -4539,7 +4546,8 @@ function renderStrategyAudit(data) {
             <p>下一步信息源：${(r.decision?.next_agents||[]).map(a=>escapeHtml(rcaAgentLabel(a))).join('、')||'本轮已停止，按最终审核状态继续处理'}。</p>
             ${(r.decision?.next_agents||[]).map(a=>`<p>${escapeHtml(rcaAgentLabel(a))}：${escapeHtml(sourceReasons[r.decision?.next_agent_reasons?.[a]]||'此轮未保存来源选择理由')}。</p>`).join('')}</details>`).join('')}
         <strong>竞争假设的独立角色复核</strong><p>此复核使用现有 Judge 调用，可与生成角色使用同一模型；不是人工审核，也不保证判断必然正确。</p>
-        ${(data.independent_reviews||[]).length?(data.independent_reviews||[]).map((review,index)=>`<details class="skill-raw-fold"><summary>复核 ${index+1} · ${review.stage==='closure_quality_review'?'补证后复核':'初次质量复核'} · ${review.blockers?.length?'仍有确认/排除判断未通过':'按最终诊断门禁判断'}</summary>
+        ${(data.independent_reviews||[]).length?(data.independent_reviews||[]).map((review,index)=>`<details class="skill-raw-fold"><summary>复核 ${index+1} · ${review.stage==='closure_quality_review'||(review.stage==='agent_skill_final_review'&&data.followup?.attempted)?'补证后复核':review.stage==='agent_skill_final_review'?'最终质量复核':'初次质量复核'} · ${review.blockers?.length?'仍有确认/排除判断未通过':'按最终诊断门禁判断'}</summary>
+            <p>独立模型：${review.skill_review?.independent_role_call===true?'已调用':review.skill_review?.independent_role_call===false?'未调用（输入或预算未满足）':'调用状态未记录'}；${review.skill_review?.provider_receipt?.schema_version===1&&review.skill_review?.provider_receipt?.source==='provider_response'&&review.skill_review?.provider_receipt?.completion_status==='complete'&&review.skill_review?.provider_receipt?.finish_reason==='stop'&&review.skill_review?.provider_receipt?.refusal_present===false&&review.skill_review?.provider_receipt?.tool_call_present===false?'已记录完整结束凭据':'没有完整结束凭据'}。</p>
             ${(review.items||[]).map(h=>`<div class="rca-remediation"><p>${escapeHtml(h.id)} · ${escapeHtml(h.description||'')}</p>
                 <p>提出角色状态：${escapeHtml(h.proposer_status||'')}；复核：${escapeHtml(assessments[h.status]||h.status||'未记录')}</p>
                 ${h.verification_test?`<p>限定可证伪检查：${escapeHtml(tests[h.verification_test]||h.verification_test)}；直接检查引用：${refs([...new Set([...(h.verified_test_evidence_ids||[]),...(h.host_test_evidence_ids||[])])])}。仅适用于该条件，不代表所有资源或存储均健康。</p>`:''}

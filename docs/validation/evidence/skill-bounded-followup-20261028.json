@@ -1,0 +1,329 @@
+{
+  "final_fault": {
+    "fault_injected": true,
+    "watchdog_armed": true,
+    "baseline": {
+      "samples": 20,
+      "successes": 20,
+      "controls_healthy": true,
+      "p95_ms": 57.842
+    },
+    "fault": {
+      "samples": 5,
+      "successes": 0,
+      "controls_healthy": true,
+      "p95_ms": 3004.602
+    },
+    "healthy_preflight": {
+      "status": "completed",
+      "collection_fallback_used": false,
+      "review_blockers": [
+        "unreviewed_tool_output",
+        "review_input_exceeds_budget",
+        "text_context_review_incomplete_or_conflicting",
+        "candidate_review_incomplete",
+        "no_observations",
+        "reviewer_unavailable"
+      ]
+    },
+    "diagnosis": {
+      "duration_s": 51.324,
+      "confidence": 0.618,
+      "matches_injected_target": true,
+      "review_blockers": [
+        "candidate_review_incomplete",
+        "asserted_hypothesis_not_independently_verified"
+      ],
+      "independent_review_called": true,
+      "independent_review_records": 2,
+      "review_receipts": [
+        {
+          "stage": "agent_skill_initial_review",
+          "model_called": true,
+          "provider_receipt": {
+            "schema_version": 1,
+            "source": "provider_response",
+            "completion_status": "complete",
+            "finish_reason": "stop",
+            "refusal_present": false,
+            "tool_call_present": false
+          },
+          "blockers": [
+            "candidate_review_incomplete",
+            "asserted_hypothesis_not_independently_verified"
+          ]
+        },
+        {
+          "stage": "agent_skill_final_review",
+          "model_called": true,
+          "provider_receipt": {
+            "schema_version": 1,
+            "source": "provider_response",
+            "completion_status": "complete",
+            "finish_reason": "stop",
+            "refusal_present": false,
+            "tool_call_present": false
+          },
+          "blockers": [
+            "candidate_review_incomplete",
+            "asserted_hypothesis_not_independently_verified"
+          ]
+        }
+      ],
+      "followup": {
+        "attempted": true,
+        "stop_reason": "followup_collected_review_required",
+        "candidate_ids": [
+          "H2",
+          "H3"
+        ],
+        "reassessment_received": true,
+        "execution_authorized": false
+      },
+      "followup_read_count": 3,
+      "readiness": {
+        "ready_for_independent_review": false,
+        "blockers": [
+          "unverified_candidate_rejections"
+        ],
+        "unverified_rejection_ids": [
+          "H2",
+          "H3"
+        ]
+      },
+      "hypotheses": [
+        {
+          "id": "H1",
+          "status": "confirmed",
+          "proposed_status": "confirmed",
+          "validation_errors": [],
+          "unresolved_count": 0
+        },
+        {
+          "id": "H2",
+          "status": "active",
+          "proposed_status": "rejected",
+          "validation_errors": [
+            "unverified_rejection"
+          ],
+          "unresolved_count": 1
+        },
+        {
+          "id": "H3",
+          "status": "active",
+          "proposed_status": "rejected",
+          "validation_errors": [
+            "unverified_rejection"
+          ],
+          "unresolved_count": 1
+        }
+      ]
+    },
+    "automatic_recovery": {
+      "status": "blocked",
+      "reason": "ontology_action_not_ready",
+      "blockers": [
+        "independent_review_required",
+        "diagnosis_gate_not_allowed"
+      ],
+      "real_heal_runs": 0
+    },
+    "control_restore": {
+      "outcome": "restored",
+      "business_recovery_confirmed": true,
+      "windows": [
+        {
+          "samples": 10,
+          "successes": 10,
+          "controls_healthy": true,
+          "p95_ms": 62.85
+        },
+        {
+          "samples": 10,
+          "successes": 10,
+          "controls_healthy": true,
+          "p95_ms": 53.452
+        },
+        {
+          "samples": 10,
+          "successes": 10,
+          "controls_healthy": true,
+          "p95_ms": 61.543
+        }
+      ]
+    },
+    "source_sha256": {
+      "summary.json": "541296f686bcaed3ba895ceec64d12683277f989cd969f7c798fa23c169066c9",
+      "fault-skill-run.json": "02f4f6d2f08348a49e28eb6d9837ea02a63c1b74e55a06acbf4d99042f8deec3",
+      "native-auto-recovery.json": "1fa3ad8267097ddb3a00a51f2e6301a80a01563d130b67bfdb300aa13a40eb1c",
+      "baseline.json": "c808a89f26e290e8e7683104ab006abe435f8041f637070d275469f68f534874",
+      "recovery-windows.json": "e1b4926e482fb83ef1cf7d3d74969ca43e451d50eef03f8c0ab59fd82d78f33d",
+      "fallback-restoration.json": "2db12e433d7da8396e508e47ef909cb1628b5ea9b9937bd273aa457a6a4b1371",
+      "cleanup-complete.json": "5f5b92a98e4f93f7b2b02014777ae126255e4d854b25844b5c98cf6f3a82e952",
+      "contract.json": "4afbb5741d037ae6a4886131c5fedf13da305d9b606f4426fecd9165e7c20ac3",
+      "healthy-skill-run.json": "1b6d3d5de6c36fcf9dd471c5f4e4142e54dbdbfab883e1281bab97919e3c54ee"
+    },
+    "production_modified": false,
+    "autonomous_recovery_accepted": false
+  },
+  "earlier_fault_before_prompt_adjustment": {
+    "fault_injected": true,
+    "watchdog_armed": true,
+    "baseline": {
+      "samples": 20,
+      "successes": 20,
+      "controls_healthy": true,
+      "p95_ms": 192.772
+    },
+    "fault": {
+      "samples": 5,
+      "successes": 0,
+      "controls_healthy": true,
+      "p95_ms": 3003.053
+    },
+    "healthy_preflight": {
+      "status": "completed",
+      "collection_fallback_used": true,
+      "review_blockers": [
+        "root_identity_unresolved",
+        "review_input_exceeds_budget",
+        "candidate_review_incomplete",
+        "no_observations",
+        "reviewer_unavailable"
+      ]
+    },
+    "diagnosis": {
+      "duration_s": 39.084,
+      "confidence": 0.622,
+      "matches_injected_target": true,
+      "review_blockers": [
+        "review_prompt_exceeds_budget",
+        "text_context_review_incomplete_or_conflicting",
+        "candidate_review_incomplete",
+        "reviewer_failed_or_invalid",
+        "asserted_hypothesis_not_independently_verified"
+      ],
+      "independent_review_called": false,
+      "independent_review_records": 2,
+      "followup": {
+        "attempted": true,
+        "stop_reason": "followup_collected_review_required",
+        "candidate_ids": [
+          "H2",
+          "H3"
+        ],
+        "reassessment_received": true,
+        "execution_authorized": false
+      },
+      "followup_read_count": 3,
+      "readiness": {
+        "ready_for_independent_review": false,
+        "blockers": [
+          "unverified_candidate_rejections"
+        ],
+        "unverified_rejection_ids": [
+          "H2",
+          "H3"
+        ]
+      },
+      "hypotheses": [
+        {
+          "id": "H1",
+          "status": "confirmed",
+          "proposed_status": "confirmed",
+          "validation_errors": [],
+          "unresolved_count": 0
+        },
+        {
+          "id": "H2",
+          "status": "active",
+          "proposed_status": "rejected",
+          "validation_errors": [
+            "falsification_test_not_observed",
+            "unverified_rejection"
+          ],
+          "unresolved_count": 1
+        },
+        {
+          "id": "H3",
+          "status": "active",
+          "proposed_status": "rejected",
+          "validation_errors": [
+            "falsification_test_not_observed",
+            "unverified_rejection"
+          ],
+          "unresolved_count": 1
+        }
+      ]
+    },
+    "automatic_recovery": {
+      "status": "blocked",
+      "reason": "ontology_action_not_ready",
+      "blockers": [
+        "independent_review_required",
+        "diagnosis_gate_not_allowed"
+      ],
+      "real_heal_runs": 0
+    },
+    "control_restore": {
+      "outcome": "restored",
+      "business_recovery_confirmed": true,
+      "windows": [
+        {
+          "samples": 10,
+          "successes": 10,
+          "controls_healthy": true,
+          "p95_ms": 65.115
+        },
+        {
+          "samples": 10,
+          "successes": 10,
+          "controls_healthy": true,
+          "p95_ms": 52.799
+        },
+        {
+          "samples": 10,
+          "successes": 10,
+          "controls_healthy": true,
+          "p95_ms": 55.901
+        }
+      ]
+    },
+    "source_sha256": {
+      "summary.json": "ef7e3a97120ac823cf0c7c4ad7b20f0d7af4080b88d421ab9063f14364b28933",
+      "fault-skill-run.json": "acebad273c6fb43c2ff9f10038f87bdb449f0b74c8cf48ba05978499dce497d2",
+      "native-auto-recovery.json": "38434bdbb66ed51898344b8d4b6ca0d7a8b71254a7629a11b806ee436fce5dc8",
+      "baseline.json": "e816de275c1de81b5f9eb34debfb0f2bcf75b69cf83bb79f3f848080173c9184",
+      "recovery-windows.json": "c166e9886c4411e26816bcf58104131a30925afb0a9dff940b1238ad6bd49021",
+      "fallback-restoration.json": "09471d7894ef411c144068ab70ea77c0e70e132c97c7a7f25881e59f9ead8217",
+      "cleanup-complete.json": "aa3c7478fcd34583e394033fe369429f5959118cb24a9fc7c6ac25fd9c690475",
+      "contract.json": "096ef2ba2cc76305f008e5583246f38b281d6d95fbafacacd48a420dc8ea6b33",
+      "healthy-skill-run.json": "d6a460d359352c7fd3b692179fe5b55f853a5a2d014d52f7601bda85c9f80b40"
+    },
+    "production_modified": false,
+    "autonomous_recovery_accepted": false
+  },
+  "final_first_injection_not_qualified": {
+    "fault_dispatched": true,
+    "fault_successes": 1,
+    "fault_samples": 5,
+    "diagnosis_started": false,
+    "reason": "actual_business_failure_required",
+    "controller_restored": true,
+    "business_recovery_confirmed": true,
+    "summary_sha256": "3268c15eb0fad519cb2a8cb335601d3395fbacd70aa3b2a68b88a00acfd22829"
+  },
+  "real_snapshot_budget_replay": {
+    "input_bytes": 15518,
+    "old_limit_bytes": 32000,
+    "new_limit_bytes": 48000,
+    "complete_prompt_bytes": 34099,
+    "actual_model_called": false
+  },
+  "verification": {
+    "remote_targeted_passed": 704,
+    "remote_full_passed": 2512,
+    "render_test_passed": true,
+    "javascript_syntax_passed": true
+  }
+}

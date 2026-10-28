@@ -206,6 +206,29 @@ def test_complete_medium_evidence_snapshot_can_reach_independent_reviewer():
     assert 'review_input_exceeds_budget' not in result['judge']['review_blockers']
 
 
+def test_complete_context_remains_bounded_and_is_reviewed_without_truncation(monkeypatch):
+    import orchestrator.skill_review as module
+    rows = commands()
+    labels = {f'label-{i}': 'v' * 35 for i in range(36)}
+    service, deployment = json.loads(rows[0]['data']), json.loads(rows[2]['data'])
+    service['spec']['selector'].update(labels)
+    deployment['spec']['template']['metadata']['labels'].update(labels)
+    rows[0]['data'], rows[2]['data'] = json.dumps(service), json.dumps(deployment)
+    text = 'Name: gateway\nEvents: ' + ('context ' * 115)
+    rows.append({**copy.deepcopy(rows[0]), 'command':'describe service gateway -n shop',
+                 'data':text, 'sample':text, 'output_complete':True})
+    monkeypatch.setattr(module, 'MAX_PROMPT_BYTES', 1000)
+    old, old_stages, _ = reason(records=rows)
+    assert old_stages == ['reasoning'] and 'review_prompt_exceeds_budget' in old['judge']['review_blockers']
+    assert old['judge']['skill_review']['input_bytes'] <= 16000
+    monkeypatch.setattr(module, 'MAX_PROMPT_BYTES', 48000)
+    new, new_stages, prompts = reason(records=rows)
+    assert new_stages == ['reasoning', 'independent_review']
+    assert json.dumps(text, ensure_ascii=False) in prompts[-1][-1]['content']
+    assert 'review_prompt_exceeds_budget' not in new['judge']['review_blockers']
+    assert new['judge']['needs_review']  # Missing context review is never a pass.
+
+
 def test_review_output_byte_cap_stays_closed_and_json_safe():
     result, _, _ = reason(review_answer(feedback='x'*13000))
     assert result['judge']['needs_review']
@@ -565,3 +588,46 @@ def test_saved_skill_review_binds_guarded_scale_contract_without_opening_public_
     context=web._guarded_skill_scale_context(run, model)
     assert context['recorded_conditions_met'] is True
     assert context['guarded_skill_scale_contract']['service'] == 'gateway'
+
+
+def test_skill_followup_executes_and_rechecks_without_erasing_rejection(monkeypatch):
+    agent = SkillAgent(registry=None, skills_dir=ROOT/'skill_runtime/skills')
+    entity = {'cluster_id':'east','namespace':'shop','kind':'Deployment','name':'engine',
+              'uid':'engine-Deployment-uid','resource_version':'opaque-a'}
+    calls, stages = [], []
+    def model(stage, messages, **kwargs):
+        stages.append(stage)
+        if stage == 'reasoning':
+            return {'root_cause':'Deployment/engine 的期望副本为零', 'root_entity':entity,
+                'confidence':.9, 'reasoning_chain':'当前对象状态', 'hypothesis_assessments':[
+                    {'id':'H2','status':'rejected','confidence':.4,'supporting_evidence_ids':[],
+                     'contradicting_evidence_ids':[],'unresolved_questions':['缺少直接反证'],'next_agents':[]}]}
+        if stage == 'hypothesis_followup':
+            return {'hypotheses':[{'id':'H2','status':'active','confidence':.4,
+                'supporting_evidence_ids':[], 'contradicting_evidence_ids':[],
+                'unresolved_questions':[], 'next_agents':[]}]}
+        assert stage == 'independent_review'
+        return review_answer(hypothesis_reviews=[{'id':'H2','status':'uncertain',
+            'supporting_evidence_ids':[], 'contradicting_evidence_ids':[], 'reason':'仍缺少直接反证'}])
+    agent._call_llm_json = model
+    def read(command, namespace, **kwargs):
+        calls.append(command)
+        data = ('No resources found in shop namespace.' if command.startswith('get events')
+                else commands()[-1]['data'])
+        return {'command':command,'success':True,'executed':True,'data':data,'sample':data}
+    monkeypatch.setattr(agent, '_run_kubectl', read)
+    evidence = {'agent_evidence_collection': {'commands':commands(), 'service_scope':{
+        'status':'collected','candidate_workloads':['engine'],'gaps':[]}}}
+    result = {'diagnosis':{'root_cause':'待诊断','confidence':.6}, 'skill_runtime':{'runs':[]}}
+    agent.reason_about_result(SkillAgentRequest('HTTP 502','shop',{'payload':{'cluster_id':'east'}}),
+        hypotheses=[{'id':'H2','description':'需排除的候选机制','confidence':.4}],
+        verification_plan={},evidence=evidence,skill_result=result)
+    strategy = evidence['diagnostic_strategy']
+    assert len(calls) == 3 and calls[1].startswith('get events')
+    assert stages == ['reasoning','independent_review','hypothesis_followup','independent_review']
+    assert strategy['followup']['stop_reason'] == 'followup_collected_review_required'
+    assert len(strategy['independent_reviews']) == 2 and not strategy['adaptive_skill_replanning_enabled']
+    assert len(strategy['rounds'][0]['catalog']) >= 5
+    candidate = strategy['rounds'][0]['after'][0]
+    assert candidate['proposed_status'] == 'rejected' and 'unverified_rejection' in candidate['validation_errors']
+    assert result['diagnosis']['judge']['needs_review'] and not result['diagnosis']['automation_gate']['allowed']
