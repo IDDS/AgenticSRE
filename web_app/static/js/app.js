@@ -4342,6 +4342,7 @@ function renderRCAFinalResult(result) {
     if (rca.unverified_analysis) html += `<details class="skill-raw-fold"><summary>模型分析草稿（未经确认，仅供复核）</summary><pre>${escapeHtml(JSON.stringify(rca.unverified_analysis, null, 2))}</pre></details>`;
     html += '<div id="rca-ontology-panel" class="rca-remediation" aria-live="polite">正在读取本次调查的对象与证据…</div>';
     html += '<div id="rca-strategy-panel" class="rca-remediation" aria-live="polite">正在读取假设与调查调整记录…</div>';
+    html += '<div id="rca-auto-recovery-panel" class="rca-remediation" aria-live="polite">正在读取自动恢复记录…</div>';
     html += `<div class="rca-conf-row"><span style="font-size:12px;color:var(--text-muted)">置信度</span><div class="rca-conf-bar"><div class="rca-conf-fill ${confClass}" style="width:${confPct}%"></div></div><span class="rca-conf-label">${confPct}%</span></div>`;
     html += renderConfidenceExplanation(rca.confidence_explanation);
 
@@ -4376,6 +4377,8 @@ function renderRCAFinalResult(result) {
     state._lastRCAResult = rca;
     state._lastRCARunId = state.rcaRunId;
     loadRCAOntology(state.rcaRunId);
+    loadRCAStrategy(state.rcaRunId);
+    loadRCAAutoRecovery(state.rcaRunId);
     if (_activeRCAAlertKey && _alertAgentRunCache.get(_activeRCAAlertKey)?.run_id === state.rcaRunId) {
         _alertDiagnosisCache.set(_activeRCAAlertKey, rca);
         showToast('诊断结果已关联到该告警，自愈将优先使用诊断结论');
@@ -4404,6 +4407,52 @@ const ONTOLOGY_GAP_LABELS = {
     review_citation_unresolved: '部分审核引用尚未匹配原始观测',
 };
 
+const AUTO_RECOVERY_REASON_LABELS = {
+    auto_gate_rejected: '现有自动执行门禁未通过', insufficient_history: '同动作、环境和验证标准的历史样本不足',
+    history_success_lower_bound_low: '历史恢复成功率置信下界不足', verification_contract_missing: '缺少可核验的恢复标准',
+    confidence_below_auto_threshold: '诊断置信度未达到自动执行要求', recipe_not_marked_safe: '恢复规则尚未标记为可自动执行',
+    ontology_action_not_ready: '诊断对象或独立审核条件未满足', service_binding_incomplete_or_ambiguous: '服务与工作负载关联不完整或存在歧义',
+    explicit_scale_policy_required: '未配置唯一的目标和期望副本数', unique_scoped_recipe_action_required: '没有唯一且范围匹配的规则动作',
+    live_service_binding_changed: '实时服务身份、版本或选择器发生变化', live_deployment_not_scaled_to_zero: '实时 Deployment 并非零副本',
+    service_binding_or_diagnosis_changed_after_preview: '预演后配置、服务或诊断时间条件发生变化',
+    dispatch_or_verification_error: '动作或恢复验证结果不明，需要核对', interrupted_attempt_requires_reconciliation: '进程中断，需核对现场后再决定下一步',
+};
+
+function renderRCAAutoRecovery(record) {
+    const status = record?.status;
+    const verified = status === 'succeeded' && record?.success === true
+        && record?.verification?.status === 'verified' && record?.verification?.recovered === true;
+    const labels = {blocked: '已阻断', preparing: '准备中或已中断，需核对', dispatching: '提交中或结果未确认，需核对',
+        outcome_unknown: '结果未知，需核对', failed: '恢复未通过', verification_pending: '动作已执行，恢复待验证',
+        succeeded: verified ? '恢复验证通过' : '恢复状态待核对'};
+    const blockers = Array.isArray(record?.blockers) ? record.blockers.filter(x => typeof x === 'string') : [];
+    const reason = typeof record?.reason === 'string' ? record.reason : '';
+    const recoveryId = typeof record?.heal_run_id === 'string' ? record.heal_run_id : '';
+    return `<strong>自动恢复记录</strong><p>${escapeHtml(labels[status] || '状态未知，需核对')}</p>`
+        + (reason ? `<p>原因：${escapeHtml(AUTO_RECOVERY_REASON_LABELS[reason] || reason)}</p>` : '')
+        + (blockers.length ? `<p>阻断项：${blockers.map(x => escapeHtml(AUTO_RECOVERY_REASON_LABELS[x] || x)).join('；')}</p>` : '')
+        + (recoveryId ? `<p>自愈记录：${escapeHtml(recoveryId)}</p>` : '')
+        + '<p class="text-muted">本视图只读取记录；业务恢复以该次验证结果为准。</p>';
+}
+
+async function loadRCAAutoRecovery(runId) {
+    const token = (state._autoRecoveryRequest || 0) + 1;
+    state._autoRecoveryRequest = token;
+    if (!runId) return;
+    let record = null, missing = false;
+    try {
+        record = await api(`/api/rca/${encodeURIComponent(runId)}/auto-heal`,
+            {throwOnError: true, suppressErrorLog: true, cache: 'no-store'});
+    } catch (err) { missing = err?.status === 404; }
+    if (state.rcaRunId !== runId || state._autoRecoveryRequest !== token) return;
+    const panel = document.getElementById('rca-auto-recovery-panel');
+    if (!panel) return;
+    panel.innerHTML = (missing ? '<strong>自动恢复记录</strong><p>本次调查尚无自动恢复记录。</p>'
+        : record ? renderRCAAutoRecovery(record)
+        : '<strong>自动恢复记录</strong><p>记录暂时无法读取，请稍后重试。</p>')
+        + '<button class="btn btn-sm" onclick="loadRCAAutoRecovery(state.rcaRunId)">刷新记录</button>';
+}
+
 async function loadRCAOntology(runId) {
     const token = (state._ontologyRequest || 0) + 1;
     state._ontologyRequest = token;
@@ -4417,7 +4466,6 @@ async function loadRCAOntology(runId) {
     if (!panel) return;
     if (!model?.revision) { panel.textContent = '本次调查的对象证据暂时无法读取，请重新打开记录。'; return; }
     state._lastOntology = model;
-    loadRCAStrategy(runId);
     const counts = model.counts || {};
     const action = model.action_context || {};
     panel.innerHTML = `<strong>运维对象与证据</strong>
@@ -4461,6 +4509,8 @@ function renderStrategyAudit(data) {
     const sourceReasons={hypothesis_requested_failed_source_retry:'候选仍需该来源补证，安排有限重试',hypothesis_requested_untried_source:'候选建议检查尚未尝试的来源',bounded_failed_source_retry:'此前采集失败，重试次数尚未用完',untried_source:'检查尚未尝试的信息来源'};
     const readinessReasons={no_active_hypothesis:'当前没有未排除候选',leading_hypothesis_not_grounded:'主候选缺少有效且无冲突的当前引用',leading_hypothesis_not_confirmed_above_threshold:'主候选尚未达到转审状态与评分条件',leading_hypothesis_open_questions:'主候选仍有待回答的问题',close_supported_alternatives:'评分接近的其他候选也有当前引用，仍需区分',requested_source_retry_pending:'主候选请求的失败来源尚未补齐，重试仍受来源额度限制'};
     return `<strong>假设产生与调查调整</strong><p>初始置信度用于候选排序；引用存在不等于支持关系或因果已成立。最终仍须独立审核。</p>
+        ${data.scale_zero_evidence ? `<p>缩零取证：${data.scale_zero_evidence.eligible_for_further_review === true ? '结构化观测满足进一步核验条件' : '证据不足，继续保留缺口'}；不代表根因已证明或允许执行。
+            ${(Array.isArray(data.scale_zero_evidence.blockers) ? data.scale_zero_evidence.blockers : []).map(escapeHtml).join('；')}</p>` : ''}
         ${data.adaptive_skill_replanning_enabled===false?'<p>当前 Agent+Skill 为专项 Skill 单轮取证与候选复核，尚未启用自适应 Skill 重规划。</p>':''}
         <details class="skill-raw-fold"><summary>初始候选 · ${(generation.items||[]).length} 项</summary>
         ${(generation.items||[]).map(h=>`<p>${escapeHtml(h.id||'')} · ${escapeHtml(source[h.source]||h.source||'来源未记录')} · ${escapeHtml(formatConfidence(h.confidence))}<br>${escapeHtml(h.description||'')}

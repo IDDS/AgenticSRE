@@ -25,6 +25,7 @@ from tools.base_tool import ToolResult
 from tools.llm_receipt import JSONCompletion
 from orchestrator.confidence_calibrator import calibrate_rca_confidence
 from orchestrator.skill_review import review_skill_diagnosis
+from orchestrator.skill_scale_evidence import assess_scale_zero_evidence
 from diagnostic_strategy import InvestigationController, tool_evidence_catalog
 
 
@@ -1395,6 +1396,8 @@ class SkillAgent:
                 request_timeout_s=self.llm_hypothesis_timeout_s, max_retries=0, require_complete=True))
         judge['skill_review']['provider_receipt'] = next((e.get('provider_receipt') for e in reversed(self.events[review_event_start:])
             if e.get('event') in ('llm_independent_review_result','llm_independent_review_incomplete')), None)
+        scale_evidence = assess_scale_zero_evidence(root_entity=bound_entity,
+            service=workflow_payload.get('service'), scope=service_scope, judge=judge)
         review_record = {'event': 'hypothesis_independent_review', 'stage': 'agent_skill_final_review',
             **(judge.get('hypothesis_review') or {}), 'needs_review': judge['needs_review'],
             'review_blockers': judge['review_blockers'], 'skill_review': judge['skill_review']}
@@ -1456,6 +1459,7 @@ class SkillAgent:
         strategy_record["mode"]="skill_owned_single_pass"
         evidence["diagnostic_strategy"]={"generation":generation,"rounds":[strategy_record],
             "independent_reviews": [review_record],
+            "scale_zero_evidence": scale_evidence,
             "stop_reason":strategy_record["decision"]["reason"],"cross_incident_policy_learned":False,
             "adaptive_skill_replanning_enabled":False}
         self._emit(strategy_record)
