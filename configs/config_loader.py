@@ -66,6 +66,8 @@ class MCPConfig:
 @dataclass
 class RemediationConfig:
     enabled: bool = False
+    auto_loop_enabled: bool = False
+    auto_scale_targets: List[Dict[str, Any]] = field(default_factory=list)
     dry_run: bool = True
     max_steps: int = 5
     confidence_threshold: float = 0.85

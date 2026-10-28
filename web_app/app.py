@@ -11434,6 +11434,10 @@ async def rca_run(request: Request):
         raise HTTPException(400, "Missing 'query' field")
 
     cfg = _get_config()
+    guarded_auto_recovery = getattr(cfg.remediation, "auto_loop_enabled", False) is True
+    if skill_workflow and guarded_auto_recovery:
+        skill_workflow = copy.deepcopy(skill_workflow)
+        skill_workflow.update(dry_run=True, stages=["detect", "diagnose"])
     if not _llm_configured(cfg.llm):
         raise HTTPException(
             503,
@@ -11454,6 +11458,7 @@ async def rca_run(request: Request):
             "namespace": namespace,
             "cluster_id": cluster_id,
             "cluster_kind": _cluster_kind(cluster) if cluster else "",
+            "guarded_auto_recovery": guarded_auto_recovery,
             "dedup_key": dedup_key,
             "status": "running",
             "logs": [],
@@ -11497,6 +11502,9 @@ async def rca_run(request: Request):
                         }
                     )
             agent_cfg = _cluster_scoped_config(cluster_id)
+            if guarded_auto_recovery:
+                agent_cfg = copy.deepcopy(agent_cfg)
+                agent_cfg.runtime.enable_self_healing = False
             registry = build_tool_registry(agent_cfg, isolated=True)
             configured_llm_timeout = float(getattr(cfg.llm, "timeout", 90) or 90)
             requested_llm_timeout = (skill_workflow or {}).get("llm_timeout_s")
@@ -11566,12 +11574,22 @@ async def rca_run(request: Request):
                 status="failed",
             )
         finally:
-            _save_rca_history()
+            saved = _save_rca_history(required_run_id=run_id)
+            if saved and guarded_auto_recovery:
+                _schedule_guarded_auto_recovery(run_id)
 
     def _run_sync():
         """Run pipeline in a thread to avoid blocking the event loop."""
         try:
-            pipeline = Pipeline(_cluster_scoped_config(cluster_id)) if cluster_id else _get_pipeline()
+            if guarded_auto_recovery:
+                pipeline_cfg = copy.deepcopy(_cluster_scoped_config(cluster_id) if cluster_id else cfg)
+                # This mode must use the guarded object action path after the
+                # diagnosis is durably stored, never the legacy direct writer.
+                pipeline_cfg.pipeline.enable_recovery = False
+                pipeline_cfg.runtime.enable_self_healing = False
+                pipeline = Pipeline(pipeline_cfg)
+            else:
+                pipeline = Pipeline(_cluster_scoped_config(cluster_id)) if cluster_id else _get_pipeline()
             initial_evidence = body.get("initial_evidence") if isinstance(body.get("initial_evidence"), dict) else None
             if skill_workflow:
                 payload = skill_workflow.get("payload") if isinstance(skill_workflow.get("payload"), dict) else {}
@@ -11612,7 +11630,9 @@ async def rca_run(request: Request):
             result = {"error": str(e)}
             _state["rca_runs"][run_id]["result"] = result
         finally:
-            _save_rca_history()
+            saved = _save_rca_history(required_run_id=run_id)
+            if saved and guarded_auto_recovery:
+                _schedule_guarded_auto_recovery(run_id)
 
     # Run in background thread (pipeline does sync LLM calls that block the loop)
     import threading
@@ -12961,6 +12981,214 @@ async def heal_execute(request: Request):
     )
     _save_heal_run(run)
     return run
+
+
+class _InternalHealRequest:
+    def __init__(self, body):
+        self.body = body
+
+    async def json(self):
+        return copy.deepcopy(self.body)
+
+
+async def _guarded_auto_recovery(run_id: str) -> Dict[str, Any]:
+    """Run at most one server-selected, ontology-bound auto action per RCA.
+
+    The durable claim is written before preview or dispatch. A process crash
+    leaves an unknown outcome requiring reconciliation, never an automatic retry.
+    """
+    cfg = _get_config()
+    if getattr(cfg.remediation, "auto_loop_enabled", False) is not True:
+        return {"status": "disabled", "reason": "auto_loop_disabled"}
+    run = _state["rca_runs"].get(run_id)
+    if not run:
+        raise HTTPException(404, "关联诊断不存在")
+    if run.get("status") != "completed":
+        return {"status": "blocked", "reason": "investigation_not_completed"}
+    if run.get("guarded_auto_recovery") is not True:
+        return {"status": "blocked", "reason": "investigation_not_guarded"}
+    started = run.get("started_at")
+    if (type(started) not in (int, float) or not math.isfinite(started)
+            or not 0 <= time.time() - started <= 600):
+        return {"status": "blocked", "reason": "investigation_not_fresh"}
+    claim_id = "auto-" + run_id
+    with _heal_run_guard(claim_id):
+        claim_path = _HEAL_ARTIFACT_DIR / f"{claim_id}.json"
+        if claim_path.exists():
+            try:
+                claim = json.loads(claim_path.read_text(encoding="utf-8"))
+                if not isinstance(claim, dict) or claim.get("source_run_id") != run_id:
+                    raise ValueError("invalid claim")
+                return ({**claim, "status": "outcome_unknown", "reason": "interrupted_attempt_requires_reconciliation"}
+                        if claim.get("status") in {"preparing", "dispatching"} else claim)
+            except (ValueError, OSError):
+                raise HTTPException(503, "自动恢复记录不可读取，请人工核对")
+        claim = {"source_run_id": run_id, "status": "preparing", "started_at": time.time()}
+        _atomic_write_json(claim_path, claim)
+        dispatched = False
+        try:
+            model = build_investigation(_json_safe_snapshot(run))
+            context = action_context(model)
+            target = context.get("target") or {}
+            if not context.get("recorded_conditions_met") or target.get("kind") != "Deployment":
+                claim.update(status="blocked", reason="ontology_action_not_ready", blockers=context.get("blockers", []))
+            else:
+                services = {o["id"]: o for o in model["objects"] if o.get("kind") == "Service"
+                            and o.get("identity_status") == "uid_bound"}
+                related = {r["source_id"] for r in model["relations"]
+                           if r.get("type") == "matches_workload_template"
+                           and r.get("target_id") == target.get("id") and r.get("source_id") in services}
+                if len(related) != 1 or model.get("gaps"):
+                    claim.update(status="blocked", reason="service_binding_incomplete_or_ambiguous")
+                else:
+                    service = services[next(iter(related))]
+                    policies = [p for p in getattr(cfg.remediation, "auto_scale_targets", [])
+                                if isinstance(p, dict) and all(p.get(k) == v for k, v in {
+                                    "cluster_id": target.get("cluster_id"), "namespace": target.get("namespace"),
+                                    "deployment": target.get("name"), "service": service.get("name")}.items())]
+                    if (len(policies) != 1 or type(policies[0].get("replicas")) is not int
+                            or not 1 <= policies[0]["replicas"] <= 100):
+                        claim.update(status="blocked", reason="explicit_scale_policy_required")
+                        claim["finished_at"] = time.time()
+                        _atomic_write_json(claim_path, claim)
+                        return claim
+                    policy = copy.deepcopy(policies[0])
+                    body = {"source_run_id": run_id, "ontology_revision": model["revision"],
+                            "service": service["name"], "source": "guarded_auto_recovery"}
+                    _bind_ontology_heal_input(body, execution=True)
+                    suggestion = _build_heal_suggestions(body)
+                    candidates = []
+                    for item in suggestion.get("suggestions", []):
+                        command = str(item.get("command") or "")
+                        try:
+                            args = shlex.split(command)
+                        except ValueError:
+                            continue
+                        requested = [v.split("=", 1)[1] for v in args if v.startswith("--replicas=")]
+                        requested += [args[i + 1] for i, v in enumerate(args[:-1]) if v == "--replicas"]
+                        if (item.get("source") == "kb" and item.get("executable") is True
+                                and len(args) > 2 and args[:2] == ["kubectl", "scale"]
+                                and requested == [str(policy["replicas"])]
+                                and command_targets_bound_object(command, target)
+                                and item.get("rollback_command")
+                                and command_targets_bound_object(item["rollback_command"], target)):
+                            candidates.append(item)
+                    if len(candidates) != 1:
+                        claim.update(status="blocked", reason="unique_scoped_recipe_action_required")
+                    else:
+                        item = candidates[0]
+                        live = await asyncio.to_thread(_verify_ontology_action, context, [item["command"], item["rollback_command"]])
+                        service_versions = {o.get("resource_version") for o in model["observations"]
+                                            if o.get("entity_id") == service["id"] and o.get("temporality") != "historical"
+                                            and o.get("resource_version")}
+                        checked_service = await asyncio.to_thread(_ontology_live_resource, service)
+                        service_resource = checked_service.get("json") or {}
+                        service_meta = service_resource.get("metadata") or {}
+                        service_spec = service_resource.get("spec") or {}
+                        selector = service_spec.get("selector")
+                        labels = (((live.get("spec") or {}).get("template") or {}).get("metadata") or {}).get("labels") or {}
+                        if (len(service_versions) != 1 or not checked_service.get("ok")
+                                or service_meta.get("uid") != service.get("uid")
+                                or service_meta.get("resourceVersion") not in service_versions
+                                or service_meta.get("deletionTimestamp")
+                                or service_spec.get("type") == "ExternalName"
+                                or not isinstance(selector, dict) or not selector or not isinstance(labels, dict)
+                                or any(labels.get(k) != v for k, v in selector.items())):
+                            claim.update(status="blocked", reason="live_service_binding_changed")
+                            claim["finished_at"] = time.time()
+                            _atomic_write_json(claim_path, claim)
+                            return claim
+                        if (not isinstance(live.get("spec"), dict)
+                                or type(live["spec"].get("replicas")) is not int
+                                or live["spec"]["replicas"] != 0):
+                            claim.update(status="blocked", reason="live_deployment_not_scaled_to_zero")
+                            claim["finished_at"] = time.time()
+                            _atomic_write_json(claim_path, claim)
+                            return claim
+                        body.update(commands=[item["command"]], rollback_commands=[item["rollback_command"]], dry_run=True)
+                        preview = await heal_execute(_InternalHealRequest(body))
+                        if preview.get("status") != "dry_run" or not preview.get("id"):
+                            claim.update(status="blocked", reason="preview_failed")
+                        else:
+                            # Preview and network calls consume time. Recheck the
+                            # Service immediately before dispatch; the object
+                            # update itself separately tests the Deployment RV.
+                            final_service = await asyncio.to_thread(_ontology_live_resource, service)
+                            final_resource = final_service.get("json") or {}
+                            final_meta = final_resource.get("metadata") or {}
+                            final_spec = final_resource.get("spec") or {}
+                            current_cfg = _get_config()
+                            current_policies = [p for p in getattr(current_cfg.remediation, "auto_scale_targets", [])
+                                                if isinstance(p, dict) and all(p.get(k) == v for k, v in {
+                                                    "cluster_id": target.get("cluster_id"), "namespace": target.get("namespace"),
+                                                    "deployment": target.get("name"), "service": service.get("name")}.items())]
+                            if (getattr(current_cfg.remediation, "auto_loop_enabled", False) is not True
+                                    or len(current_policies) != 1 or current_policies[0] != policy
+                                    or not 0 <= time.time() - started <= 600 or not final_service.get("ok")
+                                    or final_meta.get("uid") != service.get("uid")
+                                    or final_meta.get("resourceVersion") not in service_versions
+                                    or final_meta.get("deletionTimestamp")
+                                    or final_spec.get("type") == "ExternalName"
+                                    or final_spec.get("selector") != selector):
+                                claim.update(status="blocked", reason="service_binding_or_diagnosis_changed_after_preview",
+                                             proposal_id=preview["id"], finished_at=time.time())
+                                _atomic_write_json(claim_path, claim)
+                                return claim
+                            claim.update(status="dispatching", proposal_id=preview["id"])
+                            _atomic_write_json(claim_path, claim)
+                            body.update(dry_run=False, auto_execute=True, ontology_proposal_id=preview["id"])
+                            dispatched = True
+                            result = await heal_execute(_InternalHealRequest(body))
+                            claim.update(status=result.get("status", "outcome_unknown"), heal_run_id=result.get("id"),
+                                         success=result.get("success"), verification=result.get("verification"))
+        except Exception as exc:
+            rejected = isinstance(exc, HTTPException) and exc.status_code in (400, 409)
+            claim.update(status="outcome_unknown" if dispatched and not rejected else "blocked",
+                         reason=("auto_gate_rejected" if rejected else
+                                 "dispatch_or_verification_error" if dispatched else "preparation_error"),
+                         error_type=type(exc).__name__)
+            detail = exc.detail if isinstance(exc, HTTPException) and isinstance(exc.detail, dict) else {}
+            gates = (detail.get("auto_execution_gate"), detail.get("diagnosis_gate"))
+            blockers = [str(value) for gate in gates if isinstance(gate, dict)
+                        for value in (gate.get("blockers") or []) if isinstance(value, str)]
+            if blockers:
+                claim["blockers"] = list(dict.fromkeys(blockers))
+        claim["finished_at"] = time.time()
+        _atomic_write_json(claim_path, claim)
+        return claim
+
+
+def _schedule_guarded_auto_recovery(run_id: str) -> None:
+    if getattr(_get_config().remediation, "auto_loop_enabled", False) is not True:
+        return
+    try:
+        asyncio.run(_guarded_auto_recovery(run_id))
+    except Exception:
+        logger.exception("Guarded auto recovery could not be recorded for %s", run_id)
+
+
+@app.post("/api/rca/{run_id}/auto-heal")
+async def rca_guarded_auto_heal(run_id: str):
+    return await _guarded_auto_recovery(run_id)
+
+
+@app.get("/api/rca/{run_id}/auto-heal")
+async def rca_guarded_auto_heal_status(run_id: str):
+    claim_id = "auto-" + run_id
+    if not _SAFE_ID_RE.fullmatch(claim_id) or claim_id in {".", ".."}:
+        raise HTTPException(400, "无效的诊断标识")
+    path = _HEAL_ARTIFACT_DIR / f"{claim_id}.json"
+    if not path.exists():
+        raise HTTPException(404, "未找到自动恢复记录")
+    try:
+        claim = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(claim, dict) or claim.get("source_run_id") != run_id:
+            raise ValueError("invalid claim")
+    except (ValueError, OSError) as exc:
+        raise HTTPException(503, "自动恢复记录不可读取，请人工核对") from exc
+    if claim.get("status") in {"preparing", "dispatching"}:
+        return {**claim, "outcome_final": False}
+    return claim
 
 
 def _reverify_heal_run(run_id: str) -> Dict[str, Any]:
