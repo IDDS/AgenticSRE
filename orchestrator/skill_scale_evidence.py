@@ -1,6 +1,8 @@
 """Assess narrowly scoped scale-zero evidence without authorizing actions."""
 from __future__ import annotations
 
+import json
+
 from skill_runtime.ontology_history import collection_time
 
 
@@ -45,17 +47,42 @@ def assess_scale_zero_evidence(*, root_entity, service, scope, judge):
         meta = raw.get('metadata') if isinstance(raw.get('metadata'), dict) else {}
         kind = raw.get('kind')
         expected_name = root_entity['name'] if kind == 'Deployment' else service
-        if (kind not in {'Service', 'Endpoints', 'Deployment'} or meta.get('name') != expected_name
-                or meta.get('namespace') != root_entity['namespace']
+        if kind not in {'Service', 'Endpoints', 'Deployment'} or meta.get('name') != expected_name:
+            continue
+        if (meta.get('namespace') != root_entity['namespace']
                 or raw.get('cluster_id') != root_entity['cluster_id']
                 or not isinstance(meta.get('uid'), str) or not meta['uid']
                 or not isinstance(meta.get('resourceVersion'), str) or not meta['resourceVersion']
                 or raw.get('topology_fields_complete') is False or collection_time(fact.get('timestamp')) is None):
-            continue
+            blockers.append('cited_objects_incomplete_or_ambiguous')
+            return result
         selected.setdefault(kind, []).append(fact)
-    if any(len(selected.get(k, [])) != 1 for k in ('Service', 'Endpoints', 'Deployment')):
+    if any(not selected.get(k) for k in ('Service', 'Endpoints', 'Deployment')):
         blockers.append('cited_objects_incomplete_or_ambiguous')
         return result
+    # Separate reads of the same object/version may have distinct projection
+    # provenance. Accept them only when every cited state agrees; never merge
+    # partial fields or treat repeated reads as independent corroboration.
+    ids = set()
+    for facts_for_kind in selected.values():
+        signatures = set()
+        try:
+            for fact in facts_for_kind:
+                raw = fact['raw_ref']
+                meta = raw['metadata']
+                identifier = fact.get('id')
+                if not isinstance(identifier, str) or not identifier or identifier in ids:
+                    raise ValueError('invalid_or_duplicate_evidence_id')
+                ids.add(identifier)
+                signatures.add(json.dumps({'uid': meta['uid'], 'version': meta['resourceVersion'],
+                    'deletion_timestamp': meta.get('deletionTimestamp'), 'spec': raw.get('spec'),
+                    'status': raw.get('status'), 'subsets': raw.get('subsets')},
+                    ensure_ascii=False, sort_keys=True, allow_nan=False))
+        except (KeyError, TypeError, ValueError):
+            signatures = set()
+        if len(signatures) != 1:
+            blockers.append('cited_objects_incomplete_or_ambiguous')
+            return result
     svc, endpoints, deploy = (selected[k][0]['raw_ref'] for k in ('Service', 'Endpoints', 'Deployment'))
     meta = deploy['metadata']
     dep_spec = deploy.get('spec') if isinstance(deploy.get('spec'), dict) else {}
@@ -77,5 +104,8 @@ def assess_scale_zero_evidence(*, root_entity, service, scope, judge):
             or item.get('addresses') not in (None, []) for item in subsets)):
         blockers.append('ready_endpoints_not_empty')
     result['cited_evidence_ids'] = {k: selected[k][0]['id'] for k in ('Service', 'Endpoints', 'Deployment')}
+    if any(len(facts_for_kind) > 1 for facts_for_kind in selected.values()):
+        result['equivalent_cited_evidence_ids'] = {k: [fact['id'] for fact in selected[k]]
+                                                   for k in ('Service', 'Endpoints', 'Deployment')}
     result['eligible_for_further_review'] = not blockers
     return result

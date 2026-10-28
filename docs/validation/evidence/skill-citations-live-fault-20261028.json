@@ -1,0 +1,113 @@
+{
+  "schema": "skill-live-auto-acceptance-summary/v1",
+  "fault_injected": true,
+  "watchdog_armed": true,
+  "baseline": {
+    "samples": 20,
+    "successes": 20,
+    "controls_healthy": true,
+    "p95_ms": 50.503
+  },
+  "fault": {
+    "samples": 5,
+    "successes": 0,
+    "controls_healthy": true,
+    "p95_ms": 3003.876
+  },
+  "diagnosis": {
+    "status": "completed",
+    "fault_type": "ServiceUnavailable",
+    "confidence": 0.606,
+    "duration_s": 32.522,
+    "identity_binding": "identity_bound",
+    "matches_injected_target": true,
+    "scope_status": "collected",
+    "selected_pods": 0,
+    "review_blockers": [
+      "asserted_hypothesis_not_independently_verified"
+    ],
+    "review_input_bytes": 13676,
+    "independent_review_called": true
+  },
+  "automatic_recovery": {
+    "status": "blocked",
+    "reason": "ontology_action_not_ready",
+    "blockers": [
+      "independent_review_required",
+      "diagnosis_gate_not_allowed"
+    ],
+    "real_heal_runs": 0
+  },
+  "control_restore": {
+    "outcome": "restored",
+    "business_recovery_confirmed": true,
+    "windows": [
+      {
+        "samples": 10,
+        "successes": 10,
+        "controls_healthy": true,
+        "p95_ms": 57.152
+      },
+      {
+        "samples": 10,
+        "successes": 10,
+        "controls_healthy": true,
+        "p95_ms": 61.297
+      },
+      {
+        "samples": 10,
+        "successes": 10,
+        "controls_healthy": true,
+        "p95_ms": 50.211
+      }
+    ]
+  },
+  "hypothesis_review": [
+    {
+      "id": "H2",
+      "proposer_status": "confirmed",
+      "reviewer_status": "supported",
+      "status": "supported",
+      "assertion_verified": true,
+      "rationale_limits": []
+    },
+    {
+      "id": "H1",
+      "proposer_status": "rejected",
+      "reviewer_status": "contradicted",
+      "status": "uncertain",
+      "assertion_verified": false,
+      "rationale_limits": [
+        "direct_falsification_not_observed"
+      ]
+    },
+    {
+      "id": "H3",
+      "proposer_status": "rejected",
+      "reviewer_status": "contradicted",
+      "status": "uncertain",
+      "assertion_verified": false,
+      "rationale_limits": [
+        "direct_falsification_not_observed"
+      ]
+    }
+  ],
+  "typed_scale_evidence": {
+    "eligible_for_further_review": false,
+    "blockers": [
+      "independent_review_incomplete"
+    ]
+  },
+  "source_sha256": {
+    "summary.json": "28e0265067ddb166c81d5c10d29cff8157dbcae00e0269077af86e8854ea197e",
+    "fault-skill-run.json": "70aab29f23b39c59b8055caa44475dfe7cb284ce2473c6d5d71558861638157e",
+    "native-auto-recovery.json": "22fc0b0bc87e45731937636372872f77f6a0dc65e8f3040bcbb0aeb904c77cba",
+    "baseline.json": "7d4b77bfc91a0ca76e38e849aa06efc31aa9f975ee5f8f91c0e277c6c7b1c0cc",
+    "recovery-windows.json": "aeef5b07a8a1a71ff5871516c3bfab5bb6a7ea02da093df102fc323c49011a32",
+    "fallback-restoration.json": "8bb0837894d00fe82d617620b786860353fe313b27d5f37031c6830189ca6148",
+    "cleanup-complete.json": "875fd9819c6c10224fb0b2ebb5f9b918c460daf020efedf6c209e3cd6172e9f9",
+    "contract.json": "13683eccb306c27ffaab18114a653644392340b668a2a15cb690fdcd312e5244"
+  },
+  "production_modified": false,
+  "autonomous_recovery_accepted": false
+}
