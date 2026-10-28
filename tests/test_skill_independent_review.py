@@ -413,3 +413,10 @@ def test_ontology_and_strategy_use_the_persisted_review_but_deny_execution():
     assert not action['recorded_conditions_met']
     reviews = result['diagnostic_strategy']['independent_reviews']
     assert len(reviews) == 1 and reviews[0]['needs_review'] is False
+    typed = result['diagnostic_strategy']['scale_zero_evidence']
+    assert typed['execution_authorized'] is False
+    assert typed['eligible_for_further_review'] is False
+    assert 'review_receipt_incomplete' in typed['blockers']
+    from diagnostic_strategy import strategy_view
+    saved_view = strategy_view({'id': 'review-test', 'status': 'completed', 'result': result})
+    assert saved_view['scale_zero_evidence'] == typed
