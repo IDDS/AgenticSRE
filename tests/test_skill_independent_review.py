@@ -359,6 +359,19 @@ def test_ordinary_json_or_inventory_contradiction_is_not_silently_excluded(mode)
     assert any(x in result['judge']['review_blockers'] for x in ('conflicting_resource_observations','conflicting_resource_state'))
 
 
+def test_selector_only_projection_with_changed_version_still_blocks_review():
+    rows = commands()
+    current = json.loads(rows[-1]['data'])
+    current['metadata']['resourceVersion'] = 'opaque-b'
+    current['spec'] = {'selector': {'matchLabels': {'backend': 'engine'}}}
+    rows.append(dict(rows[-1], command=projection_command('DeploymentSelector', 'shop', 'engine'),
+                     data=json.dumps(current)))
+    result, stages, _ = reason(records=rows)
+    assert stages == ['reasoning']
+    assert result['judge']['needs_review']
+    assert 'conflicting_resource_observations' in result['judge']['review_blockers']
+
+
 @pytest.mark.parametrize('stamp', [float('nan'), float('inf'), -float('inf'), 'invalid-time'])
 def test_invalid_alias_time_returns_a_strictly_serializable_refusal(stamp):
     from orchestrator.skill_review import review_skill_diagnosis
@@ -650,3 +663,49 @@ def test_pod_previous_termination_reaches_reasoning_review_and_strategy_without_
     final = result['diagnostic_strategy']['pod_termination_evidence']
     assert final['items'][0]['observation_id']==item['observation_id']
     assert not final['execution_authorized'] and not final['absence_is_refutation']
+
+
+@pytest.mark.parametrize('invented',[False,True])
+def test_selector_followup_is_visible_to_reassessment_and_rejects_unresolved_ids(monkeypatch,invented):
+    from diagnostic_strategy import tool_evidence_catalog
+    import orchestrator.skill_agent as module
+    agent=SkillAgent(registry=None,skills_dir=ROOT/'skill_runtime/skills')
+    entity={'cluster_id':'east','namespace':'shop','kind':'Deployment','name':'engine',
+            'uid':'engine-Deployment-uid','resource_version':'opaque-a'}
+    ref=tool_evidence_catalog(commands())[0]['id']
+    calls=[]
+    def model(stage,messages,**kwargs):
+        if stage=='reasoning':
+            return {'root_cause':'Deployment/engine 副本为零','root_entity':entity,'confidence':.9,
+                'reasoning_chain':'已观察对象状态','hypothesis_assessments':[{'id':'H2','status':'rejected',
+                    'confidence':.4,'supporting_evidence_ids':[],'contradicting_evidence_ids':[]}]}
+        if stage=='hypothesis_followup':
+            calls.append(json.loads(messages[-1]['content'])['selector_ownership_evidence'])
+            return {'hypotheses':[{'id':'H2','status':'active','confidence':.4,
+                'supporting_evidence_ids':[],'contradicting_evidence_ids':[]}]}
+        assert stage=='independent_review'
+        return review_answer(hypothesis_reviews=[{'id':'H2','status':'uncertain',
+            'supporting_evidence_ids':[],'contradicting_evidence_ids':[],'reason':'缺少直接反证'}])
+    agent._call_llm_json=model
+    def read(command,namespace,**kwargs):
+        data='No resources found in shop namespace.' if command.startswith('get events') else commands()[-1]['data']
+        return {'command':command,'success':True,'executed':True,'data':data,'sample':data}
+    monkeypatch.setattr(agent,'_run_kubectl',read)
+    def selector(**kwargs):
+        return ({'attempted':True,'stop_reason':'selector_observations_collected',
+            'items':[{'pod':'engine-pod','observation_ids':['obs-invented' if invented else ref]}],
+            'absence_is_refutation':False,'execution_authorized':False},[])
+    monkeypatch.setattr(module,'collect_selector_ownership',selector)
+    evidence={'agent_evidence_collection':{'commands':commands(), 'service_scope':{
+        'status':'collected','candidate_workloads':['engine'],'gaps':[]}}}
+    result={'diagnosis':{'root_cause':'待诊断','confidence':.6},'skill_runtime':{'runs':[]}}
+    agent.reason_about_result(SkillAgentRequest('HTTP 502','shop',{'payload':{'cluster_id':'east','service':'gateway'}}),
+        hypotheses=[{'id':'H2','description':'Service selector 与 Pod 标签不匹配','confidence':.4}],
+        verification_plan={},evidence=evidence,skill_result=result)
+    recorded=evidence['diagnostic_strategy']['selector_ownership_evidence']
+    assert calls and calls[0]==recorded and result['diagnosis']['judge']['needs_review']
+    if invented:
+        assert recorded['items']==[] and recorded['stop_reason']=='selector_evidence_catalog_limit'
+        assert 'selector_ownership_incomplete' in result['diagnosis']['judge']['review_blockers']
+    else:
+        assert recorded['items'][0]['observation_ids']==[ref]

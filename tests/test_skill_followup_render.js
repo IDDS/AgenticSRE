@@ -21,6 +21,8 @@ const data = {recording_status:'recorded', generation:{items:[]}, rounds:[{itera
   pod_termination_evidence:{items:[{pod:'pod-a',container:'app',state:'previous_state',
     reason:'OOMKilled <tag>',exit_code:137,finished_at:'2026-10-28T00:59:00Z',
     collected_at:'2026-10-28T01:00:00Z',time_status:'after_collection',observation_id:'obs-1'}],omitted:0},
+  selector_ownership_evidence:{attempted:true,stop_reason:'selector_observations_collected',
+    items:[{pod:'pod-a',mismatched_keys:['component<tag>'],observation_ids:['obs-1','obs-2']}]},
   independent_reviews:[{stage:'agent_skill_initial_review',items:[],skill_review:{independent_role_call:true,
     provider_receipt:{schema_version:1,source:'provider_response',completion_status:'complete',finish_reason:'stop',
       refusal_present:false,tool_call_present:false}}},
@@ -37,6 +39,8 @@ assert(output.includes('排除结论尚未核实的候选：H2'));
 assert(output.includes('上一次终止') && output.includes('OOMKilled &lt;tag&gt;'));
 assert(output.includes('报告时间尚未绑定事故时间窗'));
 assert(output.includes('报告结束时间晚于采集时间，需核对时钟'));
+assert(output.includes('选择器与运行期归属补证') && output.includes('component&lt;tag&gt;'));
+assert(output.includes('未发现不匹配不代表故障机制已被排除'));
 assert(output.includes('&lt;script&gt;') && !output.includes('<script>'));
 const old = context.renderStrategyAudit({recording_status:'recorded', generation:{items:[]}, rounds:[],
   independent_reviews:[{stage:'agent_skill_final_review',items:[]}]});

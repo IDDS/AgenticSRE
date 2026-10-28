@@ -1,0 +1,22 @@
+{
+  "schema": "selector-ownership-validation/v1",
+  "remote_targeted_tests_passed": 813,
+  "remote_full_tests_passed": 2558,
+  "remote_render_check_passed": true,
+  "live_experiment": {
+    "isolated_non_business_resources": true,
+    "watchdog_armed": true,
+    "baseline_endpoint_uid_matched": true,
+    "fault_injected": true,
+    "fault_endpoint_empty": true,
+    "pod_uid_matches": true,
+    "owner_chain_observed": true,
+    "observation_references_resolved": true,
+    "selector_read_count": 6,
+    "resources_removed": true,
+    "model_diagnosis_executed": false,
+    "causality_proven": false,
+    "execution_authorized": false,
+    "autonomous_recovery_accepted": false
+  }
+}

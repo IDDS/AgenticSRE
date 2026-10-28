@@ -22,12 +22,15 @@ FIELDS = {
     'Endpoints': IDENTITY + ('subsets',),
     'Deployment': IDENTITY + ('spec.template.metadata.labels', 'spec.replicas',
         'status.readyReplicas', 'status.availableReplicas', 'metadata.deletionTimestamp'),
+    # A separate fixed protocol preserves compatibility with earlier Deployment
+    # reads while exposing its immutable selector for bounded Pod discovery.
+    'DeploymentSelector': IDENTITY + ('spec.selector',),
     'Pod': IDENTITY + ('metadata.labels', 'metadata.ownerReferences', 'spec.nodeName',
         'status.phase', 'status.conditions', 'status.containerStatuses'),
     'ReplicaSet': IDENTITY + ('metadata.ownerReferences', 'spec.template.metadata.labels', 'spec.replicas'),
 }
 RESOURCES = {'Service': 'service', 'Endpoints': 'endpoints', 'Deployment': 'deployment',
-             'Pod': 'pod', 'ReplicaSet': 'replicaset'}
+             'DeploymentSelector': 'deployment', 'Pod': 'pod', 'ReplicaSet': 'replicaset'}
 MAX_ROWS = 512
 MAX_DATA = 262144
 
@@ -96,7 +99,33 @@ def projection_request(command, namespace):
     return None
 
 
-def _safe_value(path, value):
+def _safe_value(path, value, kind=None):
+    if path == 'spec.selector' and kind == 'DeploymentSelector':
+        if not isinstance(value, dict) or set(value) - {'matchLabels', 'matchExpressions'}:
+            raise ValueError('invalid_deployment_selector')
+        labels_value = value.get('matchLabels')
+        expressions = value.get('matchExpressions')
+        labels = _labels({} if labels_value is None else labels_value)
+        if expressions is None:
+            expressions = []
+        if not isinstance(expressions, list) or len(expressions) > 32:
+            raise ValueError('invalid_deployment_selector_expressions')
+        safe = []
+        for expression in expressions:
+            if not isinstance(expression, dict) or set(expression) - {'key', 'operator', 'values'}:
+                raise ValueError('invalid_deployment_selector_expression')
+            key, operator, values = expression.get('key'), expression.get('operator'), expression.get('values')
+            if values is None:
+                values = []
+            _labels({key: ''})
+            if operator not in ('In','NotIn','Exists','DoesNotExist') or not isinstance(values, list) or len(values)>32:
+                raise ValueError('invalid_deployment_selector_expression')
+            for entry in values:
+                _labels({key: entry})
+            if (operator in ('In','NotIn') and not values) or (operator in ('Exists','DoesNotExist') and values):
+                raise ValueError('invalid_deployment_selector_expression')
+            safe.append({'key':key,'operator':operator,'values':values})
+        return {'matchLabels': labels, 'matchExpressions': safe}
     if path in {'spec.selector', 'metadata.labels', 'spec.template.metadata.labels'}:
         return _labels(value)
     if path in {'spec.replicas', 'status.readyReplicas', 'status.availableReplicas'}:
@@ -224,7 +253,7 @@ def decode_projection(command, namespace, wire):
         raise ValueError('incomplete_projection_row')
     rows, seen = [], set()
     for start in range(0, len(cells), width):
-        row = {'kind': kind, 'projection': PROJECTION}
+        row = {'kind': 'Deployment' if kind == 'DeploymentSelector' else kind, 'projection': PROJECTION}
         for index, path in enumerate(FIELDS[kind]):
             cell = cells[start+index]
             if not cell or cell == [None]:
@@ -238,7 +267,7 @@ def decode_projection(command, namespace, wire):
             parts = path.split('.')
             for part in parts[:-1]:
                 current = current.setdefault(part, {})
-            current[parts[-1]] = _safe_value(path, cell[0])
+            current[parts[-1]] = _safe_value(path, cell[0], kind)
         meta = row['metadata']
         if meta['namespace'] != namespace or not _name(meta['name']) or name and meta['name'] != name:
             raise ValueError('projection_target_mismatch')
@@ -305,7 +334,8 @@ def observed_entity_catalog(commands, cluster_id, namespace):
                 continue
             row = json.loads(call.get('data') or '')
             meta = row['metadata']
-            if row.get('projection') != PROJECTION or row.get('kind') != request[0]:
+            expected_kind = 'Deployment' if request[0] == 'DeploymentSelector' else request[0]
+            if row.get('projection') != PROJECTION or row.get('kind') != expected_kind:
                 continue
             if meta['namespace'] != namespace or meta['name'] != request[1] or any(
                     not isinstance(meta.get(k), str) or not meta[k] for k in ('uid', 'resourceVersion')):
