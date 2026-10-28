@@ -255,6 +255,10 @@ def build_investigation(run: dict) -> dict:
     commands = _skill_commands(layers)
     for call in commands:
         candidates.extend((item, "committed_tool") for item in _command_observations(call))
+    # Deduplication must retain complete host observations ahead of matching
+    # reviewer excerpts, otherwise topology silently loses valid source data.
+    source_priority = {"collector": 0, "committed_tool": 1, "legacy_event_excerpt": 2, "review_excerpt": 3}
+    candidates.sort(key=lambda row: source_priority.get(row[1], 4))
     objects, observations, links, seen = {}, [], [], set()
     for item, origin in candidates:
         if not item.get("source") or not item.get("observation"):

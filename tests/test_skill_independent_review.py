@@ -420,3 +420,30 @@ def test_ontology_and_strategy_use_the_persisted_review_but_deny_execution():
     from diagnostic_strategy import strategy_view
     saved_view = strategy_view({'id': 'review-test', 'status': 'completed', 'result': result})
     assert saved_view['scale_zero_evidence'] == typed
+
+
+def test_saved_skill_review_binds_guarded_scale_contract_without_opening_public_gate(monkeypatch):
+    from types import SimpleNamespace
+    import web_app.app as web
+    from operational_ontology import build_investigation, action_context
+    from orchestrator.skill_scale_evidence import assess_scale_zero_evidence
+    scope = {'status':'collected','gaps':[], 'candidate_workloads':['engine'],
+             'selected_pod_count':0, 'relation':'matches_workload_template'}
+    result, _, _ = reason(scope=scope)
+    result['fault_type'] = 'ServiceUnavailable'
+    result['judge']['skill_review']['provider_receipt'] = complete_receipt()
+    proof = assess_scale_zero_evidence(root_entity=result['root_entity'], service='gateway', scope=scope, judge=result['judge'])
+    assert proof['eligible_for_further_review'] is True
+    result['diagnostic_strategy']['scale_zero_evidence'] = proof
+    run = {'id':'rca-test','status':'completed','cluster_id':'east','namespace':'shop',
+           'guarded_auto_recovery':True,'result':result}
+    model = build_investigation(run)
+    assert any(relation['type'] == 'matches_workload_template' for relation in model['relations'])
+    assert all(observation['origin'] == 'committed_tool' for observation in model['observations'])
+    cfg = SimpleNamespace(remediation=SimpleNamespace(auto_loop_enabled=True, auto_scale_targets=[{
+        'cluster_id':'east','namespace':'shop','service':'gateway','deployment':'engine','replicas':1}]))
+    monkeypatch.setattr(web, '_get_config', lambda:cfg)
+    assert action_context(model)['recorded_conditions_met'] is False
+    context=web._guarded_skill_scale_context(run, model)
+    assert context['recorded_conditions_met'] is True
+    assert context['guarded_skill_scale_contract']['service'] == 'gateway'
