@@ -69,6 +69,7 @@ class SkillToolContext:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "success": ok,
             "executed": bool(result.get("executed", True)),
+            "output_complete": result.get("output_complete") is True,
             "duration_ms": int((time.time() - started) * 1000),
             "summary": str(result.get("summary") or ("执行成功" if ok else result.get("error") or "执行失败")),
             "data": result.get("data", result.get("stdout", "")),
