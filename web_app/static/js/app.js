@@ -4509,6 +4509,7 @@ function renderStrategyAudit(data) {
     const sourceReasons={hypothesis_requested_failed_source_retry:'候选仍需该来源补证，安排有限重试',hypothesis_requested_untried_source:'候选建议检查尚未尝试的来源',bounded_failed_source_retry:'此前采集失败，重试次数尚未用完',untried_source:'检查尚未尝试的信息来源'};
     const readinessReasons={no_active_hypothesis:'当前没有未排除候选',leading_hypothesis_not_grounded:'主候选缺少有效且无冲突的当前引用',leading_hypothesis_not_confirmed_above_threshold:'主候选尚未达到转审状态与评分条件',leading_hypothesis_open_questions:'主候选仍有待回答的问题',close_supported_alternatives:'评分接近的其他候选也有当前引用，仍需区分',unverified_candidate_rejections:'候选的排除结论缺少直接反证',requested_source_retry_pending:'主候选请求的失败来源尚未补齐，重试仍受来源额度限制'};
     const followupReasons={no_unverified_rejection:'没有待核实的排除断言',target_identity_or_scope_unresolved:'目标身份或范围尚未确定，未执行补证',invalid_target_identity:'目标身份无效，未执行补证',followup_budget_exhausted:'补证时间预算已用尽',followup_read_timeout:'只读查询超时，结果未知',followup_read_failed:'只读查询失败或结果未知',target_changed_or_unverifiable:'目标身份或资源版本变化，需重新诊断',followup_collected_review_required:'只读补证已采集，仍需依据独立复核与最终门禁判断'};
+    const terminationTimes={before_or_at_collection:'报告结束时间不晚于采集时间',after_collection:'报告结束时间晚于采集时间，需核对时钟',unavailable_or_invalid:'报告结束时间不可用或格式无效'};
     return `<strong>假设产生与调查调整</strong><p>初始置信度用于候选排序；引用存在不等于支持关系或因果已成立。最终仍须独立审核。</p>
         ${data.scale_zero_evidence ? `<p>缩零取证：${data.scale_zero_evidence.eligible_for_further_review === true ? '结构化观测满足进一步核验条件' : '证据不足，继续保留缺口'}；不代表根因已证明或允许执行。
             ${(Array.isArray(data.scale_zero_evidence.blockers) ? data.scale_zero_evidence.blockers : []).map(escapeHtml).join('；')}</p>` : ''}
@@ -4518,6 +4519,9 @@ function renderStrategyAudit(data) {
             ${(data.followup.commands||[]).map(c=>`<p><code>${escapeHtml(c.command||'')}</code> · ${c.executed===true?(c.success===true?'执行成功':'执行失败'):'未确认执行'}</p>`).join('')}
             ${data.followup.reassessment_received===true?'<p>已收到补证后的候选重新评估；仍须以最终复核为准。</p>':data.followup.reassessment_received===false?'<p>未收到有效的补证后评估，保留原有缺口。</p>':''}
             <p>补证和候选评估均不授权执行动作。</p></details>`:''}
+        ${data.pod_termination_evidence?.items?.length?`<details class="skill-raw-fold"><summary>Pod 容器终止观测 · ${data.pod_termination_evidence.items.length} 项</summary>
+            ${data.pod_termination_evidence.items.map(item=>`<p>${escapeHtml(item.pod||'')} / ${escapeHtml(item.container||'')} · ${item.state==='previous_state'?'上一次终止':'当前终止状态'} · ${escapeHtml(item.reason||'未知')} · 退出码 ${escapeHtml(item.exit_code==null?'未知':String(item.exit_code))}<br>报告结束时间：${escapeHtml(item.finished_at||'不可用')}；采集时间：${escapeHtml(item.collected_at||'不可用')}；${escapeHtml(terminationTimes[item.time_status]||'时间状态未记录')}；${refs([item.observation_id])}</p>`).join('')}
+            <p>仅展示已纳入证据目录的观测；报告时间尚未绑定事故时间窗，Pod 与工作负载的归属也须独立验证。这些观测不单独证明根因或授权动作，未展示不代表未发生。${data.pod_termination_evidence.omitted?`另有 ${escapeHtml(String(data.pod_termination_evidence.omitted))} 项因上限未展示。`:''}</p></details>`:''}
         <details class="skill-raw-fold"><summary>初始候选 · ${(generation.items||[]).length} 项</summary>
         ${(generation.items||[]).map(h=>`<p>${escapeHtml(h.id||'')} · ${escapeHtml(source[h.source]||h.source||'来源未记录')} · ${escapeHtml(formatConfidence(h.confidence))}<br>${escapeHtml(h.description||'')}
             ${h.supports_if?`<br>支持条件：${escapeHtml(h.supports_if)}`:''}${h.refutes_if?`<br>反驳条件：${escapeHtml(Array.isArray(h.refutes_if)?h.refutes_if.join('；'):h.refutes_if)}`:''}</p>`).join('')}</details>

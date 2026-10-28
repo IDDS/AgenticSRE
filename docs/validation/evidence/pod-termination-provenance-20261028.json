@@ -1,0 +1,50 @@
+{
+  "real_isolated_pod": {
+    "pod_created": true,
+    "fault_injected": false,
+    "watchdog_armed": true,
+    "business_workload_modified": false,
+    "pod_memory_limit_mib": 48,
+    "pod_active_deadline_s": 180,
+    "memory_limit_stress_attempted": true,
+    "observed_reason": "Error",
+    "observed_exit_code": 137,
+    "evidence_verified": true,
+    "reason": "Error",
+    "exit_code": 137,
+    "previous_state": true,
+    "uid_matches": true,
+    "finished_at_recorded": true,
+    "time_status": "before_or_at_collection",
+    "incident_window_bound": false,
+    "workload_ownership_proven": false,
+    "absence_is_refutation": false,
+    "execution_authorized": false,
+    "real_business_fault": false,
+    "autonomous_recovery_accepted": false,
+    "cleanup_requested": true,
+    "pod_removed": true
+  },
+  "summary_sha256": "4f9b90307081421434e0496a28fa0911601613eaa06728d8657ba71ca794ad94",
+  "post_cleanup": {
+    "validation_pods_remaining": 0,
+    "business_deployment_replicas": 1,
+    "business_deployment_ready": 1,
+    "fence_present": false
+  },
+  "first_attempt": {
+    "reported_reason": "Error",
+    "reported_exit_code": 137,
+    "summary_unavailable_due_to_disk_full": true,
+    "validation_pod_removed": true
+  },
+  "remote_regression": {
+    "targeted_passed": 790,
+    "full_passed": 2535,
+    "render_test_passed": true,
+    "javascript_syntax_passed": true
+  },
+  "limit_stress_is_not_proven_oom": true,
+  "business_fault_tested": false,
+  "autonomous_recovery_accepted": false
+}

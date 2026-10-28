@@ -124,8 +124,44 @@ def _safe_value(path, value):
     if path == 'status.containerStatuses':
         if not isinstance(value, list) or len(value) > 64:
             raise ValueError('invalid_container_statuses')
-        return [{k: r[k] for k in ('name', 'ready', 'restartCount') if k in r}
-                for r in value if isinstance(r, dict)]
+        statuses = []
+        for row in value:
+            if not isinstance(row, dict):
+                raise ValueError('invalid_container_status')
+            if (not isinstance(row.get('name'), str) or not row['name'] or len(row['name']) > 253
+                    or 'ready' in row and type(row['ready']) is not bool
+                    or 'restartCount' in row and (type(row['restartCount']) is not int or row['restartCount'] < 0)):
+                raise ValueError('invalid_container_status_identity')
+            safe = {k: row[k] for k in ('name', 'ready', 'restartCount') if k in row}
+            # Retain only structured termination metadata. Messages and image
+            # details may contain unbounded or sensitive data and are excluded.
+            for field in ('state', 'lastState'):
+                state = row.get(field)
+                if state is None:
+                    continue
+                if not isinstance(state, dict) or len(state) > 1:
+                    raise ValueError('invalid_container_state')
+                if not state:
+                    safe[field] = {}
+                    continue
+                variant, body = next(iter(state.items()))
+                if variant not in ('waiting', 'running', 'terminated') or not isinstance(body, dict):
+                    raise ValueError('invalid_container_state_variant')
+                projected = {}
+                if variant == 'terminated':
+                    for key in ('reason', 'exitCode', 'signal', 'startedAt', 'finishedAt'):
+                        if key not in body or body[key] is None:
+                            continue
+                        item = body[key]
+                        if key in ('exitCode', 'signal'):
+                            if type(item) is not int or abs(item) > 2**31:
+                                raise ValueError('invalid_termination_number')
+                        elif not isinstance(item, str) or len(item) > 512:
+                            raise ValueError('invalid_termination_text')
+                        projected[key] = item
+                safe[field] = {variant: projected}
+            statuses.append(safe)
+        return statuses
     if path == 'subsets':
         if not isinstance(value, list) or len(value) > 1000:
             raise ValueError('invalid_endpoint_subsets')
