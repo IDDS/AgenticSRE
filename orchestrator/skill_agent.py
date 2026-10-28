@@ -33,6 +33,24 @@ EventSink = Callable[[Dict[str, Any]], None]
 KubectlRunner = Callable[[str, str, Dict[str, Any]], Optional[Dict[str, Any]]]
 
 
+def _generic_followup_with_observations(run: Dict[str, Any]) -> bool:
+    """A completed collection is not itself a confirmed fault diagnosis."""
+    if not isinstance(run, dict) or (run.get('skill') or {}).get('id') != 'generic.evidence_collection':
+        return False
+    diagnose = (run.get('stages') or {}).get('diagnose') or {}
+    if diagnose.get('status') != 'ok':
+        return False
+    output = diagnose.get('output') if isinstance(diagnose.get('output'), dict) else {}
+    for item in output.get('tool_results') or []:
+        if not isinstance(item, dict):
+            continue
+        sample = evidence_sample(item.get('data') or item.get('sample') or '').strip()
+        if (item.get('executed') is True and item.get('success') is True
+                and not item.get('outcome_unknown') and sample and not sample.startswith('No resources found')):
+            return True
+    return False
+
+
 @dataclass
 class SkillAgentRequest:
     query: str
@@ -191,9 +209,15 @@ class SkillAgent:
         # Skill tool traces are the authoritative record of actual investigation.
         if skill_result:
             commands = evidence["agent_evidence_collection"]["commands"]
-            for run in skill_result.get("skill_runtime", {}).get("runs", []):
+            runtime = skill_result.get("skill_runtime", {})
+            runtime_runs = runtime.get("runs", [])
+            primary_run_id = runtime.get("primary_run_id")
+            has_primary_scope = any(run.get('run_id') == primary_run_id and isinstance(
+                (run.get('stages', {}).get('diagnose', {}).get('output') or {}).get('service_scope'), dict)
+                for run in runtime_runs) if primary_run_id else False
+            for run in runtime_runs:
                 collected_scope = (run.get('stages', {}).get('diagnose', {}).get('output') or {}).get('service_scope')
-                if isinstance(collected_scope, dict):
+                if isinstance(collected_scope, dict) and (not has_primary_scope or run.get('run_id') == primary_run_id):
                     evidence['agent_evidence_collection']['service_scope'] = collected_scope
                 seen = set()
                 for trace in run.get("trace", []):
@@ -605,6 +629,10 @@ class SkillAgent:
                 tool_runner=self._skill_tool_runner(request.namespace),
             ).to_dict()
             runs.append(run)
+        # The generic collector may have been explicitly selected after a
+        # specialized Skill. The automatically inserted helper is not a model
+        # selection and must not silently turn a failed specialist into success.
+        explicit_runs = list(runs)
         runs.extend(supplementary_runs)
         self._emit({
             "event": "phase_complete",
@@ -618,9 +646,16 @@ class SkillAgent:
         primary_stages = primary.get("stages") if isinstance(primary.get("stages"), dict) else {}
         diagnose = primary_stages.get("diagnose") if isinstance(primary_stages.get("diagnose"), dict) else {}
         if self._skill_owned_investigation and diagnose.get("status") != "ok":
-            self._emit({"event": "skill_not_confirmed", "success": False,
-                "summary": "专项 Skill 未匹配或执行失败，不生成该故障的最终结论。"})
-            return None
+            fallback = next((run for run in explicit_runs[1:] if _generic_followup_with_observations(run)), None)
+            if fallback is None:
+                self._emit({"event": "skill_not_confirmed", "success": False,
+                    "summary": "专项 Skill 未匹配或执行失败，不生成该故障的最终结论。"})
+                return None
+            primary = fallback
+            diagnose = primary['stages']['diagnose']
+            self._emit({"event": "skill_collection_fallback", "success": True,
+                "skill_id": "generic.evidence_collection",
+                "summary": "专项 Skill 未确认，改用已执行的通用只读取证继续调查；不代表故障已确认。"})
         diagnosis_output = diagnose.get("output") if isinstance(diagnose.get("output"), dict) else {}
         diagnosis = {
             **diagnosis_output,
@@ -636,6 +671,7 @@ class SkillAgent:
             "skill_runtime": {
                 "selection_mode": selection_mode,
                 "primary_skill_id": diagnosis.get("skill_id") or "",
+                "primary_run_id": primary.get("run_id") or "",
                 "matched_count": len(runs),
                 "runs": runs,
             },

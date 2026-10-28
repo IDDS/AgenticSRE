@@ -1,0 +1,122 @@
+{
+  "fault_injected": true,
+  "watchdog_armed": true,
+  "baseline": {
+    "samples": 20,
+    "successes": 20,
+    "controls_healthy": true,
+    "p95_ms": 57.523
+  },
+  "fault": {
+    "samples": 5,
+    "successes": 0,
+    "controls_healthy": true,
+    "p95_ms": 3004.398
+  },
+  "healthy_preflight": {
+    "status": "completed",
+    "collection_fallback_used": true,
+    "review_blockers": [
+      "root_identity_unresolved",
+      "review_input_exceeds_budget",
+      "candidate_review_incomplete",
+      "no_observations",
+      "reviewer_unavailable"
+    ]
+  },
+  "diagnosis": {
+    "duration_s": 28.553,
+    "confidence": 0.618,
+    "matches_injected_target": true,
+    "review_blockers": [
+      "candidate_review_incomplete",
+      "asserted_hypothesis_not_independently_verified"
+    ],
+    "independent_review_called": true,
+    "readiness": {
+      "ready_for_independent_review": false,
+      "blockers": [
+        "unverified_candidate_rejections"
+      ],
+      "unverified_rejection_ids": [
+        "H2",
+        "H3"
+      ]
+    },
+    "hypotheses": [
+      {
+        "id": "H1",
+        "status": "confirmed",
+        "proposed_status": "confirmed",
+        "validation_errors": [],
+        "unresolved_count": 0
+      },
+      {
+        "id": "H2",
+        "status": "active",
+        "proposed_status": "rejected",
+        "validation_errors": [
+          "falsification_test_not_observed",
+          "unverified_rejection"
+        ],
+        "unresolved_count": 1
+      },
+      {
+        "id": "H3",
+        "status": "active",
+        "proposed_status": "rejected",
+        "validation_errors": [
+          "falsification_test_not_observed",
+          "unverified_rejection"
+        ],
+        "unresolved_count": 1
+      }
+    ]
+  },
+  "automatic_recovery": {
+    "status": "blocked",
+    "reason": "ontology_action_not_ready",
+    "blockers": [
+      "independent_review_required",
+      "diagnosis_gate_not_allowed"
+    ],
+    "real_heal_runs": 0
+  },
+  "control_restore": {
+    "outcome": "restored",
+    "business_recovery_confirmed": true,
+    "windows": [
+      {
+        "samples": 10,
+        "successes": 10,
+        "controls_healthy": true,
+        "p95_ms": 71.751
+      },
+      {
+        "samples": 10,
+        "successes": 10,
+        "controls_healthy": true,
+        "p95_ms": 57.068
+      },
+      {
+        "samples": 10,
+        "successes": 10,
+        "controls_healthy": true,
+        "p95_ms": 60.54
+      }
+    ]
+  },
+  "source_sha256": {
+    "summary.json": "ffa2905341100019ed858edb87545c9bf382c9287316299e21b1a77976479ec5",
+    "fault-skill-run.json": "58329914c947a6c5f4f0eb643edba65656e3244ded3aa1e3b16b25bf492af72f",
+    "native-auto-recovery.json": "4e3e079487101499d1740408c161b8608818d72ec5df3c52844a0c8ee816c032",
+    "baseline.json": "49081d7d23cf1df331a0866e3e9c4d6954d0b81bfe5a2b396fb6f8311a39c549",
+    "recovery-windows.json": "6890dfb7893fa2e6087ca9696ce700fa5203dea16024125415fac29b566693f7",
+    "fallback-restoration.json": "0911aeda608e490d7f5dd19d8313b6bb8797f7f75943175a68bfdd796674e1ba",
+    "cleanup-complete.json": "e51775926b8ac8e8c1ca935667fd1440ea5068cc1f28722621e7a8f77fb77fc0",
+    "contract.json": "96cadbbb22742a9604b5960e277292cf94d0952f991cff9c7f4f4f1031ef3464",
+    "healthy-skill-run.json": "6dd1516198504892ac24854b1ebcf367275152b95e4f56dec809b22bd1b7b0f2"
+  },
+  "production_modified": false,
+  "autonomous_recovery_accepted": false
+}
