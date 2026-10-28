@@ -20,7 +20,10 @@ MAX_COMMANDS = 128
 # larger than a concise reviewer verdict. The prompt retains its own hard cap.
 MAX_REVIEW_INPUT_BYTES = 16000
 MAX_REVIEW_BYTES = 12000
-MAX_PROMPT_BYTES = 32000
+# The complete 16 KB snapshot appears in both evidence and citation contexts
+# in the Judge prompt. Keep a separate bounded envelope large enough for that
+# serialization; never truncate observations to satisfy this limit.
+MAX_PROMPT_BYTES = 48000
 
 
 def _bounded_text_context(command, *, namespace, cluster_id, service_names, observed_uids):
