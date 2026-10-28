@@ -28,6 +28,7 @@ from orchestrator.confidence_calibrator import calibrate_rca_confidence
 from orchestrator.skill_review import review_skill_diagnosis
 from orchestrator.skill_scale_evidence import assess_scale_zero_evidence
 from orchestrator.skill_followup import collect_followup
+from orchestrator.selector_ownership_evidence import collect_selector_ownership, merge_cited_catalog
 from diagnostic_strategy import InvestigationController, tool_evidence_catalog
 
 
@@ -1456,6 +1457,9 @@ class SkillAgent:
                 request.namespace or workflow_payload.get('namespace') or 'default',
                 kubectl_available=bool(self.kubectl_runner) or self._tool_available('kubectl'), payload=workflow_payload))
         self._emit({'event': 'skill_followup', **followup})
+        selector_evidence = {'schema':'selector-ownership-evidence/v1','attempted':False,'items':[],
+            'stop_reason':'followup_not_available','absence_is_refutation':False,
+            'incident_window_bound':False,'causality_proven':False,'execution_authorized':False}
         reviews = []
         if followup['attempted']:
             self._emit(first_review)
@@ -1468,6 +1472,30 @@ class SkillAgent:
                     'cluster_id': item.get('cluster_id'), 'success': item.get('success'),
                     'executed': item.get('executed'), 'source': 'skill_followup'})
             if followup['stop_reason'] == 'followup_collected_review_required':
+                selector_evidence, selector_reads = collect_selector_ownership(
+                    commands=command_records, hypotheses=[h.to_dict() for h in assessed], root_entity=bound_entity,
+                    service_scope=service_scope, service=workflow_payload.get('service'),
+                    cluster_id=workflow_payload.get('cluster_id') or workflow_payload.get('target_cluster_id') or '',
+                    namespace=request.namespace or workflow_payload.get('namespace') or 'default',
+                    run_read=lambda command: self._run_kubectl(command,
+                        request.namespace or workflow_payload.get('namespace') or 'default',
+                        kubectl_available=bool(self.kubectl_runner) or self._tool_available('kubectl'), payload=workflow_payload))
+                command_records.extend(selector_reads)
+                # Preserve citations already made by the proposer and reserve
+                # room for all four links of each new owner chain. Namespace
+                # inventories must not crowd the targeted evidence out.
+                fresh_catalog = tool_evidence_catalog(selector_reads, limit=24)
+                hypothesis_catalog, citations_complete = merge_cited_catalog(
+                    hypothesis_catalog, fresh_catalog, [h.to_dict() for h in assessed], selector_evidence['items'])
+                if not citations_complete:
+                    selector_evidence['items'] = []
+                    selector_evidence['stop_reason'] = 'selector_evidence_catalog_limit'
+                self._emit({'event':'selector_ownership_collection', **selector_evidence})
+                for item in selector_reads:
+                    self._emit({'event':'tool_call','agent':self.name,'tool':'kubectl',
+                        'command':item.get('command'),'namespace':item.get('namespace'),
+                        'cluster_id':item.get('cluster_id'),'success':item.get('success'),
+                        'executed':item.get('executed'),'source':'selector_ownership'})
                 assessor.set_evidence_catalog(hypothesis_catalog)
                 context_text = [r.get('data') for r in followup_reads if r.get('output_complete') is True
                     and isinstance(r.get('data'), str) and len(r['data']) <= 1200
@@ -1478,6 +1506,7 @@ class SkillAgent:
                      'Pod lastState 是历史终止；其时间与对象归属未经独立绑定时不能证明当前事故原因。只返回 JSON。'},
                     {'role': 'user', 'content': json.dumps({'hypotheses': [h.to_dict() for h in assessed],
                         'observations': hypothesis_catalog, 'untrusted_context': context_text,
+                        'selector_ownership_evidence': selector_evidence,
                         'pod_termination_evidence': observed_terminations(command_records,
                             cluster_id=workflow_payload.get('cluster_id') or workflow_payload.get('target_cluster_id') or '',
                             namespace=request.namespace or workflow_payload.get('namespace') or 'default',
@@ -1502,6 +1531,9 @@ class SkillAgent:
             if followup['stop_reason'] != 'followup_collected_review_required':
                 judge['needs_review'] = True
                 judge['review_blockers'] = list(dict.fromkeys([*judge['review_blockers'], 'skill_followup_incomplete']))
+            if selector_evidence['attempted'] and selector_evidence['stop_reason'] != 'selector_observations_collected':
+                judge['needs_review'] = True
+                judge['review_blockers'] = list(dict.fromkeys([*judge['review_blockers'], 'selector_ownership_incomplete']))
         scale_evidence = assess_scale_zero_evidence(root_entity=bound_entity,
             service=workflow_payload.get('service'), scope=service_scope, judge=judge)
         review_record = {'event': 'hypothesis_independent_review', 'stage': 'agent_skill_final_review',
@@ -1570,6 +1602,7 @@ class SkillAgent:
             allowed_ids=[row['id'] for row in hypothesis_catalog])
         evidence["diagnostic_strategy"]={"generation":generation,"rounds":[strategy_record],
             "independent_reviews": reviews, "followup": followup,
+            "selector_ownership_evidence": selector_evidence,
             "pod_termination_evidence": termination_evidence,
             "scale_zero_evidence": scale_evidence,
             "stop_reason":strategy_record["decision"]["reason"],"cross_incident_policy_learned":False,

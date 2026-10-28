@@ -12,6 +12,7 @@ import pytest
 from agents.event_agent import EventAgent
 from operational_ontology import build_investigation, ontology_schema, query_investigation
 from tools.base_tool import ToolResult
+from skill_runtime.service_evidence import projection_command
 
 
 AT = '2026-10-23T10:00:00Z'
@@ -147,6 +148,21 @@ def test_missing_uid_and_conflicting_observations_fail_closed_for_new_links():
     view = model(rows, [observation(changed)])
     assert not edges(view, 'selects_pod')
     assert 'conflicting_topology_observations' in view['gaps']
+
+
+def test_selector_only_committed_projection_does_not_conflict_with_full_topology():
+    service, deployment = resources()[:2]
+    selector = copy.deepcopy(deployment)
+    selector['spec'] = {'selector': {'matchLabels': {'backend': 'a'}}}
+    calls = [{'tool': 'kubectl', 'command': projection_command(kind, 'shop', row['metadata']['name']),
+              'timestamp': AT, 'cluster_id': 'east', 'executed': True, 'success': True,
+              'data': row} for kind, row in [('Service', service), ('Deployment', deployment),
+                                              ('DeploymentSelector', selector)]]
+    view = build_investigation({'id': 'selector-topology', 'cluster_id': 'east', 'namespace': 'shop',
+        'events': [], 'result': {'agent_evidence': {'agent_evidence_collection': {'commands': calls}}}})
+    assert len(view['observations']) == 3
+    assert [(a, b) for a, b, _ in edges(view, 'matches_workload_template')] == [('gateway', 'engine')]
+    assert 'conflicting_topology_observations' not in view['gaps']
 
 
 @pytest.mark.parametrize('ready,terminating,effective', [(True, False, True), (False, False, False), (None, False, True), (True, True, True)])

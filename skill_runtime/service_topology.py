@@ -8,7 +8,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-from .service_evidence import project_endpoint_subsets
+from .service_evidence import project_endpoint_subsets, projection_request
 
 
 RESOURCE_KINDS = {'Service', 'EndpointSlice', 'Endpoints', 'Pod', 'ReplicaSet',
@@ -137,6 +137,16 @@ def topology_relations(objects, observations):
                 obs.get('scope_status') != 'in_run' or obs.get('temporality') == 'historical' or
                 str(obs.get('origin', '')).endswith('excerpt') or raw.get('truncated')):
             continue
+        # The selector-only Deployment read is a complementary, deliberately
+        # narrow projection. Keep the observation, but do not compare its
+        # incomplete structural fields with a full topology projection.
+        if obs.get('origin') == 'committed_tool' and obj.get('kind') == 'Deployment':
+            try:
+                request = projection_request(obs.get('source') or '', obj.get('namespace') or '')
+            except (ValueError, TypeError, IndexError):
+                request = None
+            if request and request[0] == 'DeploymentSelector' and request[1] == obj.get('name'):
+                continue
         projected = project_resource(raw)
         if not projected:
             continue
