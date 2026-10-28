@@ -1,0 +1,142 @@
+{
+  "candidates": [
+    {
+      "id": "H2",
+      "status": "confirmed",
+      "proposed_status": "confirmed",
+      "validation_errors": [],
+      "unresolved_count": 0
+    },
+    {
+      "id": "H1",
+      "status": "active",
+      "proposed_status": "rejected",
+      "validation_errors": [
+        "falsification_test_not_observed",
+        "unverified_rejection"
+      ],
+      "unresolved_count": 1
+    },
+    {
+      "id": "H3",
+      "status": "active",
+      "proposed_status": "rejected",
+      "validation_errors": [
+        "falsification_test_not_observed",
+        "unverified_rejection"
+      ],
+      "unresolved_count": 1
+    }
+  ],
+  "review_blockers": [
+    "asserted_hypothesis_not_independently_verified"
+  ],
+  "action_authorized": false,
+  "source_sha256": "70aab29f23b39c59b8055caa44475dfe7cb284ce2473c6d5d71558861638157e",
+  "historical_replay": true,
+  "new_fault_injection": false,
+  "model_called": false,
+  "production_modified": false,
+  "live_experiment": {
+    "fault_injected": true,
+    "watchdog_armed": true,
+    "baseline": {
+      "samples": 20,
+      "successes": 20,
+      "controls_healthy": true,
+      "p95_ms": 50.178
+    },
+    "fault": {
+      "samples": 5,
+      "successes": 0,
+      "controls_healthy": true,
+      "p95_ms": 3004.389
+    },
+    "diagnosis": {
+      "duration_s": 26.711,
+      "confidence": 0.627,
+      "matches_injected_target": true,
+      "review_blockers": [
+        "unreviewed_tool_output",
+        "candidate_review_incomplete",
+        "no_observations",
+        "reviewer_unavailable"
+      ],
+      "independent_review_called": false,
+      "hypotheses": [
+        {
+          "id": "H2",
+          "status": "confirmed",
+          "proposed_status": "confirmed",
+          "validation_errors": [],
+          "unresolved_count": 0
+        },
+        {
+          "id": "H1",
+          "status": "active",
+          "proposed_status": "rejected",
+          "validation_errors": [
+            "falsification_test_not_observed",
+            "unverified_rejection"
+          ],
+          "unresolved_count": 1
+        },
+        {
+          "id": "H3",
+          "status": "active",
+          "proposed_status": "rejected",
+          "validation_errors": [
+            "falsification_test_not_observed",
+            "unverified_rejection"
+          ],
+          "unresolved_count": 1
+        }
+      ]
+    },
+    "automatic_recovery": {
+      "status": "blocked",
+      "reason": "ontology_action_not_ready",
+      "blockers": [
+        "independent_review_required",
+        "diagnosis_gate_not_allowed"
+      ],
+      "real_heal_runs": 0
+    },
+    "control_restore": {
+      "outcome": "restored",
+      "business_recovery_confirmed": true,
+      "windows": [
+        {
+          "samples": 10,
+          "successes": 10,
+          "controls_healthy": true,
+          "p95_ms": 53.679
+        },
+        {
+          "samples": 10,
+          "successes": 10,
+          "controls_healthy": true,
+          "p95_ms": 54.996
+        },
+        {
+          "samples": 10,
+          "successes": 10,
+          "controls_healthy": true,
+          "p95_ms": 46.095
+        }
+      ]
+    },
+    "source_sha256": {
+      "summary.json": "42044fc80528e335a268b45324ddd839e341fe37e0a213686cd84eeecb4dd67b",
+      "fault-skill-run.json": "5d93d1af4df465409063a666fa959f67ed3d205579c1389c6a3bc9a9995086cd",
+      "native-auto-recovery.json": "c2cf8c4903f395faafd39fd315f9cb787862803d6487fc07c0c999386467f72f",
+      "baseline.json": "4e64a493bdf0f62e8dd43ff55979c0d3dfdcd525b81cd459f3c33094bf56da3b",
+      "recovery-windows.json": "7b98048daaafcc10e8349706479b1b2dd9b9de8bffc0be5ed39397547860d735",
+      "fallback-restoration.json": "08fbf51b0d92f5cc33390cce748d89dd13d6699eaa35e25d50c932d753e54e90",
+      "cleanup-complete.json": "c2fac15884e3d61213d4197fad616fc791025bc6eb8c9bfe14862577999f61c6",
+      "contract.json": "fb18cda3e9b9211c10ad251a2b5d4f066a589c71c7b10415b63f3023ce600b6d"
+    },
+    "production_modified": false,
+    "autonomous_recovery_accepted": false
+  }
+}
