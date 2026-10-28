@@ -59,7 +59,49 @@ def test_incomplete_or_conflicting_evidence_never_qualifies(sample, mutation):
     if mutation == 'malformed_spec': deploy['spec']=['unexpected']
     if mutation == 'multiple_matching':
         extra=copy.deepcopy(judge['review_evidence'][2]);extra['id']='E4'
+        extra['raw_ref']['metadata']['uid']='other-incarnation'
         judge['review_evidence'].append(extra);judge['llm_based']['supported_evidence_ids'].append('E4')
     result=assess_scale_zero_evidence(**value)
     assert not result['eligible_for_further_review'] and result['blockers']
     assert result['execution_authorized'] is False
+
+
+def test_equivalent_cited_reads_keep_all_provenance_without_authorizing_execution(sample):
+    value=copy.deepcopy(sample)
+    for i, fact in enumerate(value['judge']['review_evidence'][:], 4):
+        duplicate=copy.deepcopy(fact)
+        duplicate.update(id='E'+str(i), timestamp='2026-10-28T01:00:01+00:00', source='other projection')
+        duplicate['raw_ref']['metadata']['annotations']={'unrelated':'metadata'}
+        value['judge']['review_evidence'].append(duplicate)
+        value['judge']['llm_based']['supported_evidence_ids'].append(duplicate['id'])
+    result=assess_scale_zero_evidence(**value)
+    assert result['eligible_for_further_review'] is True
+    assert result['execution_authorized'] is False and result['is_causal_proof'] is False
+    assert result['cited_evidence_ids']=={'Service':'E1','Endpoints':'E2','Deployment':'E3'}
+    assert result['equivalent_cited_evidence_ids']=={
+        'Service':['E1','E4'],'Endpoints':['E2','E5'],'Deployment':['E3','E6']}
+
+
+@pytest.mark.parametrize('mutation', ['uid','version','replicas','labels','selector','status',
+                                      'subsets','deletion','timestamp','duplicate_id','partial'])
+def test_conflicting_cited_reads_remain_blocked(sample, mutation):
+    value=copy.deepcopy(sample)
+    index=0 if mutation=='selector' else 1 if mutation=='subsets' else 2
+    duplicate=copy.deepcopy(value['judge']['review_evidence'][index]); duplicate['id']='E4'
+    raw=duplicate['raw_ref']; meta=raw['metadata']
+    if mutation=='uid': meta['uid']='another'
+    if mutation=='version': meta['resourceVersion']='v2'
+    if mutation=='replicas': raw['spec']['replicas']=1
+    if mutation=='labels': raw['spec']['template']['metadata']['labels']['app']='other'
+    if mutation=='selector': raw['spec']['selector']['app']='other'
+    if mutation=='status': raw['status']={'readyReplicas':1}
+    if mutation=='subsets': raw['subsets']=[{'addresses':[{'ip':'192.0.2.1'}]}]
+    if mutation=='deletion': meta['deletionTimestamp']='2026-10-28T01:00:01Z'
+    if mutation=='timestamp': duplicate['timestamp']=''
+    if mutation=='duplicate_id': duplicate['id']=value['judge']['review_evidence'][0]['id']
+    if mutation=='partial': raw['spec'].pop('template')
+    value['judge']['review_evidence'].append(duplicate)
+    value['judge']['llm_based']['supported_evidence_ids'].append(duplicate['id'])
+    result=assess_scale_zero_evidence(**value)
+    assert not result['eligible_for_further_review']
+    assert 'cited_objects_incomplete_or_ambiguous' in result['blockers']

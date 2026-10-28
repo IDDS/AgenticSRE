@@ -1,0 +1,52 @@
+{
+  "facts": [
+    {
+      "id": "E1",
+      "kind": "Service",
+      "cited": true
+    },
+    {
+      "id": "E2",
+      "kind": "Endpoints",
+      "cited": true
+    },
+    {
+      "id": "E3",
+      "kind": "Deployment",
+      "cited": true
+    },
+    {
+      "id": "E4",
+      "kind": "Deployment",
+      "cited": true
+    },
+    {
+      "id": "E5",
+      "kind": "Service",
+      "cited": true
+    },
+    {
+      "id": "E6",
+      "kind": "Endpoints",
+      "cited": true
+    }
+  ],
+  "needs_review": false,
+  "blockers": [],
+  "input_bytes": 13882,
+  "review_state_count": 6,
+  "recording_status": "recorded",
+  "independent_role_call": true,
+  "provider_receipt_present": true,
+  "model_event_types": [
+    "llm_independent_review_replay_request",
+    "llm_independent_review_replay_result"
+  ],
+  "typed_scale_eligible": true,
+  "typed_scale_blockers": [],
+  "candidate_review_complete": true,
+  "action_authorized": false,
+  "retrospective_replay": true,
+  "historical_fault_record_sha256": "89e42f6863e76e3ca73e99a198ad1d78901b52c2dd61aba9ff4d0e4252e3efbb",
+  "new_fault_injection": false
+}
