@@ -38,6 +38,7 @@ class Hypothesis:
     supports_if: str = ""
     refutes_if: str = ""
     verification_test: str = ""
+    proposed_status: str = ""
 
     def to_dict(self) -> Dict:
         return {
@@ -60,6 +61,7 @@ class Hypothesis:
             "supports_if": self.supports_if,
             "refutes_if": self.refutes_if,
             "verification_test":self.verification_test,
+            "proposed_status":self.proposed_status,
         }
 
 
@@ -557,15 +559,38 @@ New Evidence:
         rows = result.get("hypotheses") if isinstance(result.get("hypotheses"),list) else []
         updates = {str(row.get("id")):row for row in rows if isinstance(row,dict)}
         counts = Counter(str(row.get("id")) for row in rows if isinstance(row,dict))
+        def retain_unverified_rejection(hyp, previous=None):
+            if previous:
+                for field_name, value in previous.items():
+                    setattr(hyp, field_name, value)
+            hyp.proposed_status = 'rejected'
+            hyp.status = 'active'
+            if 'unverified_rejection' not in hyp.validation_errors:
+                hyp.validation_errors.append('unverified_rejection')
+            question = '需要同对象、同事故时间窗的直接反证，才能排除该候选。'
+            if question not in hyp.unresolved_questions and len(hyp.unresolved_questions) < 6:
+                hyp.unresolved_questions = [*hyp.unresolved_questions, question]
         for hyp in hypotheses:
+            pending_rejection = (hyp.proposed_status == 'rejected' and
+                                 'unverified_rejection' in hyp.validation_errors)
+            previous = ({'supporting_evidence_ids': list(hyp.supporting_evidence_ids),
+                         'contradicting_evidence_ids': list(hyp.contradicting_evidence_ids),
+                         'supporting_evidence': list(hyp.supporting_evidence),
+                         'contradicting_evidence': list(hyp.contradicting_evidence),
+                         'update_reason': hyp.update_reason} if pending_rejection else None)
             if counts[hyp.id] > 1:
                 hyp.validation_errors = ["duplicate_hypothesis_update"]
+                if pending_rejection:
+                    retain_unverified_rejection(hyp, previous)
                 continue
             update = updates.get(hyp.id)
             if not update:
                 hyp.validation_errors = ["hypothesis_not_assessed"]
+                if pending_rejection:
+                    retain_unverified_rejection(hyp, previous)
                 continue
             support, oppose, errors = citation_update(update,self.evidence_catalog)
+            requested_status = str(update.get('status', 'active')).strip().lower()
             hyp.supporting_evidence_ids, hyp.contradicting_evidence_ids = support, oppose
             hyp.validation_errors = errors
             questions=update.get('unresolved_questions',hyp.unresolved_questions)
@@ -577,20 +602,32 @@ New Evidence:
             hyp.update_reason = str(update.get("reasoning") or "")[:600]
             if errors:
                 # Do not let an unsupported model update change the ranking.
+                if requested_status == 'rejected' or pending_rejection:
+                    retain_unverified_rejection(hyp, previous)
                 continue
             score=update.get("confidence")
             if type(score) not in (int,float) or not math.isfinite(score) or not 0<=score<=1:
                 hyp.validation_errors.append("invalid_confidence_value")
+                if requested_status == 'rejected' or pending_rejection:
+                    retain_unverified_rejection(hyp, previous)
                 continue
-            status = str(update.get("status","active")).lower()
+            status = requested_status
             if status not in {"active","confirmed","rejected"}:
                 hyp.validation_errors.append("invalid_hypothesis_status")
+                if pending_rejection:
+                    retain_unverified_rejection(hyp, previous)
                 continue
             if status == "rejected" and not oppose or status == "confirmed" and not support:
                 hyp.validation_errors.append("status_requires_matching_evidence_reference")
+                if status == 'rejected' or pending_rejection:
+                    retain_unverified_rejection(hyp, previous)
                 continue
-            if status=='rejected' and hyp.verification_test and not falsification_evidence(hyp.to_dict(),self.evidence_catalog,oppose):
+            if status=='rejected' and not falsification_evidence(hyp.to_dict(),self.evidence_catalog,oppose):
                 hyp.validation_errors.append('falsification_test_not_observed')
+                retain_unverified_rejection(hyp, previous)
+                continue
+            if pending_rejection and status != 'rejected':
+                retain_unverified_rejection(hyp, previous)
                 continue
             if status=='confirmed' and falsification_evidence(hyp.to_dict(),self.evidence_catalog,[c['id'] for c in self.evidence_catalog]):
                 hyp.validation_errors.append('typed_test_refutes_confirmation')
@@ -600,6 +637,7 @@ New Evidence:
             hyp.unresolved_questions=[q.strip()[:300] for q in questions if q.strip()][:6]
             hyp.next_agents=[a for a in next_agents if a in AGENTS][:3]
             hyp.confidence = float(score)
+            hyp.proposed_status = status
             hyp.status = "active" if support and oppose and status == "confirmed" else status
             if hyp.status == "rejected":
                 hyp.confidence = 0.0

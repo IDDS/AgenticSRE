@@ -93,6 +93,58 @@ def test_proposer_validation_errors_cannot_be_repaired_by_overwriting_audit_stat
     assert validate([row()],ctx)["blockers"]
 
 
+def test_unverified_rejection_stays_active_and_independent_review_still_blocks():
+    from agents.hypothesis_agent import Hypothesis, HypothesisAgent
+    hyp = Hypothesis('H1', '后端不可用可能导致请求失败', .6)
+    agent = HypothesisAgent(None)
+    agent.set_evidence_catalog([{'id':'obs-real','entity':{'name':'checkout','uid':'svc-1'}}])
+    agent._grounded_updates([hyp], {'hypotheses':[{'id':'H1','status':'rejected','confidence':0,
+        'supporting_evidence_ids':[],'contradicting_evidence_ids':['obs-real'],
+        'reasoning':'没有 Pod 因而排除后端不可用','unresolved_questions':[]}]}, False, 5)
+    assert hyp.status == 'active' and hyp.proposed_status == 'rejected' and hyp.confidence == .6
+    assert 'unverified_rejection' in hyp.validation_errors and hyp.unresolved_questions
+    assert hyp.contradicting_evidence_ids == ['obs-real'] and hyp.update_reason
+    review = validate_hypothesis_review(hypothesis_review_context([hyp.to_dict()], agent.evidence_catalog),
+        {'hypothesis_reviews':[row(status='contradicted', supporting_evidence_ids=[],
+                                   contradicting_evidence_ids=['obs-real'])]})
+    assert review['blockers'] and review['items'][0]['assertion_requires_review']
+    assert review['items'][0]['proposer_status'] == 'active'
+    assert review['items'][0]['proposed_status'] == 'rejected'
+    assert not review['items'][0]['assertion_verified']
+
+
+@pytest.mark.parametrize('update', [None, [], [{'id':'H1'}, {'id':'H1'}],
+    [{'id':'H1','status':'active','confidence':.5,'supporting_evidence_ids':['obs-real'],
+      'contradicting_evidence_ids':[],'unresolved_questions':[]}],
+    [{'id':'H1','status':'rejected','confidence':float('nan'),'supporting_evidence_ids':[],
+      'contradicting_evidence_ids':['obs-real']}],
+    [{'id':'H1','status':'confirmed','confidence':.9,'supporting_evidence_ids':[],
+      'contradicting_evidence_ids':['obs-real']}]])
+def test_unverified_rejection_cannot_be_cleared_by_a_later_incomplete_update(update):
+    from agents.hypothesis_agent import Hypothesis, HypothesisAgent
+    hyp = Hypothesis('H1', '仍需反证的候选', .6, proposed_status='rejected',
+                     validation_errors=['unverified_rejection'], unresolved_questions=['保留原缺口'],
+                     contradicting_evidence_ids=['obs-original'], update_reason='原始排除理由')
+    agent=HypothesisAgent(None); agent.set_evidence_catalog([{'id':'obs-real'}])
+    agent._grounded_updates([hyp], {'hypotheses':update}, False, 5)
+    assert hyp.status == 'active' and hyp.proposed_status == 'rejected'
+    assert 'unverified_rejection' in hyp.validation_errors and '保留原缺口' in hyp.unresolved_questions
+    assert hyp.contradicting_evidence_ids == ['obs-original'] and hyp.update_reason == '原始排除理由'
+
+
+def test_pending_rejection_can_resolve_only_with_registered_direct_test():
+    from agents.hypothesis_agent import Hypothesis, HypothesisAgent
+    hyp=Hypothesis('H1','卷声明候选',.6,service='target',verification_test='no_pvc_or_ephemeral_volume',
+        proposed_status='rejected',validation_errors=['unverified_rejection'],unresolved_questions=['需检查卷声明'])
+    agent=HypothesisAgent(None)
+    agent.set_evidence_catalog([{'id':'obs-test','entity':{'kind':'Pod','name':'target','namespace':'shop','uid':'uid'},
+                                 'verification_checks':{'no_pvc_or_ephemeral_volume':True}}])
+    agent._grounded_updates([hyp],{'hypotheses':[{'id':'H1','status':'rejected','confidence':.1,
+        'supporting_evidence_ids':[],'contradicting_evidence_ids':['obs-test'],'unresolved_questions':[]}]},False,5)
+    assert hyp.status=='rejected' and hyp.proposed_status=='rejected'
+    assert not hyp.validation_errors and not hyp.unresolved_questions
+
+
 def test_existing_judge_call_carries_observations_and_missing_review_blocks_high_scores():
     class Model:
         calls=0

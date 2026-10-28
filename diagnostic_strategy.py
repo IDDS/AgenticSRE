@@ -232,7 +232,9 @@ def validate_hypothesis_review(context, response):
         if not isinstance(row.get("reason"),str) or not row.get("reason", "").strip():
             errors.append("review_reason_missing")
         # Reviewer claims cannot repair malformed proposer updates in place.
-        asserted=hypothesis.get("status") in ("confirmed","rejected")
+        pending_rejection=(hypothesis.get('status')=='active' and hypothesis.get('proposed_status')=='rejected'
+                           and 'unverified_rejection' in _rows(hypothesis.get('validation_errors')))
+        asserted=hypothesis.get("status") in ("confirmed","rejected") or pending_rejection
         if asserted and hypothesis.get("validation_errors"):
             errors.append("proposer_assertion_has_validation_gaps")
         errors=list(dict.fromkeys(errors))
@@ -255,10 +257,11 @@ def validate_hypothesis_review(context, response):
             row.get("reason", ""),re.IGNORECASE) and not test_evidence:
             rationale_limits.append("absence_or_indirect_rationale_is_not_refutation")
         qualified_status="uncertain" if rationale_limits else status
-        required="supported" if hypothesis.get("status")=="confirmed" else "contradicted"
+        required="supported" if hypothesis.get("status")=="confirmed" and not pending_rejection else "contradicted"
         assertion_verified=asserted and validated and qualified_status==required
         items.append({"id":hid,"description":hypothesis.get("description", ""),
-            "proposer_status":hypothesis.get("status","active"),"proposer_confidence":hypothesis.get("confidence"),
+            "proposer_status":hypothesis.get("status","active"),"proposed_status":hypothesis.get("proposed_status", ""),
+            "proposer_confidence":hypothesis.get("confidence"),
             "status":qualified_status if validated else "invalid_or_missing",
             "reviewer_status":status if status in ("supported","contradicted","uncertain") else "",
             "rationale_limits":rationale_limits,
