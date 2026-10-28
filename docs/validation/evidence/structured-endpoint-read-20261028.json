@@ -1,0 +1,113 @@
+{
+  "fault_injected": true,
+  "watchdog_armed": true,
+  "baseline": {
+    "samples": 20,
+    "successes": 20,
+    "controls_healthy": true,
+    "p95_ms": 49.185
+  },
+  "fault": {
+    "samples": 5,
+    "successes": 0,
+    "controls_healthy": true,
+    "p95_ms": 3003.846
+  },
+  "diagnosis": {
+    "duration_s": 22.465,
+    "confidence": 0.616,
+    "matches_injected_target": true,
+    "review_blockers": [
+      "unreviewed_tool_output",
+      "candidate_review_incomplete",
+      "no_observations",
+      "reviewer_unavailable"
+    ],
+    "independent_review_called": false,
+    "hypotheses": [
+      {
+        "id": "H1",
+        "status": "confirmed",
+        "proposed_status": "confirmed",
+        "validation_errors": [],
+        "unresolved_count": 0
+      },
+      {
+        "id": "H3",
+        "status": "confirmed",
+        "proposed_status": "confirmed",
+        "validation_errors": [],
+        "unresolved_count": 0
+      },
+      {
+        "id": "H2",
+        "status": "active",
+        "proposed_status": "rejected",
+        "validation_errors": [
+          "falsification_test_not_observed",
+          "unverified_rejection"
+        ],
+        "unresolved_count": 1
+      }
+    ]
+  },
+  "automatic_recovery": {
+    "status": "blocked",
+    "reason": "ontology_action_not_ready",
+    "blockers": [
+      "independent_review_required",
+      "diagnosis_gate_not_allowed"
+    ],
+    "real_heal_runs": 0
+  },
+  "control_restore": {
+    "outcome": "restored",
+    "business_recovery_confirmed": true,
+    "windows": [
+      {
+        "samples": 10,
+        "successes": 10,
+        "controls_healthy": true,
+        "p95_ms": 61.62
+      },
+      {
+        "samples": 10,
+        "successes": 10,
+        "controls_healthy": true,
+        "p95_ms": 55.632
+      },
+      {
+        "samples": 10,
+        "successes": 10,
+        "controls_healthy": true,
+        "p95_ms": 52.522
+      }
+    ]
+  },
+  "source_sha256": {
+    "summary.json": "4835b03cbbeefe0a335a154bc1813b4aaf5579757deffe70a06e152d9838e157",
+    "fault-skill-run.json": "819b907b6c0fc961bd0c42b894e4b479bbfa01765e69fcca906c36fe6e0ed592",
+    "native-auto-recovery.json": "0ff6c3b8ac73f28a528600afe13950a23b5d625060ad2637cf52e88c5b73bd6f",
+    "baseline.json": "a89cee85ebe872fdc75c6eb7ab2b766512032e979ef7a0a66016cebfb8386c86",
+    "recovery-windows.json": "252a9268b8d4f531883240ac886ded0a1ba0bed739a96eefa5f5cbf3c5f4b722",
+    "fallback-restoration.json": "14fffe87b7331a0277b6fbc92f5f882cae8fce19b86ca7693d57473850fe80e4",
+    "cleanup-complete.json": "1ffe59905a699396e72c5d83a9897f7ecfff4829e31e7d41930c4bc5184bc174",
+    "contract.json": "1081bd796c56c653ceb0bf4d6fdce386dc0c35438522d72f5e5929c2988a3e2d"
+  },
+  "live_named_read": {
+    "rewrite_produced": true,
+    "host_success": true,
+    "timestamp_present": true,
+    "observation_count": 1,
+    "same_uid": true,
+    "same_resource_version": true,
+    "subsets_present": true,
+    "cluster_write": false,
+    "fault_injected": false,
+    "endpoint_read_only": true
+  },
+  "live_fault_observed_named_json_read": true,
+  "live_fault_exercised_default_rewrite": false,
+  "production_modified": false,
+  "autonomous_recovery_accepted": false
+}

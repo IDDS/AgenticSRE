@@ -93,6 +93,66 @@ def test_valid_model_checks_are_retained_within_the_shared_call_budget(prefix):
     assert len(cluster.commands) == 8
 
 
+@pytest.mark.parametrize('command', [
+    'kubectl get endpoints gateway -n shop',
+    'kubectl get endpoints/gateway --namespace=shop',
+    'kubectl get -n shop endpoints gateway',
+    'kubectl get endpoints gateway',
+])
+def test_named_default_endpoint_read_uses_bounded_identity_projection(command):
+    from skill_runtime.service_evidence import decode_projection, projection_command
+    cluster = Cluster()
+    result = collect(cluster, [command])
+    expected = projection_command('Endpoints', 'shop', 'gateway')
+    assert cluster.commands.count(expected) == 2  # scoped read and the requested check
+    wire = cluster.execute('kubectl', command=expected, namespace='shop')['data']
+    projected = decode_projection(expected, 'shop', wire)
+    assert projected['metadata']['uid'] == 'gateway-uid'
+    assert projected['metadata']['resourceVersion'] == 'opaque-a' and projected['subsets'] == []
+    assert len(result['tool_results']) <= 12
+
+
+def test_named_endpoint_check_is_committed_as_a_timestamped_host_observation():
+    from operational_ontology import committed_tool_observations
+    from orchestrator.skill_agent import SkillAgent
+    from skill_runtime.service_evidence import evidence_observed_at, projection_command
+    cluster = Cluster()
+    agent = SkillAgent(registry=None, skills_dir=Path(__file__).parents[1] / 'skill_runtime/skills',
+        kubectl_runner=lambda command, namespace, payload: cluster.execute('kubectl', command=command, namespace=namespace))
+    class HostTools:
+        def execute(self, tool, *, command, namespace):
+            assert tool == 'kubectl'
+            return agent._run_kubectl(command, namespace, kubectl_available=True, payload={'cluster_id':'east'})
+    result = collect(HostTools(), ['kubectl get endpoints gateway -n shop'])
+    actual = result['tool_results'][-1]
+    assert actual['command'] == projection_command('Endpoints', 'shop', 'gateway')
+    assert actual['success'] and evidence_observed_at(actual['data'])
+    observations = committed_tool_observations({**actual, 'cluster_id':'east',
+                                                'timestamp':evidence_observed_at(actual['data'])})
+    assert len(observations) == 1
+    assert observations[0]['raw_ref']['metadata']['uid'] == 'gateway-uid'
+    assert observations[0]['raw_ref']['subsets'] == []
+
+
+@pytest.mark.parametrize('command', [
+    'get endpoints gateway -n shop -o wide',
+    'get endpoints gateway -n shop -o json',
+    'get endpoints gateway -n shop --output=jsonpath={.subsets}',
+    'get endpoints gateway -n shop -l app=engine',
+    'get endpoints gateway -n shop --watch',
+    'get endpoints gateway other -n shop',
+    'get endpoints other -n shop',
+    'get endpoints -n shop',
+    'get endpoints gateway -n shop -n shop',
+])
+def test_named_endpoint_rewrite_does_not_discard_other_command_semantics(command):
+    from skill_runtime.kubectl_safety import readonly_kubectl_args
+    path = Path(__file__).parents[1] / 'skill_runtime/skills/generic_evidence_collection/skill.py'
+    spec = importlib.util.spec_from_file_location('scoped_collector_guard', path)
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    assert module._named_endpoints_projection(readonly_kubectl_args(command, 'shop'), 'shop', 'gateway') is None
+
+
 def test_multiple_matching_templates_remain_ambiguous():
     rows = objects()
     rows.append(resource('Deployment', 'engine-two', spec={'replicas': 0,

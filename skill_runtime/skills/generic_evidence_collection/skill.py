@@ -4,7 +4,7 @@ import re
 import shlex
 from typing import Any, Dict, List
 from skill_runtime.kubectl_safety import readonly_kubectl_args
-from skill_runtime.service_evidence import collect_service_evidence, MAX_TOOL_CALLS
+from skill_runtime.service_evidence import collect_service_evidence, projection_command, MAX_TOOL_CALLS
 
 
 def _payload(context: Dict[str, Any]) -> Dict[str, Any]:
@@ -13,6 +13,38 @@ def _payload(context: Dict[str, Any]) -> Dict[str, Any]:
 
 def _namespace(payload: Dict[str, Any]) -> str:
     return str(payload.get("namespace") or "default")
+
+
+def _named_endpoints_projection(args: List[str], namespace: str, service: str) -> str | None:
+    """Convert only an unmodified, named Endpoints read to the host schema."""
+    if not args or args[0] != 'get':
+        return None
+    rest, namespaces = [], []
+    i = 1
+    while i < len(args):
+        arg = args[i]
+        if arg in {'-n', '--namespace'}:
+            if i + 1 >= len(args):
+                return None
+            namespaces.append(args[i + 1]); i += 2
+        elif arg.startswith('--namespace='):
+            namespaces.append(arg.split('=', 1)[1]); i += 1
+        else:
+            rest.append(arg); i += 1
+    if namespaces != [namespace]:
+        return None
+    if len(rest) == 2 and rest[0] == 'endpoints':
+        name = rest[1]
+    elif len(rest) == 1 and rest[0].startswith('endpoints/'):
+        name = rest[0].split('/', 1)[1]
+    else:
+        return None
+    if not service or name != service:
+        return None
+    try:
+        return projection_command('Endpoints', namespace, name)
+    except ValueError:
+        return None
 
 
 def _target_commands(payload: Dict[str, Any]) -> List[str]:
@@ -84,6 +116,13 @@ def diagnose(context: Dict[str, Any]) -> Dict[str, Any]:
             if any(resource.split("/")[0].split(".")[0].casefold() in {"secret", "secrets"}
                    for arg in args for resource in arg.split(",")):
                 continue
+            # Default kubectl tables have no UID/resourceVersion and cannot be
+            # independently reviewed. Use the same bounded named-object read
+            # only when no selector, output format, or other option is present.
+            endpoint_projection = (_named_endpoints_projection(args, _namespace(payload), str(payload.get('service') or ''))
+                                   if service_scope is not None else None)
+            if endpoint_projection is not None:
+                kubectl_command = endpoint_projection
             # Structured consumers validate object identity and endpoint state
             # from JSON. Model-selected YAML is valid kubectl syntax, but used
             # to silently bypass those predicates. Normalize only get YAML;
