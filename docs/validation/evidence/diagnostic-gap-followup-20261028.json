@@ -1,0 +1,44 @@
+{
+  "regression": {
+    "execution": "remote_network_isolated_container",
+    "targeted_passed": 683,
+    "full_passed": 2491,
+    "javascript_syntax_passed": true,
+    "source_hashes_unchanged": true
+  },
+  "preflights": [
+    {
+      "baseline": {
+        "samples": 20,
+        "successes": 20,
+        "controls_healthy": true,
+        "p95_ms": 46.164
+      },
+      "fault_dispatched": false,
+      "watchdog_armed": false,
+      "error_reason": "healthy_candidate_diagnosis_not_completed",
+      "summary_sha256": "ddf060d99e35446efbf5755d1872bca945fe8bff9a40f628b0b2f76db6254542"
+    },
+    {
+      "baseline": {
+        "samples": 20,
+        "successes": 20,
+        "controls_healthy": true,
+        "p95_ms": 45.769
+      },
+      "fault_dispatched": false,
+      "watchdog_armed": false,
+      "error_reason": "healthy_candidate_diagnosis_not_completed",
+      "summary_sha256": "ab9e072cee109d3164ce57f1251dbbaac4393a3f12772673b11e7e71b4b9f91c"
+    }
+  ],
+  "post_preflight_target": {
+    "replicas": 1,
+    "ready_replicas": 1,
+    "fence_present": false
+  },
+  "fault_injected": false,
+  "autonomous_recovery_accepted": false,
+  "skill_adaptive_replanning_enabled": false,
+  "production_replaced": false
+}

@@ -1202,6 +1202,9 @@ class SkillAgent:
                         "service_scope 非 collected 时不得选择根因对象。身份绑定也不代表独立复核通过。"
                         "逐项评估 hypotheses，在 hypothesis_assessments 中只引用 hypothesis_evidence_catalog 的完整 ID；"
                         "没有引用不能确认或排除候选，采集失败不等于反驳。历史知识只用于候选，不是当前观测。"
+                        "仅当候选有 verification_test 且引用的同对象观测中该测试的 verification_checks 为 true，"
+                        "才能提出 rejected；没有该测试或直接反证时保留 active 并写明未决问题。"
+                        "其他候选得分较低、缺少支持或当前没有 Pod，均不能作为排除反证。"
                     ),
                 },
                 {

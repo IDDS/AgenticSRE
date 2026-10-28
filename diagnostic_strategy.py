@@ -346,6 +346,11 @@ class InvestigationController:
                     and not _rows(hypothesis.get('validation_errors'))
                     and finite_confidence(top.get('confidence'),0)-finite_confidence(hypothesis.get('confidence'),0)<=margin+1e-9):
                 alternatives.append(hypothesis)
+        # A failed exclusion is an outstanding assertion even when its model
+        # score is low or it has no supporting citations. Do not let ranking
+        # hide it from the next investigation round.
+        pending_rejections=[h for h in active if h.get('proposed_status')=='rejected'
+                            and 'unverified_rejection' in _rows(h.get('validation_errors'))]
         requested_failed=[a for a in _rows(top.get('next_agents')) if a in self.agents
                           and self.source_states[a]['status']=='failed']
         requested_retries=[a for a in requested_failed if self.source_states[a]['retry_eligible']]
@@ -354,6 +359,8 @@ class InvestigationController:
             gaps.append('leading_hypothesis_open_questions')
         if alternatives:
             gaps.append('close_supported_alternatives')
+        if pending_rejections:
+            gaps.append('unverified_candidate_rejections')
         if requested_failed:
             gaps.append('requested_source_retry_pending')
         score_ready=finite_confidence(top.get('confidence'),0)>=self.threshold and top.get('status')=='confirmed'
@@ -364,10 +371,11 @@ class InvestigationController:
                 ([] if grounded else ['leading_hypothesis_not_grounded'])+
                 ([] if score_ready else ['leading_hypothesis_not_confirmed_above_threshold']))+gaps,
             "open_questions":questions,"close_alternative_ids":[h.get('id') for h in alternatives][:5],
+            "unverified_rejection_ids":[h.get('id') for h in pending_rejections][:5],
             "requested_source_retries":list(dict.fromkeys(requested_retries)),
             "requested_failed_sources":list(dict.fromkeys(requested_failed)),
             "alternative_score_margin":margin,"score_comparison_is_heuristic":True}
-        focused=[top,*alternatives] if alternatives else active[:2]
+        focused=[top,*pending_rejections,*alternatives] if pending_rejections or alternatives else active[:2]
         hints=list(dict.fromkeys(a for h in focused for a in _rows(h.get("next_agents")) if a in self.agents))
         untried=[a for a in self.agents if not self.attempts[a]]
         retry=[a for a in self.agents if self.source_states[a]['retry_eligible']]
@@ -416,7 +424,7 @@ class InvestigationController:
                 'unresolved_collection_failures':failures,
                 'open_questions':[q[:160] for q in last['readiness']['open_questions'][:2]],
                 **{key:last['readiness'][key] for key in
-                    ('leading_hypothesis_id','blockers','close_alternative_ids','requested_failed_sources')}},
+                    ('leading_hypothesis_id','blockers','close_alternative_ids','unverified_rejection_ids','requested_failed_sources')}},
             "previous_decision":last["decision"],
             "unresolved_collection_failures":failures,
             "last_top_hypothesis_id":last["top_hypothesis_id"],
@@ -434,7 +442,8 @@ def apply_investigation_readiness_gate(report, judge, rounds):
     """
     readiness=_dict(rounds[-1].get('readiness')) if rounds else {}
     unresolved=[code for code in _rows(readiness.get('blockers')) if code in (
-        'leading_hypothesis_open_questions','close_supported_alternatives','requested_source_retry_pending')]
+        'leading_hypothesis_open_questions','close_supported_alternatives','requested_source_retry_pending',
+        'unverified_candidate_rejections')]
     if not unresolved:
         return report,judge
     report,judge=copy.deepcopy(report),copy.deepcopy(judge)
@@ -442,6 +451,7 @@ def apply_investigation_readiness_gate(report, judge, rounds):
         'leading_hypothesis_id':readiness.get('leading_hypothesis_id'),'blockers':unresolved,
         'open_questions':copy.deepcopy(readiness.get('open_questions',[])),
         'close_alternative_ids':copy.deepcopy(readiness.get('close_alternative_ids',[])),
+        'unverified_rejection_ids':copy.deepcopy(readiness.get('unverified_rejection_ids',[])),
         'requested_failed_sources':copy.deepcopy(readiness.get('requested_failed_sources',[])),
         'resolution_recorded':False,'confidence_cap':.65,
         'confidence_before_cap':finite_confidence(report.get('confidence'),0)}
