@@ -30,7 +30,7 @@ def scenario(monkeypatch, tmp_path):
     monkeypatch.setitem(web._state, 'rca_runs', {'rca-one': run})
     monkeypatch.setattr(web, 'build_investigation', lambda run: copy.deepcopy(model))
     monkeypatch.setattr(web, 'action_context', lambda model: {'recorded_conditions_met': True, 'target': target})
-    monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda body, execution=False: None)
+    monkeypatch.setattr(web, '_bind_ontology_heal_input', lambda body, execution=False, guarded_skill=False: None)
     monkeypatch.setattr(web, '_build_heal_suggestions', lambda body: {'suggestions': [action]})
     monkeypatch.setattr(web, '_verify_ontology_action', lambda ctx, commands: {'spec': {'replicas': 0,
         'template': {'metadata': {'labels': {'app': 'engine'}}}}})
@@ -195,7 +195,7 @@ def test_coordinator_reaches_actual_heal_gate_and_verification_with_controlled_d
     stats = {**scope, 'scope_required': True, 'verification_required': True, 'verification_scope_complete': True,
              'sample_count': 20, 'success_count': 20, 'failure_count': 0, 'success_rate': 1.0}
     records, dispatched = [], []
-    def bind(body, execution=False):
+    def bind(body, execution=False, guarded_skill=False):
         body.update(cluster_id='east', namespace='shop')
         return context
     monkeypatch.setattr(web, '_bind_ontology_heal_input', bind)

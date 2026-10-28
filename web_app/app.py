@@ -41,6 +41,7 @@ from fastapi.templating import Jinja2Templates
 
 from orchestrator.confidence_calibrator import calibrate_llm_fault_confidence
 from orchestrator.skill_agent import SkillAgent, SkillAgentRequest
+from orchestrator.skill_scale_evidence import assess_scale_zero_evidence
 from operational_ontology import (build_investigation, query_investigation, result_envelopes,
                                   action_context, command_targets_bound_object, preconditioned_action, ontology_schema)
 from operational_lineage import collect_lineage, traceable_object
@@ -12645,7 +12646,53 @@ def _record_verified_recovery_outcome(
         return {"recorded": False, "reason": "history_store_error", "error": str(exc), **recovery_scope}
 
 
-def _bind_ontology_heal_input(body: Dict[str, Any], *, execution: bool = False) -> Optional[Dict[str, Any]]:
+def _guarded_skill_scale_context(run: Dict[str, Any], model: Dict[str, Any]) -> Dict[str, Any]:
+    """Reconstruct a narrow Skill action contract from server-held evidence."""
+    context = action_context(model)
+    if (run.get('guarded_auto_recovery') is not True or run.get('status') != 'completed'
+            or model.get('gaps') or context.get('blockers') != ['diagnosis_gate_not_allowed']):
+        return context
+    target = context.get('target') or {}
+    layers = result_envelopes(run)
+    report = next((layer for layer in reversed(layers) if layer.get('root_cause')), {})
+    root = report.get('root_entity') if isinstance(report.get('root_entity'), dict) else {}
+    if (target.get('kind') != 'Deployment' or root.get('uid') != target.get('uid')
+            or root.get('resource_version') != context.get('expected_resource_version')
+            or str(report.get('fault_type') or '').lower().replace('_', '') != 'serviceunavailable'):
+        return context
+    services = {row['id']: row for row in model.get('objects', []) if row.get('kind') == 'Service'
+                and row.get('identity_status') == 'uid_bound'}
+    related = {row.get('source_id') for row in model.get('relations', [])
+               if row.get('type') == 'matches_workload_template' and row.get('target_id') == target.get('id')
+               and row.get('source_id') in services}
+    if len(related) != 1:
+        return context
+    service = services[next(iter(related))]
+    agent = next((layer.get('agent_evidence') for layer in layers
+                  if isinstance(layer.get('agent_evidence'), dict)), {})
+    collection = agent.get('agent_evidence_collection') if isinstance(agent, dict) else {}
+    scope = collection.get('service_scope') if isinstance(collection, dict) else None
+    judge = next((layer.get('judge') for layer in layers if isinstance(layer.get('judge'), dict)), None)
+    actual = assess_scale_zero_evidence(root_entity=root, service=service.get('name'), scope=scope, judge=judge)
+    strategy = next((layer.get('diagnostic_strategy') for layer in layers
+                     if isinstance(layer.get('diagnostic_strategy'), dict)), {})
+    if actual.get('eligible_for_further_review') is not True or strategy.get('scale_zero_evidence') != actual:
+        return context
+    cfg = _get_config()
+    policies = [p for p in getattr(cfg.remediation, 'auto_scale_targets', []) if isinstance(p, dict)
+                and all(p.get(k) == v for k, v in {'cluster_id': target.get('cluster_id'),
+                    'namespace': target.get('namespace'), 'deployment': target.get('name'),
+                    'service': service.get('name')}.items())]
+    if (getattr(cfg.remediation, 'auto_loop_enabled', False) is not True or len(policies) != 1
+            or type(policies[0].get('replicas')) is not int or not 1 <= policies[0]['replicas'] <= 100):
+        return context
+    return {**context, 'blockers': [], 'recorded_conditions_met': True,
+            'guarded_skill_scale_contract': {'service': service['name'], 'replicas': policies[0]['replicas'],
+                                             'evidence_ids': actual['cited_evidence_ids']}}
+
+
+def _bind_ontology_heal_input(body: Dict[str, Any], *, execution: bool = False,
+                              guarded_skill: bool = False) -> Optional[Dict[str, Any]]:
     """Use server-held diagnosis and scope when a proposal references a run."""
     run_id = body.get("source_run_id")
     if not run_id:
@@ -12665,7 +12712,7 @@ def _bind_ontology_heal_input(body: Dict[str, Any], *, execution: bool = False) 
     body["diagnosis"] = copy.deepcopy(report)
     body["root_cause"] = report.get("root_cause", "")
     body["fault_type"] = report.get("fault_type", "")
-    context = action_context(model)
+    context = _guarded_skill_scale_context(run, model) if guarded_skill else action_context(model)
     target = context.get("target") or {}
     root = report.get("root_entity") or {}
     # A named root can anchor a proposal even while its incarnation is missing;
@@ -12712,6 +12759,20 @@ def _verify_ontology_action(context: Dict[str, Any], commands: List[str]) -> Dic
     if context["blockers"]:
         raise HTTPException(409, {"message": "关联诊断未满足对象动作前置条件", "ontology": context})
     target = context["target"]
+    contract = context.get('guarded_skill_scale_contract')
+    if contract:
+        if not isinstance(contract, dict) or not 1 <= len(commands) <= 2:
+            raise HTTPException(409, "受控 Skill 动作契约无效")
+        for index, command in enumerate(commands):
+            try:
+                args = shlex.split(command)
+                values = [v.split('=', 1)[1] for v in args if v.startswith('--replicas=')]
+                values += [args[i + 1] for i, v in enumerate(args[:-1]) if v == '--replicas']
+            except (ValueError, TypeError):
+                raise HTTPException(409, "受控 Skill 动作参数无效")
+            desired = contract.get('replicas') if index == 0 else 0
+            if args[:2] != ['kubectl', 'scale'] or values != [str(desired)]:
+                raise HTTPException(409, "受控 Skill 只允许预先配置的缩零恢复动作")
     if not all(command_targets_bound_object(command, target) for command in commands):
         raise HTTPException(409, "动作必须显式指向绑定对象；跨对象动作需要独立建模和验证。")
     if not all(_is_safe_k8s_name(target.get(k, "")) for k in ("name", "namespace")):
@@ -12759,7 +12820,8 @@ def _execute_ontology_command(command: str, context: Dict[str, Any], proposal_id
 async def heal_execute(request: Request):
     """Execute user-confirmed self-healing commands, defaulting to dry-run."""
     body = await request.json()
-    ontology = _bind_ontology_heal_input(body, execution=True)
+    ontology = _bind_ontology_heal_input(body, execution=True,
+        guarded_skill=isinstance(request, _GuardedHealRequest))
     cfg = _get_config()
     suggestion = _build_heal_suggestions(body)
     namespace = body.get("namespace") or suggestion.get("namespace") or cfg.kubernetes.namespace or "default"
@@ -12991,6 +13053,10 @@ class _InternalHealRequest:
         return copy.deepcopy(self.body)
 
 
+class _GuardedHealRequest(_InternalHealRequest):
+    """Internal capability: external HTTP requests cannot instantiate this type."""
+
+
 async def _guarded_auto_recovery(run_id: str) -> Dict[str, Any]:
     """Run at most one server-selected, ontology-bound auto action per RCA.
 
@@ -13028,7 +13094,7 @@ async def _guarded_auto_recovery(run_id: str) -> Dict[str, Any]:
         dispatched = False
         try:
             model = build_investigation(_json_safe_snapshot(run))
-            context = action_context(model)
+            context = _guarded_skill_scale_context(run, model)
             target = context.get("target") or {}
             if not context.get("recorded_conditions_met") or target.get("kind") != "Deployment":
                 claim.update(status="blocked", reason="ontology_action_not_ready", blockers=context.get("blockers", []))
@@ -13055,7 +13121,7 @@ async def _guarded_auto_recovery(run_id: str) -> Dict[str, Any]:
                     policy = copy.deepcopy(policies[0])
                     body = {"source_run_id": run_id, "ontology_revision": model["revision"],
                             "service": service["name"], "source": "guarded_auto_recovery"}
-                    _bind_ontology_heal_input(body, execution=True)
+                    _bind_ontology_heal_input(body, execution=True, guarded_skill=True)
                     suggestion = _build_heal_suggestions(body)
                     candidates = []
                     for item in suggestion.get("suggestions", []):
@@ -13106,7 +13172,7 @@ async def _guarded_auto_recovery(run_id: str) -> Dict[str, Any]:
                             _atomic_write_json(claim_path, claim)
                             return claim
                         body.update(commands=[item["command"]], rollback_commands=[item["rollback_command"]], dry_run=True)
-                        preview = await heal_execute(_InternalHealRequest(body))
+                        preview = await heal_execute(_GuardedHealRequest(body))
                         if preview.get("status") != "dry_run" or not preview.get("id"):
                             claim.update(status="blocked", reason="preview_failed")
                         else:
@@ -13138,7 +13204,7 @@ async def _guarded_auto_recovery(run_id: str) -> Dict[str, Any]:
                             _atomic_write_json(claim_path, claim)
                             body.update(dry_run=False, auto_execute=True, ontology_proposal_id=preview["id"])
                             dispatched = True
-                            result = await heal_execute(_InternalHealRequest(body))
+                            result = await heal_execute(_GuardedHealRequest(body))
                             claim.update(status=result.get("status", "outcome_unknown"), heal_run_id=result.get("id"),
                                          success=result.get("success"), verification=result.get("verification"))
         except Exception as exc:

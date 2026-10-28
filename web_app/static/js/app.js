@@ -4319,7 +4319,7 @@ function renderRCAFinalResult(result) {
     let html = `<div class="rca-result-structured">`;
     html += `<div class="result-banner ${status === 'completed' && !needsReview ? 'success' : 'failed'}"><h4>${status === 'completed' ? (needsReview ? '分析完成 · 待人工复核' : '&#10003; 根因分析完成') : '&#10007; 分析失败'}</h4></div>`;
     html += `<div class="rca-root-cause">${escapeHtml(rootCause)}</div>`;
-    if (needsReview) html += '<p class="text-muted">结论尚待复核，自动学习与自动恢复已暂停。</p>';
+    if (needsReview) html += '<p class="text-muted">诊断尚有未满足的通用准入条件；实际动作和恢复状态以对象策略与下方记录为准。</p>';
     if (rca.model_response_validation?.failed_calls?.length || rca.model_response_validation?.failed_stages?.length) {
         html += '<div class="rca-remediation rca-model-failure" role="status"><strong>模型调用或报告生成失败</strong><p>本次模型执行未完成，现有观测与候选仅供人工复核，自动动作已阻断。</p></div>';
     }
