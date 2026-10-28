@@ -212,7 +212,7 @@ def test_rca_api_passes_hydrated_snapshot_to_pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(app, '_resolve_rca_cluster_scope', lambda *args: ('', None))
     monkeypatch.setattr(app, '_llm_configured', lambda *args: True)
     monkeypatch.setattr(app, '_get_pipeline', Pipeline)
-    def saved():
+    def saved(*, required_run_id=None):
         if any(row['status'] == 'completed' for row in app._state['rca_runs'].values()):
             done.set()
         return True
