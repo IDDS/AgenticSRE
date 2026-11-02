@@ -18,7 +18,7 @@ from skill_runtime.ontology_history import collection_time
 MAX_COMMANDS = 128
 # Input and output have separate caps: a complete evidence snapshot may be
 # larger than a concise reviewer verdict. The prompt retains its own hard cap.
-MAX_REVIEW_INPUT_BYTES = 16000
+MAX_REVIEW_INPUT_BYTES = 24000
 MAX_REVIEW_BYTES = 12000
 # The complete 16 KB snapshot appears in both evidence and citation contexts
 # in the Judge prompt. Keep a separate bounded envelope large enough for that
