@@ -38,6 +38,35 @@ def test_scoped_event_read_is_fenced_by_two_identity_reads():
     assert result['execution_authorized'] is False
 
 
+def test_active_candidate_event_gap_triggers_the_same_bounded_reads():
+    calls=[]
+    def runner(command):
+        calls.append(command)
+        data='No resources found' if command.startswith('get events') else json.dumps(deployment())
+        return {'command':command, 'success':True, 'executed':True, 'data':data}
+    candidate={'id':'H3','status':'active','proposed_status':'active',
+               'unresolved_questions':['Deployment 最近有何事件？'], 'next_agents':['event_agent']}
+    result, reads=collect_followup(namespace='shop', cluster_id='cluster-a', root_entity=ROOT,
+        service_scope=SCOPE, hypotheses=[candidate], run_read=runner)
+    assert result['candidate_ids']==['H3'] and result['stop_reason']=='followup_collected_review_required'
+    assert len(reads)==len(calls)==3 and 'involvedObject.uid=deployment-uid' in calls[1]
+    assert result['execution_authorized'] is False
+
+
+@pytest.mark.parametrize('candidate', [
+    {'status':'active','unresolved_questions':[''], 'next_agents':['event_agent']},
+    {'status':'active','unresolved_questions':['need events'], 'next_agents':['metric_agent']},
+    {'status':'confirmed','unresolved_questions':['need events'], 'next_agents':['event_agent']},
+    {'status':'active','unresolved_questions':'need events', 'next_agents':['event_agent']},
+    {'status':'active','unresolved_questions':['need events'], 'next_agents':'event_agent'},
+])
+def test_unmatched_or_malformed_gap_does_not_run_reads(candidate):
+    calls=[]
+    result, reads=collect_followup(namespace='shop', cluster_id='cluster-a', root_entity=ROOT,
+        service_scope=SCOPE, hypotheses=[candidate], run_read=lambda command:calls.append(command))
+    assert not result['attempted'] and not reads and not calls
+
+
 @pytest.mark.parametrize('change', [{'uid': 'replacement'}, {'version': '43'}])
 def test_changed_identity_or_resource_version_stops_without_event_read(change):
     calls = []
