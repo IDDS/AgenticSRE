@@ -182,14 +182,16 @@ def falsification_evidence(hypothesis,catalog,refs):
     if test not in ('zero_cpu_memory_requests','no_pvc_or_ephemeral_volume'):
         return []
     service=hypothesis.get('service')
-    objects={tuple(_dict(c.get('entity')).get(k) for k in ('namespace','name','uid'))
+    identity_fields=('cluster_id','namespace','name','uid')
+    objects={tuple(_dict(c.get('entity')).get(k) for k in identity_fields)
         for c in catalog if _dict(c.get('entity')).get('kind')=='Pod'
         and _dict(c.get('entity')).get('uid') and (not service or _dict(c.get('entity')).get('name')==service)}
     if len(objects)!=1:
         return []
     target=next(iter(objects))
     return [c['id'] for c in catalog if c.get('id') in refs
-        and tuple(_dict(c.get('entity')).get(k) for k in ('namespace','name','uid'))==target
+        and _dict(c.get('entity')).get('kind')=='Pod'
+        and tuple(_dict(c.get('entity')).get(k) for k in identity_fields)==target
         and _dict(c.get('verification_checks')).get(test) is True]
 
 
