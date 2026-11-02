@@ -153,6 +153,27 @@ def test_invalid_confidence_does_not_create_a_confirmed_candidate(score):
     assert h.confidence==.6 and h.status=="active" and "invalid_confidence_value" in h.validation_errors
 
 
+@pytest.mark.parametrize('change', [
+    {'supporting_evidence_ids':['invented']},
+    {'supporting_evidence_ids':[], 'confidence':float('nan')},
+    {'supporting_evidence_ids':[], 'status':'unknown'},
+    {'supporting_evidence_ids':[], 'status':'confirmed'},
+])
+def test_invalid_update_preserves_previous_hypothesis_evidence(change):
+    agent = HypothesisAgent(None)
+    agent.set_evidence_catalog([{'id':'old'}, {'id':'new'}])
+    hyp = Hypothesis('H1', 'investigate', .6, supporting_evidence_ids=['old'],
+        supporting_evidence=['prior observation'], update_reason='prior reasoning')
+    update = {'id':'H1', 'confidence':.7, 'status':'active',
+        'supporting_evidence_ids':['new'], 'contradicting_evidence_ids':[], 'reasoning':'invalid update'}
+    update.update(change)
+    result = agent._grounded_updates([hyp], {'hypotheses':[update]}, False, 6)[0]
+    assert result.validation_errors
+    assert result.supporting_evidence_ids == ['old']
+    assert result.supporting_evidence == ['prior observation']
+    assert result.update_reason == 'prior reasoning'
+
+
 def test_duplicate_updates_do_not_let_last_high_confidence_claim_win():
     _,catalog=saved_catalog(fact())
     agent=HypothesisAgent(Model({"hypotheses":[{"id":"H1","confidence":.1},{"id":"H1","confidence":.99,
