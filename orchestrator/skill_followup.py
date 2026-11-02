@@ -1,4 +1,4 @@
-"""One bounded, identity-fenced read-only follow-up for unresolved exclusions."""
+"""One bounded, identity-fenced read-only follow-up for scoped evidence gaps."""
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from datetime import datetime, timezone
 import json
@@ -10,8 +10,15 @@ from skill_runtime.service_evidence import projection_command
 
 def collect_followup(*, namespace, cluster_id, root_entity, service_scope, hypotheses, run_read,
                      per_read_timeout_s=5, total_budget_s=15):
-    pending = [h for h in hypotheses if h.get('status') == 'active'
-        and h.get('proposed_status') == 'rejected' and 'unverified_rejection' in (h.get('validation_errors') or [])]
+    def needs_followup(h):
+        if not isinstance(h, dict) or h.get('status') != 'active':
+            return False
+        if h.get('proposed_status') == 'rejected' and 'unverified_rejection' in (h.get('validation_errors') or []):
+            return True
+        questions, agents = h.get('unresolved_questions'), h.get('next_agents')
+        return (isinstance(questions, list) and any(isinstance(q, str) and q.strip() for q in questions)
+                and isinstance(agents, list) and 'event_agent' in agents)
+    pending = [h for h in hypotheses if needs_followup(h)]
     record = {'schema': 'skill-followup/v1', 'attempted': False, 'candidate_ids': [h.get('id') for h in pending],
               'commands': [], 'stop_reason': 'no_unverified_rejection', 'execution_authorized': False}
     if not pending:
