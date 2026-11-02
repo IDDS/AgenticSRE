@@ -113,6 +113,24 @@ def test_typed_check_id_resolves_to_same_ontology_observation():
         assert review['items'][0]['assertion_verified'] and not review['blockers']
 
 
+def test_other_kind_cannot_supply_a_pod_falsification_check():
+    hyp={'service':'target','verification_test':'no_pvc_or_ephemeral_volume'}
+    entity={'kind':'Pod','cluster_id':'east','namespace':'shop','name':'target','uid':'same'}
+    catalog=[{'id':'pod','entity':entity},
+             {'id':'other','entity':{**entity,'kind':'Deployment'},
+              'verification_checks':{'no_pvc_or_ephemeral_volume':True}}]
+    assert falsification_evidence(hyp,catalog,['other']) == []
+
+
+def test_same_pod_identity_in_two_clusters_is_ambiguous():
+    hyp={'service':'target','verification_test':'no_pvc_or_ephemeral_volume'}
+    entity={'kind':'Pod','cluster_id':'east','namespace':'shop','name':'target','uid':'same'}
+    catalog=[{'id':'east','entity':entity,'verification_checks':{'no_pvc_or_ephemeral_volume':True}},
+             {'id':'west','entity':{**entity,'cluster_id':'west'},
+              'verification_checks':{'no_pvc_or_ephemeral_volume':True}}]
+    assert falsification_evidence(hyp,catalog,['east']) == []
+
+
 def test_other_event_or_model_only_summary_cannot_falsify_registered_test():
     _,catalog=collect();h=HypothesisAgent(None).generate('Pod/target Pending')[2]
     other=next(c for c in catalog if c['signal_type']=='pod_waiting_state')
