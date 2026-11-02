@@ -206,6 +206,25 @@ def test_complete_medium_evidence_snapshot_can_reach_independent_reviewer():
     assert 'review_input_exceeds_budget' not in result['judge']['review_blockers']
 
 
+def test_large_but_complete_snapshot_reaches_review_without_relaxing_old_limit(monkeypatch):
+    import orchestrator.skill_review as module
+    rows = commands()
+    for i in range(5):
+        name = f'pod-{i}'
+        pod = {'kind':'Pod', 'projection':PROJECTION, 'metadata':{'name':name, 'namespace':'shop',
+            'uid':f'u-{i}', 'resourceVersion':'v1', 'labels':{f'x-{j}':'v'*35 for j in range(15)}}}
+        rows.append({'command':projection_command('Pod','shop',name), 'namespace':'shop',
+            'cluster_id':'east', 'success':True, 'executed':True, 'timestamp':AT, 'data':json.dumps(pod)})
+    monkeypatch.setattr(module, 'MAX_REVIEW_INPUT_BYTES', 16000)
+    old, stages, _ = reason(records=rows)
+    assert stages == ['reasoning'] and 'review_input_exceeds_budget' in old['judge']['review_blockers']
+    monkeypatch.setattr(module, 'MAX_REVIEW_INPUT_BYTES', 24000)
+    result, stages, _ = reason(records=rows)
+    assert 16000 < result['judge']['skill_review']['input_bytes'] <= 24000
+    assert stages == ['reasoning', 'independent_review']
+    assert 'review_input_exceeds_budget' not in result['judge']['review_blockers']
+
+
 def test_complete_context_remains_bounded_and_is_reviewed_without_truncation(monkeypatch):
     import orchestrator.skill_review as module
     rows = commands()
