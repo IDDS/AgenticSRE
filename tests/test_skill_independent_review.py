@@ -626,9 +626,11 @@ def test_saved_skill_review_binds_guarded_scale_contract_without_opening_public_
 def test_skill_followup_executes_and_rechecks_without_erasing_rejection(monkeypatch, crowded):
     from diagnostic_strategy import tool_evidence_catalog
     agent = SkillAgent(registry=None, skills_dir=ROOT/'skill_runtime/skills')
+    if crowded:
+        agent.llm_hypothesis_timeout_s = 3
     entity = {'cluster_id':'east','namespace':'shop','kind':'Deployment','name':'engine',
               'uid':'engine-Deployment-uid','resource_version':'opaque-a'}
-    calls, stages = [], []
+    calls, stages, review_deadlines = [], [], []
     def model(stage, messages, **kwargs):
         stages.append(stage)
         if stage == 'reasoning':
@@ -641,6 +643,7 @@ def test_skill_followup_executes_and_rechecks_without_erasing_rejection(monkeypa
                 'supporting_evidence_ids':[], 'contradicting_evidence_ids':[],
                 'unresolved_questions':[], 'next_agents':[]}]}
         assert stage == 'independent_review'
+        review_deadlines.append(kwargs.get('request_timeout_s'))
         return review_answer(hypothesis_reviews=[{'id':'H2','status':'uncertain',
             'supporting_evidence_ids':[], 'contradicting_evidence_ids':[], 'reason':'仍缺少直接反证'}])
     agent._call_llm_json = model
@@ -667,6 +670,7 @@ def test_skill_followup_executes_and_rechecks_without_erasing_rejection(monkeypa
     strategy = evidence['diagnostic_strategy']
     assert len(calls) == 3 and calls[1].startswith('get events')
     assert stages == ['reasoning','independent_review','hypothesis_followup','independent_review']
+    assert review_deadlines == [agent.llm_hypothesis_timeout_s, min(20, agent.llm_hypothesis_timeout_s)]
     assert strategy['followup']['stop_reason'] == 'followup_collected_review_required'
     assert len(strategy['independent_reviews']) == 2 and not strategy['adaptive_skill_replanning_enabled']
     assert len(strategy['rounds'][0]['catalog']) >= 5

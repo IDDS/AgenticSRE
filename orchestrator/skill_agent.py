@@ -1531,7 +1531,7 @@ class SkillAgent:
                 namespace=request.namespace or workflow_payload.get('namespace') or 'default',
                 service_scope=service_scope, hypotheses=[h.to_dict() for h in assessed],
                 call_model=lambda messages: self._call_llm_json('independent_review', messages, max_tokens=1800,
-                    request_timeout_s=8, max_retries=0, require_complete=True))
+                    request_timeout_s=min(20, self.llm_hypothesis_timeout_s), max_retries=0, require_complete=True))
             judge['skill_review']['provider_receipt'] = next((e.get('provider_receipt') for e in reversed(self.events[review_event_start:])
                 if e.get('event') in ('llm_independent_review_result','llm_independent_review_incomplete')), None)
             if followup['stop_reason'] != 'followup_collected_review_required':
