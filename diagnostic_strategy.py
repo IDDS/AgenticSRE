@@ -149,12 +149,18 @@ def strategy_view(run):
 def citation_update(update,catalog):
     """Validate references, never claim they logically entail the hypothesis."""
     known={c["id"] for c in catalog}
-    support=_rows(update.get("supporting_evidence_ids"))[:8]
-    oppose=_rows(update.get("contradicting_evidence_ids"))[:8]
-    invalid=[x for x in support+oppose if not isinstance(x,str) or x not in known]
-    support=list(dict.fromkeys(x for x in support if isinstance(x,str) and x in known))
-    oppose=list(dict.fromkeys(x for x in oppose if isinstance(x,str) and x in known))
+    support_input=update.get("supporting_evidence_ids", [])
+    oppose_input=update.get("contradicting_evidence_ids", [])
     errors=[]
+    if not isinstance(support_input, list) or not isinstance(oppose_input, list):
+        errors.append("invalid_evidence_reference_list")
+    support=support_input if isinstance(support_input, list) else []
+    oppose=oppose_input if isinstance(oppose_input, list) else []
+    if len(support)>8 or len(oppose)>8:
+        errors.append("evidence_reference_limit_exceeded")
+    invalid=[x for x in support+oppose if not isinstance(x,str) or x not in known]
+    support=list(dict.fromkeys(x for x in support if isinstance(x,str) and x in known))[:8]
+    oppose=list(dict.fromkeys(x for x in oppose if isinstance(x,str) and x in known))[:8]
     if invalid:
         errors.append("unresolved_evidence_reference")
     if set(support)&set(oppose):
