@@ -174,6 +174,24 @@ def test_invalid_update_preserves_previous_hypothesis_evidence(change):
     assert result.update_reason == 'prior reasoning'
 
 
+@pytest.mark.parametrize('change,expected', [
+    ({'supporting_evidence_ids':['observed'] * 8 + ['invented-reference']}, 'evidence_reference_limit_exceeded'),
+    ({'supporting_evidence_ids':['observed'], 'contradicting_evidence_ids':'invented-reference'}, 'invalid_evidence_reference_list'),
+    ({'supporting_evidence_ids':['observed'] * 9}, 'evidence_reference_limit_exceeded'),
+])
+def test_malformed_or_oversize_citations_cannot_change_a_hypothesis(change, expected):
+    _,catalog=saved_catalog(fact())
+    update={'id':'H1','confidence':.99,'status':'confirmed'}
+    update.update(change)
+    update['supporting_evidence_ids']=[catalog[0]['id'] if x == 'observed' else x
+        for x in update.get('supporting_evidence_ids', [])]
+    agent=HypothesisAgent(None)
+    agent.set_evidence_catalog(catalog)
+    h=agent._grounded_updates([Hypothesis('H1','待验证机制',.6)], {'hypotheses':[update]}, False, 6)[0]
+    assert h.confidence == .6 and h.status == 'active'
+    assert expected in h.validation_errors
+
+
 def test_duplicate_updates_do_not_let_last_high_confidence_claim_win():
     _,catalog=saved_catalog(fact())
     agent=HypothesisAgent(Model({"hypotheses":[{"id":"H1","confidence":.1},{"id":"H1","confidence":.99,
