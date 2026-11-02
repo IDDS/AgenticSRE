@@ -603,7 +603,9 @@ def test_saved_skill_review_binds_guarded_scale_contract_without_opening_public_
     assert context['guarded_skill_scale_contract']['service'] == 'gateway'
 
 
-def test_skill_followup_executes_and_rechecks_without_erasing_rejection(monkeypatch):
+@pytest.mark.parametrize('crowded', [False, True])
+def test_skill_followup_executes_and_rechecks_without_erasing_rejection(monkeypatch, crowded):
+    from diagnostic_strategy import tool_evidence_catalog
     agent = SkillAgent(registry=None, skills_dir=ROOT/'skill_runtime/skills')
     entity = {'cluster_id':'east','namespace':'shop','kind':'Deployment','name':'engine',
               'uid':'engine-Deployment-uid','resource_version':'opaque-a'}
@@ -629,7 +631,15 @@ def test_skill_followup_executes_and_rechecks_without_erasing_rejection(monkeypa
                 else commands()[-1]['data'])
         return {'command':command,'success':True,'executed':True,'data':data,'sample':data}
     monkeypatch.setattr(agent, '_run_kubectl', read)
-    evidence = {'agent_evidence_collection': {'commands':commands(), 'service_scope':{
+    rows = commands()
+    if crowded:
+        for i in range(25):
+            pod = {'kind':'Pod', 'metadata':{'namespace':'shop', 'name':f'pod-{i}',
+                'uid':f'pod-uid-{i}', 'resourceVersion':'v1'}}
+            rows.append({'command':projection_command('Pod','shop',f'pod-{i}'), 'namespace':'shop',
+                'cluster_id':'east','success':True,'executed':True,'timestamp':AT,'data':json.dumps(pod)})
+    old_ids = {r['id'] for r in tool_evidence_catalog(rows, limit=24)}
+    evidence = {'agent_evidence_collection': {'commands':rows, 'service_scope':{
         'status':'collected','candidate_workloads':['engine'],'gaps':[]}}}
     result = {'diagnosis':{'root_cause':'待诊断','confidence':.6}, 'skill_runtime':{'runs':[]}}
     agent.reason_about_result(SkillAgentRequest('HTTP 502','shop',{'payload':{'cluster_id':'east'}}),
@@ -641,6 +651,8 @@ def test_skill_followup_executes_and_rechecks_without_erasing_rejection(monkeypa
     assert strategy['followup']['stop_reason'] == 'followup_collected_review_required'
     assert len(strategy['independent_reviews']) == 2 and not strategy['adaptive_skill_replanning_enabled']
     assert len(strategy['rounds'][0]['catalog']) >= 5
+    if crowded:
+        assert {r['id'] for r in strategy['rounds'][0]['catalog']} - old_ids, 'follow-up observations must reach reassessment'
     candidate = strategy['rounds'][0]['after'][0]
     assert candidate['proposed_status'] == 'rejected' and 'unverified_rejection' in candidate['validation_errors']
     assert result['diagnosis']['judge']['needs_review'] and not result['diagnosis']['automation_gate']['allowed']

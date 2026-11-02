@@ -1465,7 +1465,13 @@ class SkillAgent:
             self._emit(first_review)
             reviews.append(first_review)
             command_records.extend(followup_reads)
-            hypothesis_catalog = tool_evidence_catalog(command_records, limit=24)
+            # Reserve room for targeted follow-up observations before filling
+            # the remainder with the earlier inventory. Existing citations keep
+            # priority and an unresolved citation remains a review blocker.
+            new_observations = tool_evidence_catalog(followup_reads, limit=24)
+            earlier_observations = tool_evidence_catalog(command_records, limit=24)
+            hypothesis_catalog, _ = merge_cited_catalog(hypothesis_catalog,
+                new_observations + earlier_observations, [h.to_dict() for h in assessed], [])
             for item in followup_reads:
                 self._emit({'event': 'tool_call', 'agent': self.name, 'tool': 'kubectl',
                     'command': item.get('command'), 'namespace': item.get('namespace'),
