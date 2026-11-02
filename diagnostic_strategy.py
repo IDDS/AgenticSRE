@@ -250,6 +250,22 @@ def validate_hypothesis_review(context, response):
         # Conservatively abstain on explicit absence/indirect rationales. This
         # narrow guard is not a general semantic entailment classifier.
         rationale_limits=[]
+        # Resource projections can show a structural mismatch, but neither
+        # their collection time nor a model's endorsement binds that mismatch
+        # to this incident or proves it caused the outage. Keep this narrow
+        # mechanism pending until a separately verified causal contract exists.
+        description=str(hypothesis.get('description') or '').casefold()
+        selector_claim=(('service' in description or '服务' in description)
+            and ('selector' in description or '选择器' in description)
+            and ('label' in description or '标签' in description)
+            and any(term in description for term in ('mismatch', 'not match', 'does not match',
+                                                      '不匹配', '不一致', '不相符')))
+        if validated and status == 'supported' and selector_claim:
+            rationale_limits.append('selector_mismatch_causality_not_verified')
+        pod_state_claim=('pod' in description and any(term in description for term in (
+            'crashloop', 'oomkilled', 'crashed', 'not ready', 'unready', '未就绪', '崩溃')))
+        if validated and status == 'supported' and pod_state_claim:
+            rationale_limits.append('pod_state_causality_not_verified')
         host_test_evidence=falsification_evidence(hypothesis,catalog,[c['id'] for c in catalog])
         if validated and status=='supported' and host_test_evidence:
             rationale_limits.append('typed_test_contradicts_support')

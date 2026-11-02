@@ -34,6 +34,34 @@ def test_review_does_not_mutate_or_relabel_proposer_and_is_not_execution_authori
     assert original==before and result["items"][0]["proposer_status"]=="confirmed"
 
 
+@pytest.mark.parametrize('description', [
+    'Service 选择器与 Pod 标签不匹配导致端点为空',
+    'Service selector and Pod labels mismatch causes empty endpoints',
+])
+def test_model_support_cannot_certify_selector_mismatch_causality_without_temporal_contract(description):
+    ctx=context()
+    ctx['hypotheses'][0]['description']=description
+    result=validate([row(reason='模板标签匹配且副本为零，因此支持标签不匹配')],ctx)
+    item=result['items'][0]
+    assert item['reviewer_status']=='supported' and item['status']=='uncertain'
+    assert not item['assertion_verified'] and result['blockers']
+    assert 'selector_mismatch_causality_not_verified' in item['rationale_limits']
+
+
+@pytest.mark.parametrize('description', [
+    '服务的 Pod 未就绪或已崩溃导致请求失败',
+    'Pod crashed and caused service outage',
+])
+def test_absent_pods_do_not_certify_a_pod_crash_or_readiness_cause(description):
+    ctx=context()
+    ctx['hypotheses'][0]['description']=description
+    result=validate([row(reason='副本为零，因此支持 Pod 崩溃或未就绪')],ctx)
+    item=result['items'][0]
+    assert item['reviewer_status']=='supported' and item['status']=='uncertain'
+    assert not item['assertion_verified'] and result['blockers']
+    assert 'pod_state_causality_not_verified' in item['rationale_limits']
+
+
 @pytest.mark.parametrize("changes",[
     {"supporting_evidence_ids":[]},{"supporting_evidence_ids":["invented"]},
     {"supporting_evidence_ids":[{}]},{"supporting_evidence_ids":"obs-real"},
