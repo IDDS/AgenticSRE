@@ -9,6 +9,7 @@ from .claims import assess_cpu_claim
 _PATTERNS = {
     'increase': re.compile(r'cpu(?:(?!导致|造成|引起|使得|caus|leading to)[^。；;，,\n]){0,32}?(?:升高|上升|增加|增长|increas(?:e|ed|ing))', re.I),
     'saturation': re.compile(r'cpu[^。；;，,\n]{0,24}?(?:饱和|saturat(?:ed|ion))', re.I),
+    'high': re.compile(r'\b(?:elevated|high)\s+cpu\b|\bcpu\b[^。；;，,\n]{0,24}?\b(?:elevated|high)\b', re.I),
 }
 _NEGATION = re.compile(r'(?:无|没有|未|不|缺少|不能|not|no|without)[^。;；\n]{0,14}$', re.I)
 
@@ -48,6 +49,10 @@ def audit_primary_cpu_claims(result: dict[str, Any], observations: dict[str, Any
     metric = matches[0].get('metrics') or {}
     before = (metric.get('before') or {}).get('CpuUsageRate(%)')
     after = (metric.get('after') or {}).get('CpuUsageRate(%)')
-    output['findings'] = [{'claim': name, **assess_cpu_claim(claim=name, before=before, after=after)} for name in claims]
+    output['findings'] = [
+        {'claim': name, 'status': 'insufficient', 'reason': 'high_cpu_threshold_not_defined'}
+        if name == 'high' else {'claim': name, **assess_cpu_claim(claim=name, before=before, after=after)}
+        for name in claims
+    ]
     output['status'] = 'requires_review' if any(x['status'] != 'supported' for x in output['findings']) else 'checked'
     return output

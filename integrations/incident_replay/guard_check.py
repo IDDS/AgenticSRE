@@ -25,6 +25,10 @@ def main():
     assert [item['claim'] for item in mixed['findings']] == ['saturation']
     increase = audit_primary_cpu_claims({'root_cause': 'svc 的 CPU 使用率和 P95 延迟显著升高', 'affected_services': ['svc']}, obs)
     assert [item['claim'] for item in increase['findings']] == ['increase']
+    elevated = audit_primary_cpu_claims({'root_cause': 'elevated CPU in svc', 'affected_services': ['svc']}, obs)
+    assert elevated['status'] == 'requires_review' and elevated['findings'][0]['reason'] == 'high_cpu_threshold_not_defined'
+    negative_high = audit_primary_cpu_claims({'root_cause': 'no elevated CPU in svc', 'affected_services': ['svc']}, obs)
+    assert negative_high['status'] == 'not_checked' and not negative_high['automatic_actions_allowed']
     print('incident replay windows and typed claim guard: PASS')
 
 
