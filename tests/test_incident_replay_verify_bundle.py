@@ -16,7 +16,7 @@ def _write(root, name, data, entries):
     return digest
 
 
-def _bundle(root):
+def _bundle(root, truncated_repeat=False):
     entries = []
     code_hashes = {}
     for name, key in [('runner.py', 'runner'), ('trace_evidence.py', 'trace_evidence'),
@@ -35,7 +35,9 @@ def _bundle(root):
             prepared['trace_extra_sha256'] = _write(root, f'{date}/{prefix}trace-extra-1.json',
                                                    {'source_sha256': prepared['trace_summary_sha256']}, entries)
             artifact = {'observation_sha256': prepared['observation_sha256'],
-                        'result': {'status': 'completed', 'affected_services': [target]}}
+                        'result': {'status': 'completed', 'affected_services': [target],
+                                   'evidence_coverage': {'final_context_truncated_agents':
+                                                         ['trace_agent'] if truncated_repeat and label == 'repeat' else []}}}
             result_hash = _write(root, f'{date}/{prefix}result-1.json', artifact, entries)
             progress = {'finished_utc': date, 'indices': [1], 'preparation': [prepared],
                         'results': [{'index': 1, 'status': 'completed', 'result_sha256': result_hash,
@@ -50,6 +52,7 @@ def test_recomputes_predictions_and_detects_tampering(tmp_path):
     assert result['integrity'] == 'verified'
     assert [batch['same_first_prediction'] for batch in result['batches']] == [1, 1]
     assert all(run['pod_hits'] == 1 and run['scheduled'] == 1 for batch in result['batches'] for run in batch['runs'])
+    assert all(run['pod_hits_without_final_context_truncation'] == 1 for batch in result['batches'] for run in batch['runs'])
     (tmp_path / '2022-08-22/result-1.json').write_text('{}')
     with pytest.raises(ValueError, match='file_integrity_mismatch'):
         verify_bundle(tmp_path)
@@ -83,3 +86,10 @@ def test_failed_case_stays_in_denominator(tmp_path):
     first = next(x for x in batch['runs'] if x['run'] == 'first')
     assert first['scheduled'] == 1 and first['pod_hits'] == 0 and first['cases'][0]['status'] == 'timeout'
     assert batch['comparable_predictions'] == 0
+
+
+def test_truncated_hit_is_not_counted_as_complete(tmp_path):
+    _bundle(tmp_path, truncated_repeat=True)
+    batch = verify_bundle(tmp_path)['batches'][0]
+    repeat = next(x for x in batch['runs'] if x['run'] == 'repeat')
+    assert repeat['pod_hits'] == 1 and repeat['pod_hits_without_final_context_truncation'] == 0

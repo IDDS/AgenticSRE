@@ -138,11 +138,20 @@ def verify_bundle(directory: Path) -> dict[str, Any]:
                     continue
                 prediction = affected[0]
                 predictions[label][index] = prediction
+                coverage = result.get('evidence_coverage')
+                truncated = coverage.get('final_context_truncated_agents') if isinstance(coverage, dict) else None
+                if not isinstance(truncated, list) or any(not isinstance(item, str) for item in truncated):
+                    truncated = None
                 case.update(expected_pod=target, predicted_first=prediction, pod_match=prediction == target,
-                            service_match=bool(prediction) and _service(prediction) == _service(target))
+                            service_match=bool(prediction) and _service(prediction) == _service(target),
+                            final_context_truncated_agents=truncated,
+                            omitted_comparable_groups=entry.get('omitted_comparable_groups'))
                 cases.append(case)
             runs.append({'run': label, 'scheduled': len(indices), 'pod_hits': sum(x['pod_match'] for x in cases),
-                         'service_hits': sum(x['service_match'] for x in cases), 'cases': cases})
+                         'service_hits': sum(x['service_match'] for x in cases),
+                         'pod_hits_without_final_context_truncation': sum(
+                             x['pod_match'] and x.get('final_context_truncated_agents') == [] for x in cases),
+                         'cases': cases})
         if set(predictions['first']) != set(predictions['repeat']):
             comparable = set(predictions['first']) & set(predictions['repeat'])
         else:
