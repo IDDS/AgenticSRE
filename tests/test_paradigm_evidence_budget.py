@@ -1,5 +1,6 @@
 from paradigms.evidence_budget import build_evidence_context
 from agents.evidence import format_evidence
+from eval.paradigm_real_injection_replay import _evidence_contract_status
 
 
 def test_evidence_beyond_old_limit_survives_when_budget_allows():
@@ -26,3 +27,11 @@ def test_reranking_receives_later_error_and_marks_longer_omissions():
     assert 'frontend errors=730' in format_evidence({'log_agent': {'summary': summary}})
     text = format_evidence({'log_agent': {'summary': 'a' * 2000}}, limit=5000)
     assert 'omitted evidence is unknown' in text
+
+
+def test_required_truncated_evidence_cannot_count_as_complete():
+    case = {'evidence_contract': {'required': ['log'], 'supporting': [], 'inapplicable': []}}
+    collected = {'log_agent': [{'available': True}]}
+    status = _evidence_contract_status(case, collected, ['log_agent'])
+    assert status['complete'] is False
+    assert status['missing'] == ['log'] and status['truncated'] == ['log']

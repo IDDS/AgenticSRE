@@ -238,7 +238,8 @@ def _score_artifact(result: Dict[str, Any], groups: Sequence[Sequence[str]]) -> 
 
 
 def _evidence_contract_status(
-    case: Dict[str, Any], tracker: Dict[str, List[Dict[str, Any]]]
+    case: Dict[str, Any], tracker: Dict[str, List[Dict[str, Any]]],
+    truncated_agents: Sequence[str] = (),
 ) -> Dict[str, Any]:
     """Evaluate collection against the case's reviewed minimum evidence set."""
     contract = case.get("evidence_contract") or {}
@@ -258,7 +259,8 @@ def _evidence_contract_status(
         evidence_type for evidence_type, agent in EVIDENCE_TYPE_TO_AGENT.items()
         if agent in collected_agents
     })
-    missing_types = sorted(set(required_types) - set(collected_types))
+    truncated_types = {kind for kind in required_types if EVIDENCE_TYPE_TO_AGENT[kind] in truncated_agents}
+    missing_types = sorted((set(required_types) - set(collected_types)) | truncated_types)
     supporting_collected = sorted(set(supporting_types) & set(collected_types))
     complete = bool(contract) and not missing_types
     return {
@@ -269,6 +271,7 @@ def _evidence_contract_status(
         "inapplicable": list(contract.get("inapplicable", [])),
         "collected": collected_types,
         "missing": missing_types,
+        "truncated": sorted(truncated_types),
         "supporting_collected": supporting_collected,
         "attempts": {name: len(attempts) for name, attempts in sorted(tracker.items())},
     }
@@ -337,7 +340,11 @@ async def _run_one(
         namespace="frozen-real-injection-replay",
     )
     elapsed = time.time() - started
-    evidence = _evidence_contract_status(case, getattr(pool, "_evidence_tracker", {}))
+    coverage = result.evidence_coverage if isinstance(result.evidence_coverage, dict) else {}
+    truncated = coverage.get('final_context_truncated_agents', [])
+    if not isinstance(truncated, list):
+        truncated = []
+    evidence = _evidence_contract_status(case, getattr(pool, "_evidence_tracker", {}), truncated)
     result.evidence_status = evidence["status"]
     result.evidence_contract = copy.deepcopy(case.get("evidence_contract", {}))
     result.evidence_collected = evidence["collected"]
