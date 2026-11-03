@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 import math
+import re
 from typing import Any, Iterable
 
 
@@ -98,3 +99,52 @@ def summarize_trace_spans(rows: Iterable[dict[str, Any]], *, event_time: int,
                             'parent minus child duration may include unrelated or concurrent work; not network latency',
                             'clock skew or cross-window spans can invalidate nesting and are excluded',
                             'latency changes do not prove causation']}
+
+
+def select_residual_comparisons(summary: dict[str, Any], *, source_sha256: str, limit: int = 4) -> dict[str, Any]:
+    """Select largest signed P95 changes; explicitly retain omission metadata.
+
+    This is a bounded presentation of observations, not a root-cause ranking.
+    The supplied hash must identify the complete frozen summary available for
+    audit. Missing baselines remain unpaired and never become zero.
+    """
+    if not isinstance(source_sha256, str) or not re.fullmatch(r'[0-9a-f]{64}', source_sha256):
+        raise ValueError('invalid source hash')
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError('invalid selection limit')
+    rows = summary.get('cross_pod_nested_duration_residuals') if isinstance(summary, dict) else None
+    quality = summary.get('quality') if isinstance(summary, dict) else None
+    windows = summary.get('windows_seconds') if isinstance(summary, dict) else None
+    if not isinstance(rows, list) or not isinstance(quality, dict) or not isinstance(windows, dict):
+        raise ValueError('missing residual observations')
+    groups: dict[tuple[str, str, str, str], dict[str, tuple[int, float]]] = defaultdict(dict)
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError('invalid residual row')
+        key = tuple(row.get(x) for x in ('parent_pod', 'child_pod', 'parent_operation', 'child_operation'))
+        window, count, value = row.get('window'), row.get('count'), row.get('p95_ms')
+        if (any(not isinstance(x, str) or not x for x in key) or window not in ('before', 'after')
+                or type(count) is not int or count <= 0 or type(value) not in (int, float)):
+            raise ValueError('invalid residual row')
+        try:
+            if not math.isfinite(value) or value < 0:
+                raise ValueError('invalid residual value')
+        except OverflowError as exc:
+            raise ValueError('invalid residual value') from exc
+        if window in groups[key]:
+            raise ValueError('duplicate residual group')
+        groups[key][window] = (count, value)
+    comparable = []
+    for key, values in groups.items():
+        if 'before' in values and 'after' in values:
+            before, after = values['before'], values['after']
+            comparable.append((after[1] - before[1], key, before, after))
+    comparable.sort(key=lambda entry: (-entry[0], entry[1]))
+    selected = [[*key, before[0], before[1], after[0], after[1]]
+                for _, key, before, after in comparable[:limit]]
+    return {'columns': ['parent_pod', 'child_pod', 'parent_op', 'child_op', 'before_n', 'before_p95_ms',
+                        'after_n', 'after_p95_ms'], 'rows': selected,
+            'selection': f'top {limit} signed P95 increases, no fault labels',
+            'omitted_comparable': max(0, len(comparable) - limit), 'unpaired': len(groups) - len(comparable),
+            'quality': quality, 'windows_seconds': windows, 'source_sha256': source_sha256,
+            'warning': 'Parent-child duration difference is not network latency or proof of cause; omitted groups unknown.'}
