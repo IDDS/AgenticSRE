@@ -1,7 +1,7 @@
 """Check modality-specific clipping and fail-closed typed CPU assessment."""
 from .claims import assess_cpu_claim, assess_workload_surge
 from .windows import build_windows
-from .audit import audit_primary_cpu_claims, audit_primary_workload_claim
+from .audit import audit_primary_cpu_claims, audit_primary_workload_claim, audit_exclusion_claims
 
 
 def main():
@@ -41,6 +41,10 @@ def main():
     obs['pods'][0]['metrics'] = {'before': [], 'after': {}}
     malformed = audit_primary_workload_claim({'root_cause': '请求量激增', 'affected_services': ['svc']}, obs)
     assert malformed['findings'][0]['reason'] == 'insufficient_baseline_samples'
+    assert audit_exclusion_claims({'root_cause': '已排除了 CPU 节流和网络分区'})['status'] == 'requires_review'
+    assert audit_exclusion_claims({'root_cause': '机制未知，但排除了 CPU 节流'})['status'] == 'requires_review'
+    assert audit_exclusion_claims({'root_cause': '无法排除 CPU 节流'})['status'] == 'not_checked'
+    assert audit_exclusion_claims({'root_cause': 'cannot rule out CPU throttling'})['status'] == 'not_checked'
     print('incident replay windows and typed claim guard: PASS')
 
 

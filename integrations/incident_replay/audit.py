@@ -15,6 +15,7 @@ _NEGATION = re.compile(r'(?:无|没有|未|不|缺少|不能|not|no|without)[^�
 _WORKLOAD_SURGE = re.compile(
     r'(?:请求量|请求速率|流量|traffic|request\s+(?:rate|volume))[^。；;，,\n]{0,12}'
     r'(?:激增|暴增|飙升|surge(?:d|s)?|spike(?:d|s)?)', re.I)
+_EXCLUSION = re.compile(r'排除(?:了)?|rul(?:e|ed)\s+out', re.I)
 
 
 def audit_primary_cpu_claims(result: dict[str, Any], observations: dict[str, Any]) -> dict[str, Any]:
@@ -91,4 +92,23 @@ def audit_primary_workload_claim(result: dict[str, Any], observations: dict[str,
         after = comparison.get('PodWorkload(Ops)') if isinstance(comparison, dict) else None
         finding = assess_workload_surge(before=before, after=after)
     output.update(status='requires_review', findings=[{'claim': 'workload_surge', **finding}])
+    return output
+
+
+def audit_exclusion_claims(result: dict[str, Any]) -> dict[str, Any]:
+    """Flag explicit exclusion claims for review; this is not proof checking."""
+    output: dict[str, Any] = {'status': 'not_checked', 'findings': [], 'automatic_actions_allowed': False,
+                              'limitations': ['partial phrase coverage', 'does not verify source citations',
+                                              'cannot establish or disprove excluded mechanisms']}
+    text = result.get('root_cause') if isinstance(result, dict) else None
+    if not isinstance(text, str):
+        return output
+    for match in _EXCLUSION.finditer(text):
+        prefix = text[max(0, match.start() - 20):match.start()]
+        prefix = re.split(r'[，,。;；\n]', prefix)[-1]
+        if re.search(r'(?:未|没有|无法|难以|不能|尚未|未能|not|cannot|can\x27t)(?:完全|直接|予以|被|能|\s){0,5}$', prefix, re.I):
+            continue
+        output.update(status='requires_review', findings=[{'claim': 'mechanism_excluded',
+                      'status': 'unverified', 'reason': 'requires_evidence_review'}])
+        break
     return output
