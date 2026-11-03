@@ -82,7 +82,7 @@ def format_evidence(evidence: Dict[str, Any], limit: int = 5000) -> str:
         if agent == "structured_evidence":
             continue
         if not isinstance(result, dict):
-            summaries.append(f"[{agent}] {clip(str(result), 1400)}")
+            summaries.append(f"[{agent}] {str(result)}")
             continue
         if result.get("error"):
             summaries.append(f"[{agent}] collection error: {clip(str(result.get('error')), 300)}")
@@ -107,9 +107,9 @@ def format_evidence(evidence: Dict[str, Any], limit: int = 5000) -> str:
             summaries.append(f"[{agent} current state] {clip(str(state['summary']), 1200)}")
         summary = result.get("summary")
         if summary:
-            summaries.append(f"[{agent} summary] {clip(str(summary), 1400)}")
+            summaries.append(f"[{agent} summary] {str(summary)}")
         elif not result.get("evidence_items") and not state:
-            summaries.append(f"[{agent}] {clip(json.dumps(result, ensure_ascii=False, default=str), 1400)}")
+            summaries.append(f"[{agent}] {json.dumps(result, ensure_ascii=False, default=str)}")
     # A trace with many spans must not crowd out logs/configuration from another source.
     while any(fact_groups):
         for group in fact_groups:
@@ -120,7 +120,35 @@ def format_evidence(evidence: Dict[str, Any], limit: int = 5000) -> str:
     if transitions:
         chronology = ["[Observed application state changes, oldest first; not collection times or verified causes] "
                       + json.dumps(transitions[-4:], ensure_ascii=False)]
-    return clip("\n".join(chronology + facts + summaries), max(0, limit))
+    budget = max(0, limit)
+    prefix = "\n".join(chronology + facts)
+    if not summaries:
+        return clip(prefix, budget)
+    # Preserve all summaries that fit; otherwise share the remaining space so
+    # a large first source cannot silently crowd out every later source.
+    full = "\n".join(chronology + facts + summaries)
+    if len(full) <= budget:
+        return full
+    if len(prefix) >= budget:
+        return clip(full, budget)
+    separator = 1 if prefix else 0
+    available = budget - len(prefix) - separator - max(0, len(summaries) - 1)
+    if available < len(summaries) * len(marker):
+        return clip(full, budget)
+    allocations = [0] * len(summaries)
+    active = list(range(len(summaries)))
+    while available > 0 and active:
+        share = max(1, available // len(active))
+        pending = []
+        for i in active:
+            grant = min(share, len(summaries[i]) - allocations[i], available)
+            allocations[i] += grant
+            available -= grant
+            if allocations[i] < len(summaries[i]):
+                pending.append(i)
+        active = pending
+    bounded = [clip(text, size) for text, size in zip(summaries, allocations)]
+    return "\n".join(([prefix] if prefix else []) + bounded)
 
 
 @dataclass

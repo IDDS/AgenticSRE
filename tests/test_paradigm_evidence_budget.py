@@ -25,8 +25,19 @@ def test_budget_is_shared_and_omitted_evidence_is_explicit():
 def test_reranking_receives_later_error_and_marks_longer_omissions():
     summary = 'healthy\n' * 90 + 'frontend errors=730'
     assert 'frontend errors=730' in format_evidence({'log_agent': {'summary': summary}})
-    text = format_evidence({'log_agent': {'summary': 'a' * 2000}}, limit=5000)
+    text = format_evidence({'log_agent': {'summary': 'a' * 6000}}, limit=5000)
     assert 'omitted evidence is unknown' in text
+
+
+def test_reranking_retains_longer_sources_that_fit_and_shares_tight_budget():
+    sources = {'metric_agent': {'summary': 'M' * 1800}, 'log_agent': {'summary': 'late error'},
+               'trace_agent': {'summary': 'T' * 1100}}
+    complete = format_evidence(sources, limit=5000)
+    assert 'M' * 1800 in complete and 'T' * 1100 in complete and 'omitted evidence is unknown' not in complete
+    tight = format_evidence(sources, limit=1400)
+    assert len(tight) <= 1400 and 'late error' in tight
+    assert 'M' * 100 in tight and 'T' * 100 in tight
+    assert tight.count('omitted evidence is unknown') == 2
 
 
 def test_required_truncated_evidence_cannot_count_as_complete():
