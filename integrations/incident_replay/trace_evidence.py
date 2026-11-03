@@ -117,6 +117,11 @@ def select_residual_comparisons(summary: dict[str, Any], *, source_sha256: str, 
     windows = summary.get('windows_seconds') if isinstance(summary, dict) else None
     if not isinstance(rows, list) or not isinstance(quality, dict) or not isinstance(windows, dict):
         raise ValueError('missing residual observations')
+    for field in ('ambiguous_spans_excluded', 'cross_pod_non_nested_or_cross_window'):
+        if type(quality.get(field)) is not int or quality[field] < 0:
+            raise ValueError('missing quality counts')
+    if any(type(windows.get(field)) is not int or windows[field] <= 0 for field in ('before', 'after')):
+        raise ValueError('invalid window lengths')
     groups: dict[tuple[str, str, str, str], dict[str, tuple[int, float]]] = defaultdict(dict)
     for row in rows:
         if not isinstance(row, dict):
@@ -146,5 +151,7 @@ def select_residual_comparisons(summary: dict[str, Any], *, source_sha256: str, 
                         'after_n', 'after_p95_ms'], 'rows': selected,
             'selection': f'top {limit} signed P95 increases, no fault labels',
             'omitted_comparable': max(0, len(comparable) - limit), 'unpaired': len(groups) - len(comparable),
-            'quality': quality, 'windows_seconds': windows, 'source_sha256': source_sha256,
-            'warning': 'Parent-child duration difference is not network latency or proof of cause; omitted groups unknown.'}
+            'excluded_duplicate_spans': quality['ambiguous_spans_excluded'],
+            'excluded_non_nested_or_cross_window': quality['cross_pod_non_nested_or_cross_window'],
+            'before_s': windows['before'], 'after_s': windows['after'], 'source_sha256': source_sha256,
+            'warning': 'Not network latency or proof of cause; omitted groups and other quality counts in source.'}

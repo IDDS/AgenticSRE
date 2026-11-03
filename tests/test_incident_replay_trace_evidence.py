@@ -46,10 +46,11 @@ def test_residual_selection_marks_omissions_and_keeps_unpaired_unknown():
                 'child_operation': 'y', 'count': 3, 'p95_ms': p95}
     summary = {'cross_pod_nested_duration_residuals': [row('b', 'before', 1), row('b', 'after', 5),
                 row('c', 'before', 1), row('c', 'after', 3), row('d', 'after', 8)],
-               'quality': {}, 'windows_seconds': {'before': 8, 'after': 90}}
+               'quality': {'ambiguous_spans_excluded': 0, 'cross_pod_non_nested_or_cross_window': 0},
+               'windows_seconds': {'before': 8, 'after': 90}}
     result = select_residual_comparisons(summary, source_sha256='a' * 64, limit=1)
     assert result['rows'][0][1] == 'b' and result['omitted_comparable'] == 1 and result['unpaired'] == 1
-    assert 'not network latency' in result['warning']
+    assert 'Not network latency' in result['warning']
     with pytest.raises(ValueError):
         select_residual_comparisons(summary, source_sha256='bad')
     summary['cross_pod_nested_duration_residuals'].append(row('b', 'after', 9))
