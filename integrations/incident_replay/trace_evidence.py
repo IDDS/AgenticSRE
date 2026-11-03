@@ -42,7 +42,7 @@ def summarize_trace_spans(rows: Iterable[dict[str, Any]], *, event_time: int,
                 continue
             item = {'trace': trace, 'span': span, 'parent': parent, 'pod': pod,
                     'operation': operation, 'window': 'before' if seconds < event_time else 'after',
-                    'duration_ms': (end - start) / 1_000_000}
+                    'start_ns': start, 'end_ns': end, 'duration_ms': (end - start) / 1_000_000}
             key = (trace, span)
             if key in index:
                 index[key] = None
@@ -54,7 +54,8 @@ def summarize_trace_spans(rows: Iterable[dict[str, Any]], *, event_time: int,
             invalid += 1
     operations: dict[tuple[str, str, str], list[float]] = defaultdict(list)
     edges: dict[tuple[str, str, str], int] = defaultdict(int)
-    missing_parent = ambiguous = 0
+    residuals: dict[tuple[str, str, str, str, str], list[float]] = defaultdict(list)
+    missing_parent = ambiguous = non_nested = 0
     for span in spans:
         own = index[(span['trace'], span['span'])]
         if own is None:
@@ -68,6 +69,13 @@ def summarize_trace_spans(rows: Iterable[dict[str, Any]], *, event_time: int,
             missing_parent += 1
             continue
         edges[(span['window'], parent['pod'], span['pod'])] += 1
+        if parent['pod'] != span['pod']:
+            if (parent['window'] != span['window'] or span['start_ns'] < parent['start_ns']
+                    or span['end_ns'] > parent['end_ns']):
+                non_nested += 1
+                continue
+            residuals[(span['window'], parent['pod'], span['pod'], parent['operation'], span['operation'])].append(
+                ((parent['end_ns'] - parent['start_ns']) - (span['end_ns'] - span['start_ns'])) / 1_000_000)
     def p95(values: list[float]) -> float:
         ordered = sorted(values)
         return ordered[math.ceil(len(ordered) * .95) - 1]
@@ -75,11 +83,18 @@ def summarize_trace_spans(rows: Iterable[dict[str, Any]], *, event_time: int,
                for (w, pod, op), values in sorted(operations.items())]
     edge_rows = [{'window': w, 'parent_pod': a, 'child_pod': b, 'count': count}
                  for (w, a, b), count in sorted(edges.items())]
+    residual_rows = [{'window': w, 'parent_pod': a, 'child_pod': b, 'parent_operation': po,
+                      'child_operation': co, 'count': len(values), 'p95_ms': p95(values)}
+                     for (w, a, b, po, co), values in sorted(residuals.items())]
     return {'operations': op_rows, 'parent_edges': edge_rows,
+            'cross_pod_nested_duration_residuals': residual_rows,
             'quality': {'input_rows': total, 'invalid_rows': invalid, 'outside_window': outside,
                         'duplicate_ids': duplicate, 'ambiguous_spans_excluded': ambiguous,
-                        'missing_or_ambiguous_parents': missing_parent},
+                        'missing_or_ambiguous_parents': missing_parent,
+                        'cross_pod_non_nested_or_cross_window': non_nested},
             'windows_seconds': {'before': before_s, 'after': after_s},
             'limitations': ['parent links are observed spans, not verified service dependencies',
                             'different window lengths and sampling affect counts',
+                            'parent minus child duration may include unrelated or concurrent work; not network latency',
+                            'clock skew or cross-window spans can invalidate nesting and are excluded',
                             'latency changes do not prove causation']}
