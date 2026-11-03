@@ -1,7 +1,7 @@
 """Check modality-specific clipping and fail-closed typed CPU assessment."""
-from .claims import assess_cpu_claim
+from .claims import assess_cpu_claim, assess_workload_surge
 from .windows import build_windows
-from .audit import audit_primary_cpu_claims
+from .audit import audit_primary_cpu_claims, audit_primary_workload_claim
 
 
 def main():
@@ -29,6 +29,18 @@ def main():
     assert elevated['status'] == 'requires_review' and elevated['findings'][0]['reason'] == 'high_cpu_threshold_not_defined'
     negative_high = audit_primary_cpu_claims({'root_cause': 'no elevated CPU in svc', 'affected_services': ['svc']}, obs)
     assert negative_high['status'] == 'not_checked' and not negative_high['automatic_actions_allowed']
+    assert assess_workload_surge(before={'n': 2, 'mean': 8.7}, after={'n': 2, 'mean': 8.8333})['reason'] == 'insufficient_baseline_samples'
+    assert assess_workload_surge(before={'n': 3, 'mean': 10}, after={'n': 3, 'mean': 20})['reason'] == 'verified_surge_ratio_missing'
+    assert assess_workload_surge(before={'n': 3, 'mean': 10}, after={'n': 3, 'mean': 11}, surge_ratio=2)['status'] == 'contradicted'
+    obs['pods'][0]['metrics'] = {'before': {'PodWorkload(Ops)': {'n': 2, 'mean': 8.7}}, 'after': {'PodWorkload(Ops)': {'n': 2, 'mean': 8.8333}}}
+    surge = audit_primary_workload_claim({'root_cause': '请求量激增导致 svc 过载', 'affected_services': ['svc']}, obs)
+    assert surge['status'] == 'requires_review' and surge['findings'][0]['reason'] == 'insufficient_baseline_samples'
+    assert not surge['automatic_actions_allowed']
+    negated = audit_primary_workload_claim({'root_cause': '没有证据证明请求量激增', 'affected_services': ['svc']}, obs)
+    assert negated['status'] == 'not_checked' and not negated['automatic_actions_allowed']
+    obs['pods'][0]['metrics'] = {'before': [], 'after': {}}
+    malformed = audit_primary_workload_claim({'root_cause': '请求量激增', 'affected_services': ['svc']}, obs)
+    assert malformed['findings'][0]['reason'] == 'insufficient_baseline_samples'
     print('incident replay windows and typed claim guard: PASS')
 
 
