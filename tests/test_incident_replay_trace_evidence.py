@@ -56,3 +56,14 @@ def test_residual_selection_marks_omissions_and_keeps_unpaired_unknown():
     summary['cross_pod_nested_duration_residuals'].append(row('b', 'after', 9))
     with pytest.raises(ValueError):
         select_residual_comparisons(summary, source_sha256='a' * 64)
+
+
+def test_residual_selection_does_not_describe_decreases_as_increases():
+    common = {'parent_pod': 'a', 'child_pod': 'b', 'parent_operation': 'x', 'child_operation': 'y', 'count': 3}
+    summary = {'cross_pod_nested_duration_residuals': [{**common, 'window': 'before', 'p95_ms': 5},
+                                                      {**common, 'window': 'after', 'p95_ms': 2}],
+               'quality': {'ambiguous_spans_excluded': 0, 'cross_pod_non_nested_or_cross_window': 0},
+               'windows_seconds': {'before': 8, 'after': 90}}
+    result = select_residual_comparisons(summary, source_sha256='a' * 64)
+    assert result['rows'][0][7] < result['rows'][0][5]
+    assert 'can decrease' in result['selection']

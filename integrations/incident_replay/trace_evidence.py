@@ -149,7 +149,7 @@ def select_residual_comparisons(summary: dict[str, Any], *, source_sha256: str, 
                 for _, key, before, after in comparable[:limit]]
     return {'columns': ['parent_pod', 'child_pod', 'parent_op', 'child_op', 'before_n', 'before_p95_ms',
                         'after_n', 'after_p95_ms'], 'rows': selected,
-            'selection': f'top {limit} signed P95 increases, no fault labels',
+            'selection': f'top {limit} signed P95 changes in descending order; values can decrease; no fault labels',
             'omitted_comparable': max(0, len(comparable) - limit), 'unpaired': len(groups) - len(comparable),
             'excluded_duplicate_spans': quality['ambiguous_spans_excluded'],
             'excluded_non_nested_or_cross_window': quality['cross_pod_non_nested_or_cross_window'],
