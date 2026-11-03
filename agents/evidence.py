@@ -67,16 +67,25 @@ def format_evidence(evidence: Dict[str, Any], limit: int = 5000) -> str:
     Preserve provenance and object scope; a summary is never a substitute for
     a successful measurement, nor does formatting certify an observation.
     """
+    marker = '\n[TRUNCATED: omitted evidence is unknown, not proof of absence.]'
+
+    def clip(value: str, budget: int) -> str:
+        if len(value) <= budget:
+            return value
+        if budget <= len(marker):
+            return marker[:budget]
+        return value[:budget - len(marker)] + marker
+
     facts, summaries, seen = [], [], set()
     fact_groups = []
     for agent, result in evidence.items():
         if agent == "structured_evidence":
             continue
         if not isinstance(result, dict):
-            summaries.append(f"[{agent}] {str(result)[:700]}")
+            summaries.append(f"[{agent}] {clip(str(result), 1400)}")
             continue
         if result.get("error"):
-            summaries.append(f"[{agent}] collection error: {str(result.get('error'))[:300]}")
+            summaries.append(f"[{agent}] collection error: {clip(str(result.get('error')), 300)}")
         agent_facts = []
         for item in result.get("evidence_items", []) or []:
             if not isinstance(item, dict):
@@ -90,17 +99,17 @@ def format_evidence(evidence: Dict[str, Any], limit: int = 5000) -> str:
             encoded = json.dumps(fact, ensure_ascii=False, default=str)
             if encoded not in seen:
                 seen.add(encoded)
-                agent_facts.append(f"[{agent} observation] {encoded[:1600]}")
+                agent_facts.append(f"[{agent} observation] {clip(encoded, 1600)}")
         if agent_facts:
             fact_groups.append(agent_facts)
         state = result.get("workload_state")
         if isinstance(state, dict) and state.get("summary"):
-            summaries.append(f"[{agent} current state] {str(state['summary'])[:1200]}")
+            summaries.append(f"[{agent} current state] {clip(str(state['summary']), 1200)}")
         summary = result.get("summary")
         if summary:
-            summaries.append(f"[{agent} summary] {str(summary)[:700]}")
+            summaries.append(f"[{agent} summary] {clip(str(summary), 1400)}")
         elif not result.get("evidence_items") and not state:
-            summaries.append(f"[{agent}] {json.dumps(result, ensure_ascii=False, default=str)[:700]}")
+            summaries.append(f"[{agent}] {clip(json.dumps(result, ensure_ascii=False, default=str), 1400)}")
     # A trace with many spans must not crowd out logs/configuration from another source.
     while any(fact_groups):
         for group in fact_groups:
@@ -111,7 +120,7 @@ def format_evidence(evidence: Dict[str, Any], limit: int = 5000) -> str:
     if transitions:
         chronology = ["[Observed application state changes, oldest first; not collection times or verified causes] "
                       + json.dumps(transitions[-4:], ensure_ascii=False)]
-    return "\n".join(chronology + facts + summaries)[:max(0, limit)]
+    return clip("\n".join(chronology + facts + summaries), max(0, limit))
 
 
 @dataclass

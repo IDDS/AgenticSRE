@@ -18,6 +18,7 @@ from agents.evidence_coverage import (
     build_coverage_rewrite_prompt,
 )
 from paradigms.base import AgentPool, ParadigmBase, ParadigmMetrics, ParadigmResult
+from paradigms.evidence_budget import build_evidence_context
 from paradigms.registry import register_paradigm
 
 logger = logging.getLogger(__name__)
@@ -320,12 +321,7 @@ class PlanAndExecuteParadigm(ParadigmBase):
             f"[{h.id}] conf={h.confidence:.2f} — {h.description}"
             for h in hypotheses[:5]
         ])
-        evidence_text = ""
-        for agent, result in all_evidence.items():
-            if agent == "correlation":
-                continue
-            summary = result.get("summary", str(result))[:500]
-            evidence_text += f"\n[{agent}]: {summary}\n"
+        evidence_text, truncated_agents = build_evidence_context(all_evidence)
 
         top = max(hypotheses, key=lambda h: h.confidence) if hypotheses else None
         selected_id = top.id if top else ""
@@ -438,6 +434,14 @@ class PlanAndExecuteParadigm(ParadigmBase):
             if item in self.EVIDENCE_TYPE_TO_AGENT
         ]
         missing_types = sorted(set(required_types) - set(collected_types))
+        truncated_required = sorted({
+            evidence_type for evidence_type in required_types
+            if self.EVIDENCE_TYPE_TO_AGENT[evidence_type] in truncated_agents
+        })
+        if truncated_required:
+            missing_types = sorted(set(missing_types) | set(truncated_required))
+        coverage_audit = dict(coverage_audit or {})
+        coverage_audit['final_context_truncated_agents'] = truncated_agents
         evidence_status = (
             "COMPLETE" if evidence_contract and not missing_types
             else "INCOMPLETE_EVIDENCE" if evidence_contract
