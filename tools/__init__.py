@@ -37,6 +37,8 @@ def build_tool_registry(
     *,
     isolated: bool = False,
     include_skill_runtime: bool = False,
+    optuna_policy=None,
+    optuna_executor=None,
 ) -> ToolRegistry:
     """
     Build and populate the global ToolRegistry with all tools.
@@ -45,6 +47,12 @@ def build_tool_registry(
     """
     from configs.config_loader import get_config
     from pathlib import Path
+    if (optuna_policy is None) != (optuna_executor is None):
+        raise ValueError('Optuna requires both an approved policy and a trusted executor')
+    optuna_tool = None
+    if optuna_policy is not None:
+        from tools.optuna_experiment_tool import OptunaExperimentTool
+        optuna_tool = OptunaExperimentTool(policy=optuna_policy, executor=optuna_executor)
     cfg = config or get_config()
     
     registry = ToolRegistry.isolated() if isolated else ToolRegistry.get_instance()
@@ -89,6 +97,11 @@ def build_tool_registry(
     # ── Analysis Tools ──
     registry.register(AnomalyDetectionTool(), "analysis")
     registry.register(RCALocalizationTool(), "analysis")
+
+    # An approved policy and a trusted executor must both be injected by the host.
+    # Configuration, commands and targets cannot be supplied through the tool call.
+    if optuna_tool is not None:
+        registry.register(optuna_tool, 'optimization')
 
     # ── Skill Runtime Tool ──
     # Explicit capability opt-in; legacy config cannot enable Skills for RCA.
