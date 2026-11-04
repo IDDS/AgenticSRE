@@ -37,6 +37,8 @@ class PipelineResult:
     trigger: str = ""  # what triggered the pipeline
     phase: PipelinePhase = PipelinePhase.DETECTION
     status: str = "pending"
+    # Lifecycle completion and diagnostic confidence are distinct.
+    diagnosis_status: str = "unknown"
     result: Dict = field(default_factory=dict)
     duration_s: float = 0
     alerts_compressed: int = 0
@@ -49,6 +51,7 @@ class PipelineResult:
             "trigger": self.trigger,
             "phase": self.phase.value,
             "status": self.status,
+            "diagnosis_status": self.diagnosis_status,
             "result": self.result,
             "duration_s": round(self.duration_s, 2),
             "alerts_compressed": self.alerts_compressed,
@@ -160,6 +163,11 @@ class Pipeline:
             )
             result.result = rca_result
             result.status = rca_result.get("status", "unknown")
+            report = rca_result.get("result")
+            if isinstance(report, dict):
+                diagnosis_status = report.get("diagnosis_status")
+                if isinstance(diagnosis_status, str) and diagnosis_status:
+                    result.diagnosis_status = diagnosis_status
             result.phase = PipelinePhase.RECOVERY  # final phase
 
             # Behavior validation
@@ -221,6 +229,7 @@ class Pipeline:
             "total": len(self._history),
             "completed": len(completed),
             "failed": len(failed),
+            "requires_review": sum(r.diagnosis_status == "requires_review" for r in self._history),
             "avg_duration_s": round(sum(durations) / len(durations), 2) if durations else 0,
             "max_duration_s": round(max(durations), 2) if durations else 0,
             "total_alerts_compressed": sum(r.alerts_compressed for r in self._history),

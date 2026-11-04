@@ -179,7 +179,8 @@ class Daemon:
         self._log(f"🔔 New incident detected, starting pipeline...")
         result = await self.pipeline.run(
             trigger, self.namespace, self.log_callback, trigger_source="detection")
-        self._log(f"📊 Pipeline completed: {result.status} ({result.duration_s:.1f}s)")
+        self._log(f"📊 Pipeline finished: {result.status}; diagnosis: "
+                  f"{getattr(result, 'diagnosis_status', 'unknown')} ({result.duration_s:.1f}s)")
         return result
 
     def _pipeline_done(self, task_id: str):
