@@ -14,6 +14,7 @@ import logging
 import signal
 import time
 import threading
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set
 
@@ -60,6 +61,10 @@ class Daemon:
         # State
         self._running = False
         self._dedup_map: Dict[str, _SignalRecord] = {}
+        # Keep accepted signals until a pipeline slot is available. This queue
+        # is intentionally bounded and in-memory, not a durable event store.
+        self._pending_signals: Dict[str, Any] = {}
+        self._max_pending_signals = 256
         self._active_pipelines: Dict[str, asyncio.Task] = {}
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._cycle_count = 0
@@ -118,36 +123,45 @@ class Daemon:
 
         try:
             # Run detection
-            signals = self.pipeline.detection_agent.detect(namespace=self.namespace)
+            try:
+                signals = self.pipeline.detection_agent.detect(namespace=self.namespace)
+            except Exception as exc:
+                logger.error("Daemon detection failed: %s", exc, exc_info=True)
+                self._log("  ❌ Detection failed; retaining and processing pending signals")
+                signals = []
             
-            if not signals:
-                if self._cycle_count % 10 == 0:  # log every 10th quiet cycle
-                    self._log(f"  [cycle {self._cycle_count}] No anomalies detected")
-                return
-
             # Dedup signals
             new_signals = self._dedup_signals(signals)
-            if not new_signals:
-                self._log(f"  [cycle {self._cycle_count}] {len(signals)} signals (all duplicates)")
-                return
-
-            self._log(f"  [cycle {self._cycle_count}] {len(new_signals)}/{len(signals)} new signals")
+            if signals and not new_signals:
+                self._log(f"  [cycle {self._cycle_count}] {len(signals)} signals; none newly accepted")
+            elif new_signals:
+                self._log(f"  [cycle {self._cycle_count}] {len(new_signals)}/{len(signals)} new signals")
 
             # Push signals to SSE stream
             if self.signal_callback:
                 for s in new_signals:
                     self.signal_callback(s)
 
-            # Dispatch pipeline (if capacity)
-            active_count = len(self._active_pipelines)
-            if active_count >= self.max_concurrent:
-                self._log(f"  ⚠️ Max concurrent pipelines reached ({active_count}), queuing...")
+            if not self._pending_signals:
+                if not signals and self._cycle_count % 10 == 0:
+                    self._log(f"  [cycle {self._cycle_count}] No anomalies detected")
                 return
 
-            trigger = self.pipeline._signals_to_trigger(new_signals)
+            # Dispatch pipeline (if capacity). Pending signals survive quiet
+            # cycles and must not be discarded merely because the pool is full.
+            active_count = len(self._active_pipelines)
+            if active_count >= self.max_concurrent:
+                self._log(f"  ⚠️ Max concurrent pipelines reached ({active_count}); "
+                          f"{len(self._pending_signals)} signals pending in memory")
+                return
+
+            pending = list(self._pending_signals.items())
+            trigger = self.pipeline._signals_to_trigger([item[1] for item in pending])
             task = asyncio.create_task(self._run_pipeline(trigger))
-            task_id = f"pipe-{int(time.time())}"
+            task_id = f"pipe-{uuid.uuid4().hex}"
             self._active_pipelines[task_id] = task
+            for fingerprint, _ in pending:
+                self._pending_signals.pop(fingerprint, None)
             task.add_done_callback(lambda t, tid=task_id: self._pipeline_done(tid))
 
         except Exception as e:
@@ -180,11 +194,15 @@ class Daemon:
                 record.last_seen = now
                 record.count += 1
             else:
+                if len(self._pending_signals) >= self._max_pending_signals:
+                    self._log("  ⚠️ Pending signal limit reached; signal was not queued or deduplicated")
+                    continue
                 self._dedup_map[fp] = _SignalRecord(
                     fingerprint=fp,
                     first_seen=now,
                     last_seen=now,
                 )
+                self._pending_signals[fp] = s
                 new_signals.append(s)
         
         return new_signals
@@ -200,7 +218,8 @@ class Daemon:
     def _purge_expired_dedup(self):
         """Remove dedup entries older than TTL."""
         now = time.time()
-        expired = [fp for fp, rec in self._dedup_map.items() if now - rec.last_seen > self.dedup_ttl]
+        expired = [fp for fp, rec in self._dedup_map.items()
+                   if fp not in self._pending_signals and now - rec.last_seen > self.dedup_ttl]
         for fp in expired:
             del self._dedup_map[fp]
 
@@ -215,6 +234,7 @@ class Daemon:
             "cycles": self._cycle_count,
             "active_pipelines": len(self._active_pipelines),
             "dedup_entries": len(self._dedup_map),
+            "pending_signals": len(self._pending_signals),
             "pipeline_stats": self.pipeline.get_stats(),
         }
 
