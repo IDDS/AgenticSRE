@@ -274,6 +274,19 @@ def validate_hypothesis_review(context, response):
         test_evidence=falsification_evidence(hypothesis,catalog,oppose) if status=='contradicted' else []
         if validated and status=='contradicted' and hypothesis.get('verification_test') and not test_evidence:
             rationale_limits.append('falsification_test_not_observed')
+        # A zero-sized Deployment explains a current absence of Pods but says
+        # nothing about selector, network, or Pod conditions if replicas later
+        # exist. Do not present that snapshot as a direct refutation of those
+        # alternatives. The guard only applies when every cited counterexample
+        # is that same type of snapshot; it does not discard other evidence.
+        network_claim = any(term in description for term in (
+            'network policy', 'networkpolicy', 'network-policy', '网络策略', '网络隔离', '安全组'))
+        refuted_rows = [c for c in catalog if c.get('id') in oppose]
+        if (validated and status == 'contradicted' and not test_evidence
+                and (selector_claim or network_claim or pod_state_claim)
+                and refuted_rows and len(refuted_rows) == len(oppose)
+                and all(c.get('signal_type') == 'deployment_scaled_to_zero' for c in refuted_rows)):
+            rationale_limits.append('zero_replicas_does_not_refute_other_mechanisms')
         if validated and status=="contradicted" and re.search(
             r"未提及|没有提及|未见|未发现|未观测|无[^。；\n]{0,35}信息|间接|不支持|"
             r"没有[^。；\n]{0,35}证据|缺少[^。；\n]{0,35}证据|"

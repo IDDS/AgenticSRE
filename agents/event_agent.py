@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from tools.base_tool import ToolRegistry, ToolResult
 from tools.llm_client import LLMClient
 from agents.evidence import make_evidence_item
+from agents.hpa_evidence import observe_hpa_targets
 from agents.pod_state_evidence import MESSAGE_LIMIT, problem_containers, pod_spec_checks
 from skill_runtime.service_topology import MAX_RESOURCES, project_resource
 
@@ -57,6 +58,26 @@ evidence explicitly; the complete observations remain available separately."""
         # Fetch current state before events so deleted-object warnings cannot
         # override the live Deployment/Endpoint state.
         workload_state = self._fetch_workload_state(namespace)
+        zero_deployments = []
+        for deployment in workload_state.get('deployments') or []:
+            if not isinstance(deployment, dict) or deployment.get('desired_replicas') != 0:
+                continue
+            for resource in workload_state.get('topology_resources') or []:
+                if not isinstance(resource, dict):
+                    continue
+                meta, spec = resource.get('metadata'), resource.get('spec')
+                if not isinstance(meta, dict) or not isinstance(spec, dict):
+                    continue
+                if (resource.get('kind') == 'Deployment' and meta.get('namespace') == namespace
+                        and resource.get('topology_fields_complete') is True and not meta.get('deletionTimestamp')
+                        and meta.get('name') == deployment.get('name') and meta.get('uid') == deployment.get('uid')
+                        and meta.get('resourceVersion') == deployment.get('resource_version')
+                        and type(spec.get('replicas')) is int and spec['replicas'] == 0):
+                    zero_deployments.append(deployment)
+                    break
+        hpa_observation = (observe_hpa_targets(self.registry.get('kubectl'), namespace, zero_deployments)
+                           if namespace and zero_deployments else
+                           {'status': 'not_requested', 'evidence_items': []})
         live_pods = self._fetch_live_pods(namespace)
 
         # Retain orphaned Pod warnings only as explicitly stale audit context.
@@ -74,7 +95,17 @@ evidence explicitly; the complete observations remain available separately."""
         # ChaosMesh object blocks service traffic. Collect those objects only
         # for network-related incidents to keep normal RCA scans lightweight.
         network_objects = self._fetch_network_objects(query, namespace)
-        evidence_items = self._build_current_state_evidence_items(workload_state, pods)
+        # Keep each targeted HPA observation next to its zero-replica fact,
+        # ahead of the potentially large namespace-wide topology projection.
+        hpa_facts = {x.get('service'): x for x in hpa_observation.get('evidence_items', [])}
+        evidence_items = []
+        for item in self._build_current_state_evidence_items(workload_state, pods):
+            evidence_items.append(item)
+            if item.get('signal_type') == 'deployment_scaled_to_zero':
+                hpa_fact = hpa_facts.pop(item.get('service'), None)
+                if hpa_fact:
+                    evidence_items.append(hpa_fact)
+        evidence_items.extend(hpa_facts.values())
         evidence_items.extend(event_evidence)
         evidence_items.extend(self._build_network_evidence_items(network_objects))
         
@@ -90,6 +121,11 @@ evidence explicitly; the complete observations remain available separately."""
         context = f"Incident: {query}\n\n"
         context += f"K8s Events:\n{events[:3000] if events else 'No active Warning events found'}\n\n"
         context += f"Current Workload State:\n{workload_state.get('summary') or 'No workload state found'}\n\n"
+        if hpa_observation.get('status') == 'complete':
+            context += 'Current HPA configuration (not historical scaling attribution):\n'
+            context += '\n'.join(x['observation'] for x in hpa_observation['evidence_items']) + '\n\n'
+        elif hpa_observation.get('status') == 'unknown':
+            context += 'HPA configuration collection unavailable; current HPA presence is unknown.\n\n'
         if stale_events:
             context += (
                 "Stale/Orphaned Pod Warning Events (audit context only; do not use as the current root cause):\n"
@@ -135,6 +171,7 @@ evidence explicitly; the complete observations remain available separately."""
             "problem_pods": pods,
             "node_status": nodes,
             "workload_state": workload_state,
+            "hpa_observation": {k: v for k, v in hpa_observation.items() if k != 'evidence_items'},
             "network_objects": network_objects,
             "evidence_items": evidence_items,
             "collection_errors": [dict(source=source, error_code=status.get('error_code', 'topology_collection_partial'))
