@@ -34,7 +34,7 @@ from orchestrator.collaboration_optimizer import CollaborationOptimizer, Collabo
 from diagnostic_strategy import (InvestigationController, evidence_catalog,
     hypothesis_review_context, validate_hypothesis_review)
 from orchestrator.confidence_calibrator import calibrate_rca_confidence
-from orchestrator.diagnosis_closure import DiagnosisClosureManager, bind_report_entity
+from orchestrator.diagnosis_closure import DiagnosisClosureManager, bind_report_entity, bind_deployment_identity
 from orchestrator.session import RCASession
 
 logger = logging.getLogger(__name__)
@@ -428,6 +428,7 @@ async def run_rca(
     if registry is not None and registry.get("skill_runtime_workflow") is not None:
         raise ValueError("Skill-capable registries cannot be used by multi-agent RCA")
     cfg = config or get_config()
+    run_started_at = time.time()
     from memory.memory_scope import MemoryScope
     memory_scope = MemoryScope(cluster_id=str(getattr(cfg.kubernetes, 'cluster_id', '') or '').strip(),
                                namespace=namespace)
@@ -1042,6 +1043,9 @@ async def run_rca(
         session.result = final_result
 
         # ── Step 7: Quality Judge ──
+        final_result = bind_deployment_identity(final_result, session.evidence,
+            cluster_id=memory_scope.cluster_id, namespace=namespace, run_started_at=run_started_at)
+        session.result = final_result
         if scoped_lifecycle and not session.metadata.get('failed_model_stages'):
             final_result=bind_report_entity(final_result,session.evidence)
             session.result=final_result
@@ -1265,6 +1269,8 @@ async def run_rca(
             emit({"event": "phase_complete", "phase": 11, "name": "DIAGNOSIS_CLOSURE"})
 
         final_result = ground_state_timeline(final_result, session.evidence)
+        final_result = bind_deployment_identity(final_result, session.evidence,
+            cluster_id=memory_scope.cluster_id, namespace=namespace, run_started_at=run_started_at)
         session.result = final_result
 
         if propagation_lookup:

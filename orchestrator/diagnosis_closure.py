@@ -14,10 +14,99 @@ import copy
 from operational_ontology import observation_entity
 from agents.evidence import format_evidence
 import re
+import datetime
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def bind_deployment_identity(report, evidence, *, cluster_id, namespace, run_started_at, now=None):
+    """Bind a Deployment to a unique, current-run structured observation only.
+
+    Identity binding is not evidence of causality, review, or authorization.
+    """
+    result = copy.deepcopy(report)
+    entity = result.get('root_entity')
+    if not isinstance(entity, dict) or entity.get('kind') != 'Deployment':
+        return result
+    validation = {'observed': False, 'scope': 'current_run_identity_only',
+                  'status': 'identity_not_observed'}
+    result['root_entity_validation'] = validation
+    if (not isinstance(cluster_id, str) or not cluster_id.strip()
+            or not isinstance(namespace, str) or not namespace.strip()
+            or entity.get('namespace') != namespace or not isinstance(entity.get('name'), str)
+            or not entity['name'] or entity.get('cluster_id', cluster_id) != cluster_id
+            or isinstance(run_started_at, bool) or not isinstance(run_started_at, (int, float))):
+        validation['status'] = 'scope_incomplete_or_mismatched'
+        return result
+    import math
+    import time
+    end = time.time() if now is None else now
+    if (not math.isfinite(run_started_at) or not isinstance(end, (int, float))
+            or isinstance(end, bool) or not math.isfinite(end) or run_started_at <= 0 or end < run_started_at):
+        validation['status'] = 'invalid_run_window'
+        return result
+    if not isinstance(evidence, dict):
+        return result
+    source = 'event_agent_closure' if 'event_agent_closure' in evidence else 'event_agent'
+    payload = evidence.get(source)
+    if (not isinstance(payload, dict) or payload.get('error') or payload.get('collection_errors')
+            or payload.get('outcome_unknown') or payload.get('success') is False):
+        validation['status'] = 'collector_incomplete'
+        return result
+    state = payload.get('workload_state')
+    collection = state.get('topology_collection') if isinstance(state, dict) else None
+    workload = collection.get('workload_resources') if isinstance(collection, dict) else None
+    if not isinstance(workload, dict) or workload.get('status') != 'complete':
+        validation['status'] = 'collector_incomplete'
+        return result
+    facts = payload.get('evidence_items')
+    if not isinstance(facts, list):
+        validation['status'] = 'collector_incomplete'
+        return result
+    matches = []
+    for fact in facts:
+        if (not isinstance(fact, dict) or fact.get('signal_type') != 'resource_topology_observed'
+                or fact.get('source') != 'kubectl get deployment,service,endpoints -o json'):
+            continue
+        raw = fact.get('raw_ref')
+        if not isinstance(raw, dict) or raw.get('kind') != 'Deployment':
+            continue
+        meta = raw.get('metadata')
+        if (not isinstance(meta, dict) or meta.get('namespace') != namespace
+                or meta.get('name') != entity['name']):
+            continue
+        if (raw.get('previous') or raw.get('stale') or raw.get('projection') != 'resource-topology/v1'
+                or raw.get('topology_fields_complete') is not True or meta.get('deletionTimestamp')
+                or not isinstance(meta.get('uid'), str) or not meta['uid']
+                or not isinstance(meta.get('resourceVersion'), str) or not meta['resourceVersion']
+                or raw.get('cluster_id', cluster_id) != cluster_id):
+            validation['status'] = 'identity_observation_incomplete'
+            return result
+        try:
+            stamp = datetime.datetime.fromisoformat(str(raw['observed_at']).replace('Z', '+00:00'))
+            if stamp.tzinfo is None or not run_started_at <= stamp.timestamp() <= end:
+                raise ValueError('out_of_run')
+        except (KeyError, ValueError, TypeError, OverflowError, OSError):
+            validation['status'] = 'observation_outside_run'
+            return result
+        matches.append((meta['uid'], meta['resourceVersion']))
+    if not matches:
+        return result
+    if len(set(matches)) != 1:
+        validation['status'] = 'ambiguous_identity_or_version'
+        return result
+    uid, version = matches[0]
+    if entity.get('uid') and entity['uid'] != uid:
+        validation['status'] = 'deployment_incarnation_changed'
+        return result
+    if entity.get('resource_version') and entity['resource_version'] != version:
+        validation['status'] = 'deployment_version_changed'
+        return result
+    result['root_entity'] = {**entity, 'cluster_id': cluster_id, 'uid': uid, 'resource_version': version}
+    validation.update(observed=True, status='uid_bound', source_agents=[source], resource_versions=[version])
+    return result
 
 
 def bind_report_entity(report,evidence):
