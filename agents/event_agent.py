@@ -343,16 +343,22 @@ evidence explicitly; the complete observations remain available separately."""
                 projected['topology_source'] = 'kubectl get deployment,service,endpoints -o json'
                 state['topology_resources'].append(projected)
             if kind == "Deployment":
+                desired = spec.get('replicas')
+                desired = desired if type(desired) is int and desired >= 0 else None
+                def nonnegative_status(field):
+                    value = status.get(field, 0)
+                    return value if type(value) is int and value >= 0 else None
                 record = {
                     "kind": kind, "uid": meta.get("uid", ""),
                     "resource_version": meta.get("resourceVersion", ""),
                     "observed_at": datetime.now(timezone.utc).isoformat(),
                     "namespace": ns,
                     "name": name,
-                    "desired_replicas": int(spec.get("replicas") or 0),
-                    "ready_replicas": int(status.get("readyReplicas") or 0),
-                    "available_replicas": int(status.get("availableReplicas") or 0),
-                    "unavailable_replicas": int(status.get("unavailableReplicas") or 0),
+                    "desired_replicas": desired,
+                    "desired_replicas_source": "spec.replicas" if desired is not None else "unknown",
+                    "ready_replicas": nonnegative_status("readyReplicas"),
+                    "available_replicas": nonnegative_status("availableReplicas"),
+                    "unavailable_replicas": nonnegative_status("unavailableReplicas"),
                 }
                 state["deployments"].append(record)
                 lines.append(
@@ -422,19 +428,19 @@ evidence explicitly; the complete observations remain available separately."""
         """Normalize live workload state for ranking and calibration."""
         items: List[Dict[str, Any]] = []
         for deployment in workload_state.get("deployments") or []:
-            desired = int(deployment.get("desired_replicas") or 0)
-            ready = int(deployment.get("ready_replicas") or 0)
+            desired = deployment.get("desired_replicas")
+            ready = deployment.get("ready_replicas", 0)
             name = str(deployment.get("name") or "")
-            if desired == 0:
+            if type(desired) is int and desired == 0:
                 items.append(make_evidence_item(
                     "deployment_scaled_to_zero",
-                    f"Deployment/{name} current desired replicas is 0 and ready replicas is {ready}.",
+                    f"Deployment/{name} current spec.replicas is 0 and ready replicas is {ready if type(ready) is int else 'unknown'}.",
                     service=name,
                     source="kubectl get deployment -o json",
                     severity="critical",
                     raw_ref=deployment,
                 ))
-            elif ready < desired:
+            elif type(desired) is int and desired > 0 and type(ready) is int and 0 <= ready < desired:
                 items.append(make_evidence_item(
                     "deployment_not_ready",
                     f"Deployment/{name} ready replicas {ready}/{desired}.",
