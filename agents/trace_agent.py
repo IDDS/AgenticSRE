@@ -4,6 +4,7 @@ Fetches and analyzes distributed traces from Jaeger with Hero latency analysis.
 """
 
 import logging
+import math
 import re
 from typing import Any, Dict, List, Optional
 
@@ -31,7 +32,11 @@ Identify:
 4. Service-to-service call patterns that indicate issues
 5. Error spans and their propagation
 
-Be precise about latency values and service names. Format as structured analysis."""
+Be precise about latency values and service names. Per-service latency here is
+the maximum duration of a span recorded by that service in each trace, including
+child work; it is not exclusive CPU time, a proven bottleneck, or an SLO breach.
+Do not assert a violation or degradation without its threshold or baseline.
+Format as structured analysis."""
 
     def __init__(self, llm: LLMClient, registry: ToolRegistry):
         self.llm = llm
@@ -63,13 +68,25 @@ Be precise about latency values and service names. Format as structured analysis
         # Run Hero latency analysis per service
         latency_results = {}
         for svc, traces in all_traces.items():
-            analysis = self.analyzer.latency_analysis(traces)
+            measured = [{**trace, 'duration': trace['service_max_span_duration_us']} for trace in traces
+                        if isinstance(trace, dict)
+                        and type(trace.get('service_max_span_duration_us')) in (int, float)
+                        and math.isfinite(trace['service_max_span_duration_us'])
+                        and trace['service_max_span_duration_us'] >= 0]
+            analysis = self.analyzer.latency_analysis(measured)
             if analysis and analysis.get("count", 0) > 0:
+                analysis['measurement_scope'] = 'maximum matched service span per trace; includes child work'
+                analysis['traces_without_service_duration'] = len(traces) - len(measured)
                 latency_results[svc] = analysis
+        if not latency_results:
+            return {'agent': 'trace_agent', 'services_analyzed': 0, 'services_fetched': len(all_traces), 'error': True,
+                    'evidence_items': [], 'latency_results': {},
+                    'summary': '链路中没有可用的目标服务 Span 时长，无法计算服务延迟。'}
 
         # LLM summarization
         context = f"Incident: {query}\n\n"
-        context += f"Services analyzed: {len(all_traces)}\n"
+        context += f"Services analyzed: {len(latency_results)}\n"
+        context += f"Services with no usable service span: {len(all_traces) - len(latency_results)}\n"
         for svc, result in latency_results.items():
             context += f"\n[{svc}]:\n"
             context += f"  Traces: {result.get('count', 0)}\n"
@@ -86,7 +103,8 @@ Be precise about latency values and service names. Format as structured analysis
         return {
             "agent": "trace_agent",
             "query": query,
-            "services_analyzed": len(all_traces),
+            "services_analyzed": len(latency_results),
+            "services_fetched": len(all_traces),
             "latency_results": latency_results,
             "summary": summary,
         }

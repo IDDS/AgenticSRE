@@ -4,6 +4,7 @@ Prometheus, Elasticsearch, and Jaeger client tools.
 """
 
 import json
+import math
 import subprocess
 import time
 import logging
@@ -493,12 +494,17 @@ class JaegerTool(SRETool):
                     if processes.get(s.get("processID", ""), {}).get("serviceName", "")
                 ))
                 durations = [s.get("duration", 0) for s in spans]
+                service_durations = [s.get("duration") for s in spans
+                    if processes.get(s.get("processID", ""), {}).get("serviceName") == service
+                    and type(s.get("duration")) in (int, float)
+                    and math.isfinite(s["duration"]) and s["duration"] >= 0]
                 summaries.append({
                     "traceID": trace.get("traceID", ""),
                     "span_count": len(spans),
                     "services": services_in_trace,
                     "total_duration_us": max(durations) if durations else 0,
                     "avg_duration_us": sum(durations) // max(len(durations), 1),
+                    "service_max_span_duration_us": max(service_durations) if service_durations else None,
                 })
 
             return ToolResult(success=True, data={
