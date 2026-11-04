@@ -57,7 +57,9 @@ def test_scale_zero_overrides_unsupported_selector_mismatch() -> None:
         targeted_evidence_complete=True,
     )
 
-    assert "副本数被设置为 0" in aligned["root_cause"]
+    assert "期望副本数为 0" in aligned["root_cause"]
+    assert "被设置" not in aligned["root_cause"]
+    assert "尚未证明" in aligned["root_cause"]
     assert aligned["root_cause_original"] == original["root_cause"]
     assert aligned["root_cause_alignment"]["reason"] == "deployment_scaled_to_zero_with_empty_endpoints"
 

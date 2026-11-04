@@ -233,8 +233,8 @@ def _align_root_cause_with_targeted_evidence(
         or not any(marker in root_text for marker in scale_markers)
     ):
         replacement = (
-            f"当前 Deployment/{final_result['root_entity']['name']} 的副本数被设置为 0，因没有运行中的后端 Pod，"
-            "Service Endpoints 的就绪地址为 0。"
+            f"当前观测到 Deployment/{final_result['root_entity']['name']} 的期望副本数为 0，"
+            "另观测到 Service Endpoints 就绪地址为 0；尚未证明二者的因果关系或副本数变化的历史原因。"
         )
         alignment_reason = "deployment_scaled_to_zero_with_empty_endpoints"
         decisive_types = ["deployment_scaled_to_zero", "service_endpoints_empty"]
@@ -369,6 +369,7 @@ Cross-signal correlation:
 - root_cause 和 reasoning_chain 不写具体时间戳；精确时间只放 timeline，必须来自原始事件而不是采集时间
 - timeline 中每条状态变更必须同时保留原始 field、before、after 和 change_id；严格按时间排序，不得把恢复与故障发生互换
 - 根因粒度不得超过观测证据；不得猜测未采集的配置参数、参数值、内部实现或人为操作
+- Service、Deployment、ReplicaSet 和 Pod 是不同对象，各自 UID 不同属于正常现象，不能以跨对象 UID 不同认定身份冲突；对象关系须由选择器、ownerReferences 和运行时观测等证据分别验证
 - 如果证据只确认某资源达到容量上限并导致排队，应将根因停留在该资源压力机制
 - 未采集到的日志、Trace 或配置必须明确写为限制，不能反向编造成根因依据
 - 未验证日志字段语义时，null/空值只表示原始字段值；绝不能据此推断内部依赖缺失、配置为空或未就绪
