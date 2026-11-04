@@ -537,6 +537,7 @@ async def run_rca(
         hypothesis_agent = HypothesisAgent(llm)
         correlation_agent = CorrelationAgent(llm)
         planning_agent = PlanningAgent(llm, registry)
+        planning_agent.bounded_plan = True
 
         # Init memory
         # Initialization belongs inside the history deadline as well.
@@ -669,6 +670,9 @@ async def run_rca(
                         + json.dumps(controller.feedback(), ensure_ascii=False)[:1000] + "\nCurrent incident:\n" + analysis_incident_query,
                     iteration,
                 )
+                if isinstance(plan, dict) and plan.get('planning_status') == 'fallback':
+                    session.metadata.setdefault('failed_model_stages', []).append(
+                        {'stage': 'investigation_plan', 'code': 'model_plan_unavailable_or_invalid'})
                 selected_agents = _planned_evidence_agents(plan, limit=2)
                 if pending_agents:
                     selected_agents = pending_agents
@@ -714,6 +718,9 @@ async def run_rca(
                     [h.to_dict() for h in session.hypotheses],
                     analysis_incident_query, iteration
                 )
+                if isinstance(plan, dict) and plan.get('planning_status') == 'fallback':
+                    session.metadata.setdefault('failed_model_stages', []).append(
+                        {'stage': 'investigation_plan', 'code': 'model_plan_unavailable_or_invalid'})
                 log(f"  📋 Plan: {len(plan.get('plan', []))} steps")
 
             if pending_agents and top_before_investigation is None:
