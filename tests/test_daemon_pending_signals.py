@@ -1,8 +1,9 @@
 import asyncio
+import threading
 import time
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from orchestrator.daemon import Daemon
 
@@ -74,6 +75,38 @@ class DaemonPendingSignalsTests(unittest.IsolatedAsyncioTestCase):
         await self.daemon._tick()
         await asyncio.sleep(0)
         self.assertEqual(self.triggered, [[sig]])
+
+    async def test_detection_does_not_block_event_loop(self):
+        scheduled = threading.Event()
+        seen = []
+        asyncio.get_running_loop().call_later(.05, scheduled.set)
+
+        def slow_detection(namespace):
+            scheduled.wait(.5)
+            seen.append(scheduled.is_set())
+            return []
+
+        self.pipeline.detection_agent.detect.side_effect = slow_detection
+        await self.daemon._tick()
+        self.assertEqual(seen, [True])
+
+    async def test_daemon_marks_pipeline_as_detection_trigger(self):
+        self.pipeline.run = AsyncMock(return_value=SimpleNamespace(status='completed', duration_s=1))
+        await Daemon._run_pipeline(self.daemon, 'detected incident')
+        self.pipeline.run.assert_awaited_once_with(
+            'detected incident', 'testbed', None, trigger_source='detection')
+
+    async def test_dispatches_large_backlog_in_bounded_batches(self):
+        signals = [SimpleNamespace(fingerprint=str(i)) for i in range(6)]
+        self.pipeline.detection_agent.detect.side_effect = [signals, []]
+        await self.daemon._tick()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        self.assertEqual(self.triggered, [signals[:5]])
+        self.assertEqual(list(self.daemon._pending_signals.values()), signals[5:])
+        await self.daemon._tick()
+        await asyncio.sleep(0)
+        self.assertEqual(self.triggered, [signals[:5], signals[5:]])
 
 
 if __name__ == '__main__':

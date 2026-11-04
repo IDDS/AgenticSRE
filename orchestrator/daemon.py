@@ -124,7 +124,10 @@ class Daemon:
         try:
             # Run detection
             try:
-                signals = self.pipeline.detection_agent.detect(namespace=self.namespace)
+                # Detection performs synchronous network I/O; running it on the
+                # event loop stalls every active diagnosis and shutdown task.
+                signals = await asyncio.to_thread(
+                    self.pipeline.detection_agent.detect, namespace=self.namespace)
             except Exception as exc:
                 logger.error("Daemon detection failed: %s", exc, exc_info=True)
                 self._log("  ❌ Detection failed; retaining and processing pending signals")
@@ -155,7 +158,9 @@ class Daemon:
                           f"{len(self._pending_signals)} signals pending in memory")
                 return
 
-            pending = list(self._pending_signals.items())
+            # The pipeline formats at most five signals per trigger. Leave the
+            # remainder queued for later cycles rather than silently dropping it.
+            pending = list(self._pending_signals.items())[:5]
             trigger = self.pipeline._signals_to_trigger([item[1] for item in pending])
             task = asyncio.create_task(self._run_pipeline(trigger))
             task_id = f"pipe-{uuid.uuid4().hex}"
@@ -172,7 +177,8 @@ class Daemon:
         """Execute a single pipeline in the background."""
         self._log(f"\n{'='*60}")
         self._log(f"🔔 New incident detected, starting pipeline...")
-        result = await self.pipeline.run(trigger, self.namespace, self.log_callback)
+        result = await self.pipeline.run(
+            trigger, self.namespace, self.log_callback, trigger_source="detection")
         self._log(f"📊 Pipeline completed: {result.status} ({result.duration_s:.1f}s)")
         return result
 
