@@ -11,6 +11,28 @@ def test_evidence_beyond_old_limit_survives_when_budget_allows():
     assert truncated == []
 
 
+def test_no_truncation_when_all_summaries_fit_without_markers():
+    evidence = {'metric_agent': {'summary': 'M' * 1916},
+                'log_agent': {'summary': 'L' * 1123},
+                'trace_agent': {'summary': 'T' * 2581},
+                'event_agent': {'summary': 'E' * 78}}
+    text, truncated = build_evidence_context(evidence)
+    assert truncated == []
+    assert len(text) <= 6000
+    assert all(row['summary'] in text for row in evidence.values())
+    assert '[TRUNCATED:' not in text
+
+
+def test_exact_budget_fits_but_one_more_character_reports_omission():
+    header = '\n[trace_agent]: '
+    size = 6000 - len(header) - 1
+    text, truncated = build_evidence_context({'trace_agent': {'summary': 'T' * size}})
+    assert len(text) == 6000 and truncated == []
+    text, truncated = build_evidence_context({'trace_agent': {'summary': 'T' * (size + 1)}})
+    assert len(text) <= 6000 and truncated == ['trace_agent']
+    assert '[TRUNCATED:' in text
+
+
 def test_budget_is_shared_and_omitted_evidence_is_explicit():
     evidence = {'log_agent': {'summary': 'L' * 10000}, 'metric_agent': {'summary': 'metric'},
                 'trace_agent': {'summary': 'T' * 10000}}

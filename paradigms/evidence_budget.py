@@ -20,6 +20,8 @@ def build_evidence_context(evidence: dict[str, Any], max_chars: int = 6000) -> t
     if not entries:
         return '', []
     headers = [f'\n[{name}]: ' for name, _ in entries]
+    if sum(len(header) + len(text) + 1 for header, (_, text) in zip(headers, entries)) <= max_chars:
+        return ''.join(header + text + '\n' for header, (_, text) in zip(headers, entries)), []
     overhead = sum(len(header) + 1 + len(_MARKER) for header in headers)
     if overhead >= max_chars:
         raise ValueError('too many evidence sources for the budget')
