@@ -369,20 +369,20 @@ class JaegerTool(SRETool):
             return None
 
     def _discover_base_url(self) -> str:
-        """Discover Jaeger through K8s services when configured URL is stale."""
-        if self._discovered and self.base_url:
+        """Use an explicit backend as-is; only discover when none was configured.
+
+        An unavailable configured endpoint must fail visibly rather than
+        silently returning another application's traces.
+        """
+        if self.base_url:
+            self._discovered = True
             return self.base_url
 
-        configured_services = self._services_for(self.base_url)
         preferred_markers = {
             "nginx-web-server", "compose-post-service", "home-timeline-service",
             "user-timeline-service", "post-storage-service",
         }
-        if configured_services and preferred_markers.intersection(set(configured_services)):
-            self._discovered = True
-            return self.base_url
-
-        candidates = [self.base_url] if self.base_url else []
+        candidates = []
         try:
             svc = subprocess.run(
                 "kubectl get svc -A -o json",
