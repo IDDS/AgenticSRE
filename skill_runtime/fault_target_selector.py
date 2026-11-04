@@ -6,6 +6,7 @@ fault, infer call traffic, or replace an execution-time identity/risk gate.
 from __future__ import annotations
 
 import datetime as dt
+import math
 import re
 from typing import Any
 
@@ -15,7 +16,9 @@ _KINDS = {'Deployment', 'ReplicaSet', 'Pod', 'Service', 'EndpointSlice'}
 
 def recommend_targets(resources: list[dict], *, cluster_id: str, allowed_namespaces: list[str],
                       allowed_deployment_uids: list[str], observed_at: str,
-                      max_services: int = 1, max_ready_backends: int = 10) -> dict:
+                      max_services: int = 1, max_ready_backends: int = 10,
+                      pod_cpu_observations: list[dict] | None = None,
+                      max_cpu_cores: float | None = None, max_cpu_age_seconds: int = 300) -> dict:
     if not isinstance(cluster_id, str) or not cluster_id.strip() or len(cluster_id) > 128:
         raise ValueError('cluster_id_required')
     if (not isinstance(allowed_namespaces, list) or not allowed_namespaces
@@ -36,6 +39,17 @@ def recommend_targets(resources: list[dict], *, cluster_id: str, allowed_namespa
         raise ValueError('snapshot_time_required') from None
     if snapshot_time.tzinfo is None or snapshot_time.utcoffset() is None:
         raise ValueError('snapshot_time_requires_timezone')
+    if type(max_cpu_age_seconds) is not int or not 1 <= max_cpu_age_seconds <= 3600:
+        raise ValueError('invalid_cpu_evidence_age_limit')
+    if max_cpu_cores is not None and (isinstance(max_cpu_cores, bool) or not isinstance(max_cpu_cores, (int, float))
+                                      or not math.isfinite(max_cpu_cores) or not 0 < max_cpu_cores <= 1024):
+        raise ValueError('invalid_cpu_ceiling')
+    if pod_cpu_observations is not None and (not isinstance(pod_cpu_observations, list) or len(pod_cpu_observations) > 10000):
+        raise ValueError('invalid_cpu_observations')
+    if max_cpu_cores is None and pod_cpu_observations is not None:
+        raise ValueError('cpu_ceiling_required_with_observations')
+    if max_cpu_cores is not None and pod_cpu_observations is None:
+        raise ValueError('cpu_observations_required_with_ceiling')
     namespaces = set(allowed_namespaces)
     by_uid: dict[str, dict] = {}
     for resource in resources:
@@ -50,6 +64,28 @@ def recommend_targets(resources: list[dict], *, cluster_id: str, allowed_namespa
         if uid in by_uid:
             raise ValueError('duplicate_uid_in_snapshot')
         by_uid[uid] = resource
+
+    cpu_by_pod: dict[str, dict] = {}
+    for observation in pod_cpu_observations or []:
+        if not isinstance(observation, dict):
+            raise ValueError('invalid_cpu_observation')
+        uid, name, ns = (observation.get(key) for key in ('pod_uid', 'pod_name', 'namespace'))
+        cpu, path = observation.get('cpu_cores'), observation.get('cgroup_id')
+        if (not isinstance(uid, str) or not uid or not isinstance(name, str) or not name
+                or not isinstance(ns, str) or not ns or not isinstance(path, str)
+                or not path.endswith('-pod' + uid.replace('-', '_') + '.slice')
+                or type(observation.get('window_seconds')) is not int or observation['window_seconds'] != 300
+                or isinstance(cpu, bool) or not isinstance(cpu, (int, float)) or not math.isfinite(cpu) or cpu < 0):
+            raise ValueError('invalid_uid_bound_cpu_observation')
+        try:
+            measured = dt.datetime.fromisoformat(observation['observed_at'].replace('Z', '+00:00'))
+            age = (snapshot_time - measured).total_seconds()
+        except (KeyError, ValueError, AttributeError, TypeError):
+            raise ValueError('invalid_cpu_observation_time') from None
+        if uid in cpu_by_pod:
+            raise ValueError('duplicate_cpu_observation')
+        cpu_by_pod[uid] = {'namespace': ns, 'pod_name': name, 'cpu_cores': float(cpu),
+                           'observed_at': measured.isoformat(), 'age_seconds': age}
 
     def owner_uid(obj: dict, expected_kind: str) -> str | None:
         meta = obj['metadata']
@@ -178,15 +214,34 @@ def recommend_targets(resources: list[dict], *, cluster_id: str, allowed_namespa
         # This score expresses observed structural test coverage only, not
         # production importance, probability of failure, or safety to inject.
         observed_pods = len({p for row in service_map.values() for p in row['pod_uids']})
+        pod_uids = {p for row in service_map.values() for p in row['pod_uids']}
+        cpu_values = []
+        if max_cpu_cores is not None:
+            for uid in sorted(pod_uids):
+                pod, reading = by_uid[uid], cpu_by_pod.get(uid)
+                if (not reading or reading['namespace'] != meta['namespace']
+                        or reading['pod_name'] != pod['metadata']['name']
+                        or not 0 <= reading['age_seconds'] <= max_cpu_age_seconds):
+                    break
+                cpu_values.append(reading['cpu_cores'])
+            if len(cpu_values) != len(pod_uids):
+                excluded.append({'deployment_uid': dep_uid, 'reason': 'cpu_evidence_missing_or_stale'})
+                continue
+            if max(cpu_values) > max_cpu_cores:
+                excluded.append({'deployment_uid': dep_uid, 'reason': 'cpu_ceiling_exceeded'})
+                continue
         proposals.append({'cluster_id': cluster_id, 'namespace': meta['namespace'], 'kind': 'Deployment',
                           'name': meta['name'], 'uid': dep_uid, 'resource_version': meta['resourceVersion'],
                           'ready_replicas': ready, 'observed_backend_pods': observed_pods,
                           'services': services_for_target,
                           'coverage_score': 3 * len(services_for_target) + min(observed_pods, 5),
+                          'max_pod_cpu_cores_5m': max(cpu_values) if cpu_values else None,
                           'requires_fresh_observation': True, 'execution_authorized': False})
-    proposals.sort(key=lambda x: (-x['coverage_score'], x['namespace'], x['name'], x['uid']))
+    proposals.sort(key=lambda x: (-x['coverage_score'], x['max_pod_cpu_cores_5m'] if x['max_pod_cpu_cores_5m'] is not None else 0,
+                                  x['namespace'], x['name'], x['uid']))
     return {'status': 'proposal_only', 'observed_at': snapshot_time.isoformat(),
             'candidates': proposals, 'excluded': excluded, 'skipped': skipped,
-            'limits': ['Coverage score uses observed structure only; traffic and failure probability are unknown.',
+            'limits': ['Coverage score uses observed structure; CPU is an optional reported observation, not CPU headroom or failure probability.',
+                       'CPU timestamps and snapshots are caller-supplied; freshness and provenance must be rechecked at execution.',
                        'Caller-supplied namespace and deployment allowlists are not execution authorization.',
                        'Selection does not replace live identity checks, approval, cleanup, or execution policy.']}

@@ -31,6 +31,12 @@ def run(resources, **kwargs):
                              allowed_deployment_uids=['dep'], observed_at='2026-11-04T00:00:00Z', **kwargs)
 
 
+def cpu_observation(uid='pod', name='checkout-pod', value=0.1, at='2026-11-03T23:59:00Z'):
+    return {'pod_uid': uid, 'pod_name': name, 'namespace': 'experiment', 'cpu_cores': value,
+            'cgroup_id': '/kubepods.slice/kubepods-burstable-pod' + uid + '.slice',
+            'window_seconds': 300, 'observed_at': at}
+
+
 class FaultTargetSelectionTests(unittest.TestCase):
     def test_uid_bound_candidate_requires_independent_authorization(self):
         result = run(topology())
@@ -87,6 +93,36 @@ class FaultTargetSelectionTests(unittest.TestCase):
                               allowed_deployment_uids=['dep'], observed_at='2026-11-04T00:00:00Z')
         self.assertTrue(result.success)
         self.assertEqual(result.data['status'], 'proposal_only')
+
+    def test_cpu_gate_rejects_stale_missing_or_busy_evidence(self):
+        ok = run(topology(), max_cpu_cores=0.2, pod_cpu_observations=[cpu_observation()])
+        self.assertEqual(ok['candidates'][0]['max_pod_cpu_cores_5m'], 0.1)
+        self.assertEqual(run(topology(), max_cpu_cores=0.05, pod_cpu_observations=[cpu_observation()])['candidates'], [])
+        self.assertEqual(run(topology(), max_cpu_cores=0.2, pod_cpu_observations=[])['candidates'], [])
+        stale = cpu_observation(at='2026-11-03T23:00:00Z')
+        self.assertEqual(run(topology(), max_cpu_cores=0.2, pod_cpu_observations=[stale])['candidates'], [])
+        wrong = cpu_observation()
+        wrong['cgroup_id'] = '/kubepods.slice/other-podother.slice'
+        with self.assertRaises(ValueError):
+            run(topology(), max_cpu_cores=0.2, pod_cpu_observations=[wrong])
+        with self.assertRaises(ValueError):
+            run(topology(), max_cpu_cores=0.2, pod_cpu_observations=[cpu_observation(), cpu_observation()])
+
+    def test_cpu_breaks_coverage_ties_using_uid_bound_observations(self):
+        replacement = {'checkout': 'checkout2', 'checkout-rs': 'checkout2-rs', 'checkout-pod': 'checkout2-pod',
+                       'checkout-svc': 'checkout2-svc', 'checkout-slice': 'checkout2-slice',
+                       'dep': 'dep2', 'rs': 'rs2', 'pod': 'pod2', 'svc': 'svc2', 'slice': 'slice2'}
+        def rename(value):
+            if isinstance(value, dict):
+                return {k: rename(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [rename(v) for v in value]
+            return replacement.get(value, value) if isinstance(value, str) else value
+        observations = [cpu_observation(value=0.15), cpu_observation(uid='pod2', name='checkout2-pod', value=0.05)]
+        result = recommend_targets(topology() + rename(topology()), cluster_id='test', allowed_namespaces=['experiment'],
+                                   allowed_deployment_uids=['dep', 'dep2'], observed_at='2026-11-04T00:00:00Z',
+                                   max_cpu_cores=0.2, pod_cpu_observations=observations)
+        self.assertEqual([c['uid'] for c in result['candidates']], ['dep2', 'dep'])
 
 
 if __name__ == '__main__':

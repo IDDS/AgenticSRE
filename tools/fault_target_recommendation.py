@@ -11,11 +11,14 @@ class FaultTargetRecommendationTool(SRETool):
 
     def _execute(self, resources: list[dict[str, Any]], cluster_id: str, allowed_namespaces: list[str],
                  allowed_deployment_uids: list[str], observed_at: str,
-                 max_services: int = 1, max_ready_backends: int = 10) -> ToolResult:
+                 max_services: int = 1, max_ready_backends: int = 10,
+                 pod_cpu_observations: list[dict[str, Any]] | None = None,
+                 max_cpu_cores: float | None = None, max_cpu_age_seconds: int = 300) -> ToolResult:
         try:
             result = recommend_targets(resources, cluster_id=cluster_id, allowed_namespaces=allowed_namespaces,
                                        allowed_deployment_uids=allowed_deployment_uids, observed_at=observed_at, max_services=max_services,
-                                       max_ready_backends=max_ready_backends)
+                                       max_ready_backends=max_ready_backends, pod_cpu_observations=pod_cpu_observations,
+                                       max_cpu_cores=max_cpu_cores, max_cpu_age_seconds=max_cpu_age_seconds)
         except ValueError as exc:
             return ToolResult(success=False, error=str(exc))
         return ToolResult(success=True, data=result)
@@ -28,4 +31,8 @@ class FaultTargetRecommendationTool(SRETool):
             'observed_at': {'type': 'string', 'description': 'Timezone-qualified acquisition time; not a freshness guarantee'},
             'max_services': {'type': 'integer', 'minimum': 1, 'maximum': 100, 'default': 1},
             'max_ready_backends': {'type': 'integer', 'minimum': 1, 'maximum': 1000, 'default': 10},
+            'pod_cpu_observations': {'type': 'array', 'maxItems': 10000, 'items': {'type': 'object'},
+                                     'description': 'Optional UID-bound five-minute pod-cgroup CPU observations; untrusted until rechecked'},
+            'max_cpu_cores': {'type': 'number', 'exclusiveMinimum': 0, 'maximum': 1024},
+            'max_cpu_age_seconds': {'type': 'integer', 'minimum': 1, 'maximum': 3600, 'default': 300},
         }, 'required': ['resources', 'cluster_id', 'allowed_namespaces', 'allowed_deployment_uids', 'observed_at']}
