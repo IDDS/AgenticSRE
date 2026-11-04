@@ -9,6 +9,7 @@ from tools.k8s_tools import KubectlTool, K8sResourceTool, K8sHealthTool
 from tools.observability import PrometheusTool, ElasticsearchTool, JaegerTool
 from tools.anomaly_detection import AnomalyDetectionTool
 from tools.multimetric_anomaly import MultimetricAnomalyTool
+from tools.fault_target_recommendation import FaultTargetRecommendationTool
 from tools.hero_analysis import (
     HeroMetricAnalyzer, HeroLogAnalyzer,
     HeroTraceAnalyzer, HeroCrossSignalCorrelator,
@@ -22,7 +23,7 @@ __all__ = [
     "LLMClient",
     "KubectlTool", "K8sResourceTool", "K8sHealthTool",
     "PrometheusTool", "ElasticsearchTool", "JaegerTool",
-    "AnomalyDetectionTool", "MultimetricAnomalyTool",
+    "AnomalyDetectionTool", "MultimetricAnomalyTool", "FaultTargetRecommendationTool",
     "HeroMetricAnalyzer", "HeroLogAnalyzer",
     "HeroTraceAnalyzer", "HeroCrossSignalCorrelator",
     "RCALocalizationTool",
@@ -98,6 +99,7 @@ def build_tool_registry(
     # ── Analysis Tools ──
     registry.register(AnomalyDetectionTool(), "analysis")
     registry.register(MultimetricAnomalyTool(), "analysis")
+    registry.register(FaultTargetRecommendationTool(), "analysis")
     registry.register(RCALocalizationTool(), "analysis")
 
     # An approved policy and a trusted executor must both be injected by the host.
