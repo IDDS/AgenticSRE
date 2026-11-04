@@ -134,6 +134,8 @@ detection:
     pod_health: true
     node_health: true
     metric_anomaly: true
+    service_endpoints: false
+  watched_service_endpoints: []
   default_detect_methods: ["threshold", "zscore"]
   default_lookback_m: 30
   default_z_threshold: 3.0

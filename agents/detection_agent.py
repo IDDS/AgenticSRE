@@ -69,6 +69,7 @@ class DetectionAgent:
         self.metric_checks = det.metric_checks or self._default_metric_checks()
         self.critical_event_reasons = set(det.critical_event_reasons)
         self.critical_pod_reasons = set(det.critical_pod_reasons)
+        self.watched_service_endpoints = getattr(det, "watched_service_endpoints", [])
         self._detection_cfg = {
             "default_detect_methods": getattr(det, "default_detect_methods", ["threshold", "zscore"]),
             "default_lookback_m": getattr(det, "default_lookback_m", 30),
@@ -96,10 +97,55 @@ class DetectionAgent:
             checks.append(("node_health", self._check_node_health, 6))
         if self.sources_enabled.get("metric_anomaly"):
             checks.append(("metric_anomaly", lambda: self._check_metric_anomalies(namespace), 4))
+        if self.sources_enabled.get("service_endpoints"):
+            checks.append(("service_endpoints", lambda: self._check_service_endpoints(namespace), 6))
 
         signals.extend(self._run_source_checks(checks))
 
         logger.info(f"Detection cycle: found {len(signals)} signals")
+        return signals
+
+    def _check_service_endpoints(self, namespace: str = "") -> List[DetectionSignal]:
+        """Observe only explicitly configured Service incarnations."""
+        from agents.service_endpoint_detector import inspect_service_endpoints
+        watches = self.watched_service_endpoints
+        if not isinstance(watches, list) or len(watches) > 16:
+            logger.warning("Service endpoint watch list invalid or over limit")
+            return []
+        kubectl = self.registry.get("kubectl")
+        eligible = []
+        for watch in watches:
+            if not isinstance(watch, dict):
+                logger.warning("Service endpoint watch entry invalid")
+                continue
+            ns = watch.get("namespace")
+            if namespace and ns != namespace:
+                continue
+            eligible.append((ns, watch.get("name"), watch.get("uid")))
+        if not eligible:
+            return []
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(eligible))
+        futures = [executor.submit(inspect_service_endpoints, kubectl, *entry) for entry in eligible]
+        done, pending = concurrent.futures.wait(futures, timeout=5)
+        for future in pending:
+            future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
+        if pending:
+            logger.warning("Service endpoint watch incomplete: %s timed out", len(pending))
+        signals = []
+        for future in done:
+            try:
+                result = future.result()
+            except Exception:
+                logger.warning("Service endpoint observation failed", exc_info=True)
+                continue
+            if result['status'] == 'unknown':
+                logger.warning("Service endpoint observation unknown: %s", result.get('reason'))
+            elif result['status'] == 'unavailable':
+                signals.append(DetectionSignal(signal_id='', source='service_endpoints', severity='critical',
+                    title=f"Service has no ready endpoints: {result['service']}",
+                    description='UID-bound Service has no ready EndpointSlice backends.',
+                    namespace=result['namespace'], service=result['service'], raw_data=result))
         return signals
 
     def _run_source_checks(self, checks) -> List[DetectionSignal]:

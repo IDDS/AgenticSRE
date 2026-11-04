@@ -223,7 +223,9 @@ class DetectionConfig:
         "pod_health": True,
         "node_health": True,
         "metric_anomaly": True,
+        "service_endpoints": False,
     })
+    watched_service_endpoints: List[Dict[str, str]] = field(default_factory=list)
     metric_checks: List[Dict[str, Any]] = field(default_factory=list)
     critical_event_reasons: List[str] = field(
         default_factory=lambda: ["OOMKilling", "NodeNotReady", "EvictionThresholdMet"]
@@ -401,6 +403,8 @@ def _load_detection_config(data: dict) -> DetectionConfig:
     cfg = DetectionConfig()
     if "sources_enabled" in data and isinstance(data["sources_enabled"], dict):
         cfg.sources_enabled.update(data["sources_enabled"])
+    if "watched_service_endpoints" in data and isinstance(data["watched_service_endpoints"], list):
+        cfg.watched_service_endpoints = data["watched_service_endpoints"]
     if "metric_checks" in data and isinstance(data["metric_checks"], list):
         cfg.metric_checks = data["metric_checks"]
     if "critical_event_reasons" in data and isinstance(data["critical_event_reasons"], list):
