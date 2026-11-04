@@ -85,6 +85,7 @@ class LLMClient:
         self.model = cfg.model
         self.temperature = cfg.temperature
         self.max_tokens = cfg.max_tokens
+        self.enable_flash_thinking_control = getattr(cfg, 'enable_flash_thinking_control', False) is True
 
     def chat(
         self,
@@ -104,7 +105,10 @@ class LLMClient:
             # An explicit per-call override for bounded DeepSeek classification.
             # Default RCA calls retain the provider's configured thinking mode.
             options = {}
-            if thinking is False and str(model or self.model).startswith("deepseek-v4"):
+            selected_model = str(model or self.model)
+            supports_thinking_control = (selected_model.startswith("deepseek-v4") or
+                (selected_model == "deepseek-flash" and getattr(self, 'enable_flash_thinking_control', False) is True))
+            if thinking is False and supports_thinking_control:
                 options = {"extra_body": {"thinking": {"type": "disabled"}}}
                 if json_mode:
                     options["response_format"] = {"type": "json_object"}

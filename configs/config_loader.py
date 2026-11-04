@@ -20,6 +20,9 @@ class LLMConfig:
     temperature: float = 0.1
     max_tokens: int = 65536
     timeout: int = 300
+    # Explicit opt-in for gateways exposing the deepseek-flash alias and
+    # supporting the DeepSeek thinking-control extension.
+    enable_flash_thinking_control: bool = False
 
 
 @dataclass
