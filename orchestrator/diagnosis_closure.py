@@ -300,7 +300,7 @@ Return JSON:
   "root_cause": "specific corrected root cause",
   "confidence": 0.0,
   "fault_type": "canonical category if possible",
-  "root_entity": {{"namespace":"observed namespace","kind":"Pod","name":"exact observed name","uid":"observed UID"}},
+  "root_entity": {{"namespace":"observed namespace","kind":"observed resource kind","name":"exact observed name","uid":"observed UID"}},
   "affected_services": ["svc"],
   "timeline": [],
   "evidence_summary": {{"metrics": "...", "logs": "...", "traces": "...", "events": "..."}},
@@ -310,11 +310,16 @@ Return JSON:
   "closure_applied": true
 }}
 root_entity must be explicitly selected from observed objects. Use null when unresolved.
-Do not drop the root_entity field or replace an original UID with a same-name Pod."""
+Do not drop the root_entity field or replace an original UID with a same-name object."""
         from agents.diagnosis_grounding import alert_payload, alert_report_prompt
         combined_evidence = {**original_evidence, **closure_evidence}
         if alert_payload(combined_evidence):
             prompt = alert_report_prompt(incident_query, combined_evidence, original=original_result)
+        prompt += """
+结论边界：解释性内容使用中文。不同对象的 UID 不同属于正常现象，不能据此判断身份冲突；
+对象关联须由选择器、所有者引用及运行时证据分别验证。仅同时观测到两个异常状态不能证明因果关系；
+缺乏证据时应标记机制待验证，不猜测变更时间、执行者或历史原因。root_entity 的 kind 必须来自被观测对象。
+"""
         try:
             revised = self.llm.json_chat([
                 {"role": "system", "content": "You are an SRE RCA closure agent. Respond with valid JSON only."},
