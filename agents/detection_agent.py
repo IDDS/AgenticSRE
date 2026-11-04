@@ -256,6 +256,7 @@ class DetectionAgent:
     @staticmethod
     def _default_metric_checks():
         """Fallback metric checks when none provided in config."""
+        from agents.pod_metric_queries import pod_cpu_limit_ratio, pod_memory_limit_ratio
         return [
             {
                 "name": "node_cpu_usage",
@@ -277,15 +278,13 @@ class DetectionAgent:
             },
             {
                 "name": "container_cpu",
-                "query": 'sum(rate(container_cpu_usage_seconds_total{container!=""}[1m])) by (pod, namespace) '
-                         '/ sum(kube_pod_container_resource_limits{resource="cpu"}) by (pod, namespace) * 100',
+                "query": f'({pod_cpu_limit_ratio()}) * 100',
                 "unit": "%", "label_key": "pod", "ns_key": "namespace", "level": "container",
                 "warn": 80, "crit": 95,
             },
             {
                 "name": "container_memory",
-                "query": 'sum(container_memory_working_set_bytes{container!=""}) by (pod, namespace) '
-                         '/ sum(kube_pod_container_resource_limits{resource="memory"}) by (pod, namespace) * 100',
+                "query": f'({pod_memory_limit_ratio()}) * 100',
                 "unit": "%", "label_key": "pod", "ns_key": "namespace", "level": "container",
                 "warn": 80, "crit": 95,
             },

@@ -19,6 +19,7 @@ import re
 import time
 import logging
 from typing import Any, Dict, List, Optional, Tuple
+from agents.pod_metric_queries import pod_cpu_cores, pod_cpu_limit_ratio, pod_memory_limit_ratio
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ SUPPORTED_METHODS = frozenset([
     "threshold", "zscore", "ewma",
     "spectral_residual", "pearson_onset", "rate_change",
 ])
+MAX_METRIC_SERIES = 1000
 
 # ── Module-level utility functions ────────────────────────────────────
 
@@ -242,15 +244,14 @@ class MetricAnomalyDetector:
         # ContainerCPUSpike — z-score
         signals.extend(self._zscore_check(
             "ContainerCPUSpike",
-            f'sum by(pod, namespace)(rate(container_cpu_usage_seconds_total{{container!=""{ns_filter and ","+ns_filter[1:]}}}[1m]))',
+            pod_cpu_cores(ns),
             level="container", label_key="pod", ns_key="namespace", ns=ns,
         ))
 
         # ContainerMemoryHigh — static threshold
         signals.extend(self._threshold_check(
             "ContainerMemoryHigh",
-            f'sum by(pod, namespace)(container_memory_working_set_bytes{{container!=""{ns_filter and ","+ns_filter[1:]}}}) '
-            f'/ sum by(pod, namespace)(kube_pod_container_resource_limits{{resource="memory"{ns_filter and ","+ns_filter[1:]}}})',
+            pod_memory_limit_ratio(ns),
             self.thresholds["container_mem_warn"], self.thresholds["container_mem_crit"],
             level="container", unit="", label_key="pod", ns_key="namespace", ns=ns,
         ))
@@ -274,23 +275,18 @@ class MetricAnomalyDetector:
 
         # Build pod name regex for business services
         svc_regex = "|".join(re.escape(s) for s in self.business_services)
-        ns_filter = f',namespace="{ns}"' if ns else ""
 
         # BizServiceCPUSpike — z-score on business pod CPU
         signals.extend(self._zscore_check(
             "BizServiceCPUSpike",
-            f'sum by(pod, namespace)(rate(container_cpu_usage_seconds_total'
-            f'{{pod=~"({svc_regex}).*",container!=""{ns_filter}}}[1m]))',
+            pod_cpu_cores(ns, f'({svc_regex}).*'),
             level="service", label_key="pod", ns_key="namespace", ns=ns,
         ))
 
         # BizServiceMemHigh — static threshold on business pod memory/limit
         signals.extend(self._threshold_check(
             "BizServiceMemHigh",
-            f'sum by(pod, namespace)(container_memory_working_set_bytes'
-            f'{{pod=~"({svc_regex}).*",container!=""{ns_filter}}}) / '
-            f'sum by(pod, namespace)(kube_pod_container_resource_limits'
-            f'{{resource="memory",pod=~"({svc_regex}).*"{ns_filter}}})',
+            pod_memory_limit_ratio(ns, f'({svc_regex}).*'),
             self.thresholds["biz_mem_warn"], self.thresholds["biz_mem_crit"],
             level="service", unit="", label_key="pod", ns_key="namespace", ns=ns,
         ))
@@ -299,8 +295,7 @@ class MetricAnomalyDetector:
         if any("nginx-thrift" in s for s in self.business_services):
             signals.extend(self._zscore_check(
                 "NginxQPSProxy",
-                f'sum by(pod, namespace)(rate(container_cpu_usage_seconds_total'
-                f'{{pod=~"nginx-thrift.*",container!=""{ns_filter}}}[1m]))',
+                pod_cpu_cores(ns, 'nginx-thrift.*'),
                 level="service", label_key="pod", ns_key="namespace", ns=ns,
                 bidirectional=True,
             ))
@@ -308,10 +303,7 @@ class MetricAnomalyDetector:
             # NginxLatencyProxy — static threshold on nginx-thrift CPU/limit
             signals.extend(self._threshold_check(
                 "NginxLatencyProxy",
-                f'sum by(pod, namespace)(rate(container_cpu_usage_seconds_total'
-                f'{{pod=~"nginx-thrift.*",container!=""{ns_filter}}}[1m])) / '
-                f'sum by(pod, namespace)(kube_pod_container_resource_limits'
-                f'{{resource="cpu",pod=~"nginx-thrift.*"{ns_filter}}})',
+                pod_cpu_limit_ratio(ns, 'nginx-thrift.*'),
                 self.thresholds["nginx_latency_warn"], self.thresholds["nginx_latency_crit"],
                 level="service", unit="", label_key="pod", ns_key="namespace", ns=ns,
             ))
@@ -341,15 +333,11 @@ class MetricAnomalyDetector:
             return signals
 
         db_regex = "|".join(re.escape(s) for s in self.db_services)
-        ns_filter = f',namespace="{ns}"' if ns else ""
 
         # DBMemoryPressure — static threshold
         signals.extend(self._threshold_check(
             "DBMemoryPressure",
-            f'sum by(pod, namespace)(container_memory_working_set_bytes'
-            f'{{pod=~"({db_regex}).*",container!=""{ns_filter}}}) / '
-            f'sum by(pod, namespace)(kube_pod_container_resource_limits'
-            f'{{resource="memory",pod=~"({db_regex}).*"{ns_filter}}})',
+            pod_memory_limit_ratio(ns, f'({db_regex}).*'),
             self.thresholds["db_mem_warn"], self.thresholds["db_mem_crit"],
             level="database", unit="", label_key="pod", ns_key="namespace", ns=ns,
         ))
@@ -357,8 +345,7 @@ class MetricAnomalyDetector:
         # DBCPUSpike — z-score
         signals.extend(self._zscore_check(
             "DBCPUSpike",
-            f'sum by(pod, namespace)(rate(container_cpu_usage_seconds_total'
-            f'{{pod=~"({db_regex}).*",container!=""{ns_filter}}}[1m]))',
+            pod_cpu_cores(ns, f'({db_regex}).*'),
             level="database", label_key="pod", ns_key="namespace", ns=ns,
         ))
 
@@ -835,9 +822,11 @@ class MetricAnomalyDetector:
     def _instant_query(self, query: str) -> Optional[List[Dict]]:
         """Instant query via PrometheusTool (for category checks)."""
         try:
-            result = self.prom.execute(query=query)
+            result = self.prom.execute(query=query, max_results=MAX_METRIC_SERIES)
             if not result.success:
                 return None
+            if (result.data or {}).get("truncated"):
+                logger.warning("[MetricAnomalyDetector] instant query results truncated at %s series", MAX_METRIC_SERIES)
             return (result.data or {}).get("results", [])
         except Exception as exc:
             logger.debug("[MetricAnomalyDetector] instant query failed: %s", exc)
@@ -851,10 +840,12 @@ class MetricAnomalyDetector:
             end = str(now)
             result = self.prom.execute(
                 query=query, query_type="range",
-                start=start, end=end, step="60s",
+                start=start, end=end, step="60s", max_results=MAX_METRIC_SERIES,
             )
             if not result.success:
                 return None
+            if (result.data or {}).get("truncated"):
+                logger.warning("[MetricAnomalyDetector] range query results truncated at %s series", MAX_METRIC_SERIES)
             return (result.data or {}).get("results", [])
         except Exception as exc:
             logger.debug("[MetricAnomalyDetector] range query failed: %s", exc)
@@ -879,6 +870,8 @@ class MetricAnomalyDetector:
             try:
                 ts = float(point[0])
                 val = float(point[1])
+                if not math.isfinite(ts) or not math.isfinite(val):
+                    continue
                 timestamps.append(ts)
                 values.append(val)
             except (TypeError, ValueError, IndexError):

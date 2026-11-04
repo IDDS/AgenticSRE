@@ -163,7 +163,7 @@ detection:
       warn: 85
       crit: 95
     - name: "container_cpu"
-      query: 'sum(rate(container_cpu_usage_seconds_total{container!=""}[1m])) by (pod, namespace) / sum(kube_pod_container_resource_limits{resource="cpu"}) by (pod, namespace) * 100'
+      query: '((sum by (namespace,pod) (max by (namespace,pod,container,cpu) (rate(container_cpu_usage_seconds_total{pod!="",container!=""}[1m]))) / on (namespace,pod) (sum by (namespace,pod) (max by (namespace,pod,container) (kube_pod_container_resource_limits{pod!="",resource="cpu"})) > 0)) or on (namespace,pod) (sum by (namespace,pod) (sum by (namespace,pod,pod_uid) (label_replace(max by (namespace,pod,id,cpu) (rate(container_cpu_usage_seconds_total{pod!="",container="",id=~".*pod[^/]+\\.slice",cpu="total"}[5m])),"pod_uid","$1-$2-$3-$4-$5","id",".*pod([0-9a-f]{8})_([0-9a-f]{4})_([0-9a-f]{4})_([0-9a-f]{4})_([0-9a-f]{12})\\.slice") * on (namespace,pod,pod_uid) group_left() max by (namespace,pod,pod_uid) (label_replace(kube_pod_info{pod!=""},"pod_uid","$1","uid","(.+)"))) / on (namespace,pod,pod_uid) (sum by (namespace,pod,pod_uid) (label_replace(max by (namespace,pod,container,uid) (kube_pod_container_resource_limits{pod!="",resource="cpu"}),"pod_uid","$1","uid","(.+)")) > 0)))) * 100'
       unit: "%"
       label_key: "pod"
       ns_key: "namespace"
@@ -172,7 +172,7 @@ detection:
       crit: 95
       detect_methods: ["threshold", "zscore", "ewma"]
     - name: "container_memory"
-      query: 'sum(container_memory_working_set_bytes{container!=""}) by (pod, namespace) / sum(kube_pod_container_resource_limits{resource="memory"}) by (pod, namespace) * 100'
+      query: '((sum by (namespace,pod) (max by (namespace,pod,container) (container_memory_working_set_bytes{pod!="",container!=""})) / on (namespace,pod) (sum by (namespace,pod) (max by (namespace,pod,container) (kube_pod_container_resource_limits{pod!="",resource="memory"})) > 0)) or on (namespace,pod) (sum by (namespace,pod) (sum by (namespace,pod,pod_uid) (label_replace(max by (namespace,pod,id) (container_memory_working_set_bytes{pod!="",container="",id=~".*pod[^/]+\\.slice"}),"pod_uid","$1-$2-$3-$4-$5","id",".*pod([0-9a-f]{8})_([0-9a-f]{4})_([0-9a-f]{4})_([0-9a-f]{4})_([0-9a-f]{12})\\.slice") * on (namespace,pod,pod_uid) group_left() max by (namespace,pod,pod_uid) (label_replace(kube_pod_info{pod!=""},"pod_uid","$1","uid","(.+)"))) / on (namespace,pod,pod_uid) (sum by (namespace,pod,pod_uid) (label_replace(max by (namespace,pod,container,uid) (kube_pod_container_resource_limits{pod!="",resource="memory"}),"pod_uid","$1","uid","(.+)")) > 0)))) * 100'
       unit: "%"
       label_key: "pod"
       ns_key: "namespace"
