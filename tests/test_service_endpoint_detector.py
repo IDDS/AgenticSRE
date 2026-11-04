@@ -40,12 +40,13 @@ class ServiceEndpointDetectorTests(unittest.TestCase):
         result = self.check(service, slices)
         self.assertEqual(result['status'], 'unavailable')
         self.assertEqual(result['service_uid'], 'service-uid')
+        self.assertEqual(result['slice_versions'], [{'uid': 'slice-uid', 'resource_version': '3'}])
         slices['items'][0]['endpoints'] = None
         self.assertEqual(self.check(service, slices)['status'], 'unavailable')
 
     def test_missing_or_untrusted_evidence_is_unknown(self):
         base_service, base_slices = fixture()
-        for case in ('no_slices', 'wrong_service_uid', 'wrong_owner', 'missing_endpoint_array', 'unknown_ready', 'pagination'):
+        for case in ('no_slices', 'wrong_service_uid', 'wrong_owner', 'missing_endpoint_array', 'unknown_ready', 'pagination', 'invalid_slice_version'):
             service, slices = copy.deepcopy(base_service), copy.deepcopy(base_slices)
             if case == 'no_slices': slices['items'] = []
             if case == 'wrong_service_uid': service['metadata']['uid'] = 'other'
@@ -53,6 +54,7 @@ class ServiceEndpointDetectorTests(unittest.TestCase):
             if case == 'missing_endpoint_array': del slices['items'][0]['endpoints']
             if case == 'unknown_ready': slices['items'][0]['endpoints'][0]['conditions'] = {}
             if case == 'pagination': slices['metadata']['continue'] = 'more'
+            if case == 'invalid_slice_version': slices['items'][0]['metadata']['resourceVersion'] = 3
             with self.subTest(case=case):
                 self.assertEqual(self.check(service, slices)['status'], 'unknown')
 

@@ -13,6 +13,7 @@ from tools.base_tool import ToolRegistry, ToolResult
 from tools.llm_client import LLMClient
 from agents.evidence import make_evidence_item
 from agents.hpa_evidence import observe_hpa_targets
+from agents.endpoint_followup import observe_related_service_endpoints
 from agents.pod_state_evidence import MESSAGE_LIMIT, problem_containers, pod_spec_checks
 from skill_runtime.service_topology import MAX_RESOURCES, project_resource
 
@@ -78,6 +79,9 @@ evidence explicitly; the complete observations remain available separately."""
         hpa_observation = (observe_hpa_targets(self.registry.get('kubectl'), namespace, zero_deployments)
                            if namespace and zero_deployments else
                            {'status': 'not_requested', 'evidence_items': []})
+        endpoint_followup = (observe_related_service_endpoints(self.registry.get('kubectl'), namespace,
+                              workload_state, zero_deployments) if namespace and zero_deployments else
+                             {'status': 'not_requested', 'evidence_items': []})
         live_pods = self._fetch_live_pods(namespace)
 
         # Retain orphaned Pod warnings only as explicitly stale audit context.
@@ -98,6 +102,7 @@ evidence explicitly; the complete observations remain available separately."""
         # Keep each targeted HPA observation next to its zero-replica fact,
         # ahead of the potentially large namespace-wide topology projection.
         hpa_facts = {x.get('service'): x for x in hpa_observation.get('evidence_items', [])}
+        endpoint_facts = list(endpoint_followup.get('evidence_items', []))
         evidence_items = []
         for item in self._build_current_state_evidence_items(workload_state, pods):
             evidence_items.append(item)
@@ -105,7 +110,11 @@ evidence explicitly; the complete observations remain available separately."""
                 hpa_fact = hpa_facts.pop(item.get('service'), None)
                 if hpa_fact:
                     evidence_items.append(hpa_fact)
+                related = [x for x in endpoint_facts if (x.get('raw_ref', {}).get('related_workload') or {}).get('name') == item.get('service')]
+                evidence_items.extend(related)
+                endpoint_facts = [x for x in endpoint_facts if x not in related]
         evidence_items.extend(hpa_facts.values())
+        evidence_items.extend(endpoint_facts)
         evidence_items.extend(event_evidence)
         evidence_items.extend(self._build_network_evidence_items(network_objects))
         
@@ -126,6 +135,8 @@ evidence explicitly; the complete observations remain available separately."""
             context += '\n'.join(x['observation'] for x in hpa_observation['evidence_items']) + '\n\n'
         elif hpa_observation.get('status') == 'unknown':
             context += 'HPA configuration collection unavailable; current HPA presence is unknown.\n\n'
+        if endpoint_followup.get('status') in ('partial', 'unknown'):
+            context += 'Targeted EndpointSlice follow-up is incomplete; missing endpoint data is unknown.\n\n'
         if stale_events:
             context += (
                 "Stale/Orphaned Pod Warning Events (audit context only; do not use as the current root cause):\n"
@@ -172,6 +183,7 @@ evidence explicitly; the complete observations remain available separately."""
             "node_status": nodes,
             "workload_state": workload_state,
             "hpa_observation": {k: v for k, v in hpa_observation.items() if k != 'evidence_items'},
+            "endpoint_followup": {k: v for k, v in endpoint_followup.items() if k != 'evidence_items'},
             "network_objects": network_objects,
             "evidence_items": evidence_items,
             "collection_errors": [dict(source=source, error_code=status.get('error_code', 'topology_collection_partial'))

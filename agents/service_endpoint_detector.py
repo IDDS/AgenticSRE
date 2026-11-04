@@ -24,7 +24,8 @@ def inspect_service_endpoints(kubectl, namespace, service, service_uid):
         meta, spec = data.get('metadata') or {}, data.get('spec') or {}
         if (data.get('kind') != 'Service' or not isinstance(meta, dict) or not isinstance(spec, dict)
                 or meta.get('namespace') != namespace or meta.get('name') != service
-                or meta.get('uid') != service_uid or not meta.get('resourceVersion')
+                or meta.get('uid') != service_uid or not isinstance(meta.get('resourceVersion'), str)
+                or not meta['resourceVersion'].strip()
                 or meta.get('deletionTimestamp') or not isinstance(spec.get('selector'), dict)
                 or not spec.get('selector') or spec.get('type') == 'ExternalName'):
             return {'status': 'unknown', 'reason': 'service_identity_or_selector_unverified'}
@@ -41,6 +42,7 @@ def inspect_service_endpoints(kubectl, namespace, service, service_uid):
             return {'status': 'unknown', 'reason': 'missing_or_incomplete_endpointslice_list'}
         ready = uncertain = 0
         seen = set()
+        slice_versions = []
         for item in items:
             if not isinstance(item, dict):
                 return {'status': 'unknown', 'reason': 'invalid_endpointslice'}
@@ -51,13 +53,16 @@ def inspect_service_endpoints(kubectl, namespace, service, service_uid):
             owners = [r for r in refs if isinstance(r, dict) and r.get('controller') is True] if isinstance(refs, list) else []
             labels = m.get('labels') or {}
             if (item.get('kind') != 'EndpointSlice' or m.get('namespace') != namespace
-                    or not m.get('uid') or not m.get('resourceVersion') or m.get('deletionTimestamp')
+                    or not isinstance(m.get('uid'), str) or not m['uid'].strip()
+                    or not isinstance(m.get('resourceVersion'), str) or not m['resourceVersion'].strip()
+                    or m.get('deletionTimestamp')
                     or m['uid'] in seen or not isinstance(labels, dict)
                     or labels.get('kubernetes.io/service-name') != service or len(owners) != 1
                     or owners[0].get('kind') != 'Service' or owners[0].get('name') != service
                     or owners[0].get('uid') != service_uid or 'endpoints' not in item):
                 return {'status': 'unknown', 'reason': 'endpointslice_identity_unverified'}
             seen.add(m['uid'])
+            slice_versions.append({'uid': m['uid'], 'resource_version': m['resourceVersion']})
             endpoints = item['endpoints']
             if endpoints is None:
                 endpoints = []
@@ -77,7 +82,8 @@ def inspect_service_endpoints(kubectl, namespace, service, service_uid):
         status = 'healthy' if ready else 'unknown' if uncertain else 'unavailable'
         return {'status': status, 'namespace': namespace, 'service': service, 'service_uid': service_uid,
                 'service_resource_version': meta['resourceVersion'], 'ready_endpoints': ready,
-                'uncertain_endpoints': uncertain, 'slice_uids': sorted(seen)}
+                'uncertain_endpoints': uncertain, 'slice_uids': sorted(seen),
+                'slice_versions': sorted(slice_versions, key=lambda row: row['uid'])}
     except (ValueError, TypeError, KeyError, AttributeError):
         return {'status': 'unknown', 'reason': 'malformed_or_unavailable_observation'}
     except Exception:
