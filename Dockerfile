@@ -39,6 +39,8 @@ COPY observability/ ./observability/
 COPY orchestrator/ ./orchestrator/
 COPY paradigms/ ./paradigms/
 COPY skill_runtime/ ./skill_runtime/
+COPY scripts/validate_* ./scripts/
+COPY deploy/precision-fault-injection/ ./deploy/precision-fault-injection/
 COPY tools/ ./tools/
 COPY vllm_fault_injector/ ./vllm_fault_injector/
 COPY web_app/ ./web_app/

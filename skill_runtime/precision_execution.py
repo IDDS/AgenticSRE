@@ -29,6 +29,7 @@ class PrecisionAdapterSpec:
     method: str
     runner: str
     runner_args: tuple[str, ...] = ()
+    required_assets: tuple[str, ...] = ()
     environment: str = "kubernetes"
     required_tools: tuple[str, ...] = ("kubectl",)
     cleanup_namespaces: tuple[str, ...] = ()
@@ -56,6 +57,7 @@ def _spec(
     runner: str,
     *,
     runner_args: Sequence[str] = (),
+    required_assets: Sequence[str] = (),
     environment: str = "kubernetes",
     required_tools: Sequence[str] = ("kubectl",),
     cleanup_namespaces: Sequence[str] = (),
@@ -68,6 +70,7 @@ def _spec(
         method=method,
         runner=runner,
         runner_args=tuple(runner_args),
+        required_assets=tuple(required_assets),
         environment=environment,
         required_tools=tuple(required_tools),
         cleanup_namespaces=tuple(cleanup_namespaces),
@@ -161,6 +164,7 @@ PRECISION_ADAPTERS: Dict[str, PrecisionAdapterSpec] = {
     "precise-application-failpoint-error": _spec(
         "precise-application-failpoint-error", "failpoint",
         "scripts/validate_application_failpoint_precision.py",
+        required_assets=("deploy/precision-fault-injection/application-failpoint/probe.py",),
         environment="local_or_application", required_tools=("python3",), timeout_s=60,
     ),
     "precise-cgroup-v2-cpu-quota": _spec(
@@ -212,6 +216,15 @@ def precision_adapter_preflight(scenario_id: str, *, root_dir: Path) -> Dict[str
     blockers: list[str] = []
     if not runner.is_file():
         blockers.append(f"固定执行适配器不存在: {spec.runner}")
+    dependencies = []
+    for relative in spec.required_assets:
+        asset = (expected_root / relative).resolve()
+        if expected_root not in asset.parents:
+            raise PrecisionExecutionError("执行依赖路径越界")
+        present = asset.is_file()
+        if not present:
+            blockers.append(f"固定执行依赖不存在: {relative}")
+        dependencies.append({"path": relative, "sha256": _sha256(asset) if present else ""})
     return {
         "status": "ready" if not blockers else "blocked",
         "ready": not blockers,
@@ -221,6 +234,7 @@ def precision_adapter_preflight(scenario_id: str, *, root_dir: Path) -> Dict[str
             "path": spec.runner,
             "sha256": _sha256(runner) if runner.is_file() else "",
         },
+        "reviewed_dependencies": dependencies,
         "blockers": blockers,
         "checks": [
             "服务端场景与适配器一一映射",
