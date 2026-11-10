@@ -16074,8 +16074,12 @@ function _hermesRenderSkillWorkflow(result) {
 // Health Check
 // ─────────────────────────────────────────
 
+let _healthCheckGeneration = 0;
+
 async function healthCheck() {
+    const generation = ++_healthCheckGeneration;
     const data = await api('/api/health');
+    if (generation !== _healthCheckGeneration) return;
     const dot = document.querySelector('#health-dot .dot');
     const text = document.querySelector('#health-dot span:last-child');
     const badge = document.getElementById('cluster-badge');
