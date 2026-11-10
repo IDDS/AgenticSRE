@@ -29,7 +29,7 @@ from agents import (
 logger = logging.getLogger(__name__)
 
 # ── Init ──
-mcp = FastMCP("AgenticSRE", description="Multi-Agent Intelligent Operations System")
+mcp = FastMCP("AgenticSRE")
 _cfg = None
 _registry = None
 _llm = None
