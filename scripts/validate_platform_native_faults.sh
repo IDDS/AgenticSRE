@@ -19,6 +19,9 @@ case "${scenario_id}" in
 esac
 
 cleanup() {
+  if [[ "${namespace_created}" != "true" ]]; then
+    return
+  fi
   kubectl delete networkchaos agenticsre-target-packet-loss -n "${namespace}" --ignore-not-found --wait=true >/dev/null 2>&1 || true
   kubectl delete dnschaos agenticsre-domain-resolution-error -n "${namespace}" --ignore-not-found --wait=true >/dev/null 2>&1 || true
   kubectl delete stresschaos agenticsre-container-cpu-load -n "${namespace}" --ignore-not-found --wait=true >/dev/null 2>&1 || true
@@ -131,8 +134,9 @@ restart_total() {
 agenticsre_before="$(docker inspect -f '{{.Id}}|{{.State.StartedAt}}' agenticsre 2>/dev/null || printf unavailable)"
 agenticsre_runtime_before="$(docker inspect -f '{{.Id}}|{{.State.StartedAt}}' agenticsre-skill-runtime 2>/dev/null || printf unavailable)"
 
-kubectl apply -f "${probe_manifest}"
+kubectl create namespace "${namespace}"
 namespace_created="true"
+kubectl apply -f "${probe_manifest}"
 kubectl wait --for=condition=Ready pod \
   -l agenticsre.local/validation=platform-native-faults \
   -n "${namespace}" --timeout=180s
