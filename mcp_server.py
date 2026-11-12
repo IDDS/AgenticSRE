@@ -183,15 +183,17 @@ def analyze_events(query: str, namespace: str = "") -> str:
 
 
 @mcp.tool()
-def compress_alerts(namespace: str = "", time_range: str = "15m") -> str:
-    """Run intelligent alert compression (SOW core capability).
+async def compress_alerts(namespace: str = "", time_range: str = "") -> str:
+    """Run intelligent alert compression.
     Groups noisy alerts by temporal-spatial patterns, LLM semantic clustering,
     and generates root cause recommendations per group.
-    Target: ≥80% compression accuracy.
+    The collector does not support a caller-specified time range.
     """
+    if time_range:
+        raise ValueError("time_range is not supported by the alert collector")
     _init()
     agent = AlertAgent(_llm, _registry)
-    result = agent.compress_and_recommend(namespace=namespace, time_range=time_range)
+    result = await agent.compress_and_recommend(namespace=namespace)
     return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 
