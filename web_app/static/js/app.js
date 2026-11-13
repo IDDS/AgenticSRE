@@ -16121,10 +16121,12 @@ async function healthCheck() {
 
     if (data?.status === 'ok') {
         dot.className = 'dot dot-green'; text.textContent = '系统正常';
-        badge.className = 'badge badge-success'; badge.textContent = '已连接';
+        badge.className = 'badge badge-success'; badge.textContent = '系统在线';
+        badge.title = '应用健康接口可访问；集群状态请查看运维概览';
         if (llmWarning) llmWarning.style.display = data.llm_configured ? 'none' : 'flex';
     } else {
         dot.className = 'dot dot-red'; text.textContent = '连接异常';
-        badge.className = 'badge badge-danger'; badge.textContent = '连接异常';
+        badge.className = 'badge badge-danger'; badge.textContent = '系统连接异常';
+        badge.title = '无法获取应用健康状态';
     }
 }

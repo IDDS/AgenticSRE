@@ -28,7 +28,8 @@ vm.runInContext(source.slice(start, end), context);
   await newer;
   pending[0](null);
   await older;
-  assert.equal(nodes.badge.textContent, '已连接');
+  assert.equal(nodes.badge.textContent, '系统在线');
+  assert.match(nodes.badge.title, /集群状态/);
   assert.equal(nodes.warning.style.display, 'none');
 
   const oldSuccess = context.healthCheck();
@@ -37,6 +38,6 @@ vm.runInContext(source.slice(start, end), context);
   await newFailure;
   pending[2]({status: 'ok'});
   await oldSuccess;
-  assert.equal(nodes.badge.textContent, '连接异常');
+  assert.equal(nodes.badge.textContent, '系统连接异常');
   console.log('health check ordering: 2 scenarios passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });
