@@ -4723,6 +4723,12 @@ body {
     color: #f8fafc;
 }
 
+.nav-item:focus-visible,
+.topbar .btn-icon:focus-visible {
+    outline: 2px solid #7dd3fc;
+    outline-offset: -2px;
+}
+
 .nav-item:hover .nav-icon {
     color: #dbeafe;
     background: rgba(96, 165, 250, 0.16);
