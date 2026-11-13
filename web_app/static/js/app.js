@@ -487,7 +487,7 @@ function initNavigation() {
         }
         sidebar.classList.toggle('collapsed');
         document.body.classList.toggle('sidebar-collapsed');
-        document.getElementById('toggle-sidebar')?.setAttribute('aria-expanded', String(!sidebar.classList.contains('collapsed')));
+        syncSidebarExpanded();
     });
 
     document.getElementById('sidebar-backdrop')?.addEventListener('click', () => setMobileSidebar(false));
