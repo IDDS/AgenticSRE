@@ -10,17 +10,21 @@ Run:
 
 import json
 import logging
+import re
 import sys
+import time
+from dataclasses import replace
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 try:
     from mcp.server.fastmcp import FastMCP
 except ImportError:
-    print("Error: fastmcp not installed. Run: pip install mcp[cli]")
+    print("Error: MCP SDK not installed. Run: pip install mcp[cli]", file=sys.stderr)
     sys.exit(1)
 
-from configs.config_loader import get_config
-from tools import build_tool_registry, LLMClient
+from configs.config_loader import apply_connection_overrides, get_config
+from tools import build_tool_registry, configured_llm
 from agents import (
     MetricAgent, LogAgent, TraceAgent, EventAgent,
     AlertAgent, HypothesisAgent, DetectionAgent,
@@ -33,14 +37,39 @@ mcp = FastMCP("AgenticSRE")
 _cfg = None
 _registry = None
 _llm = None
+_PLATFORM_CONFIG_FILE = Path(__file__).resolve().parent / "data" / "platform_config.json"
 
 
 def _init():
     global _cfg, _registry, _llm
     if _cfg is None:
-        _cfg = get_config()
-        _registry = build_tool_registry(_cfg)
-        _llm = LLMClient(_cfg.llm)
+        base = get_config()
+        config = replace(base, llm=replace(base.llm), observability=replace(base.observability))
+        try:
+            overrides = json.loads(_PLATFORM_CONFIG_FILE.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            overrides = {}
+        if not isinstance(overrides, dict):
+            raise ValueError("Invalid platform configuration")
+        apply_connection_overrides(config, overrides)
+        reader_config = replace(config, runtime=replace(config.runtime, enable_self_healing=False))
+        registry = build_tool_registry(reader_config, isolated=True)
+        _cfg, _registry, _llm = config, registry, configured_llm(config.llm)
+
+
+def _read_tool(tool_name: str, *, raw_text: bool = False, **arguments) -> str:
+    _init()
+    tool = _registry.get(tool_name)
+    if tool is None:
+        raise RuntimeError(f"{tool_name} tool not available")
+    result = tool.execute(**arguments)
+    if not result.success:
+        raise RuntimeError(result.error or f"{tool_name} read failed")
+    if isinstance(result.data, dict) and result.data.get("stub") is True:
+        raise RuntimeError(f"{tool_name} backend is not configured")
+    if raw_text and isinstance(result.data, str):
+        return result.data
+    return json.dumps(result.data, indent=2, default=str)
 
 
 # ─────────────────────────────────────────
@@ -52,12 +81,7 @@ def kubectl_run(command: str, namespace: str = "") -> str:
     """Execute a safe kubectl command on the K8s cluster.
     Only read commands (get, describe, logs, top) are allowed.
     """
-    _init()
-    tool = _registry.get("kubectl")
-    if not tool:
-        return "kubectl tool not available"
-    result = tool.execute(command=command, namespace=namespace)
-    return result.data if result.success else f"Error: {result.error}"
+    return _read_tool("kubectl", raw_text=True, command=command, namespace=namespace)
 
 
 @mcp.tool()
@@ -65,12 +89,7 @@ def k8s_health_check() -> str:
     """Run comprehensive K8s cluster health check.
     Returns node status, pod health, warnings, and resource usage.
     """
-    _init()
-    tool = _registry.get("k8s_health")
-    if not tool:
-        return "k8s_health tool not available"
-    result = tool.execute()
-    return json.dumps(result.data, indent=2, default=str) if result.success else f"Error: {result.error}"
+    return _read_tool("k8s_health")
 
 
 @mcp.tool()
@@ -79,12 +98,7 @@ def k8s_resource_info(action: str, resource: str, name: str = "", namespace: str
     Actions: list, describe, logs, events, top
     Resources: pods, nodes, services, deployments, etc.
     """
-    _init()
-    tool = _registry.get("k8s_resource")
-    if not tool:
-        return "k8s_resource tool not available"
-    result = tool.execute(action=action, resource=resource, name=name, namespace=namespace)
-    return result.data if result.success else f"Error: {result.error}"
+    return _read_tool("k8s_resources", raw_text=True, action=action, resource_type=resource, name=name, namespace=namespace)
 
 
 # ─────────────────────────────────────────
@@ -92,16 +106,19 @@ def k8s_resource_info(action: str, resource: str, name: str = "", namespace: str
 # ─────────────────────────────────────────
 
 @mcp.tool()
-def prometheus_query(query: str, time_range: str = "15m") -> str:
-    """Execute a PromQL query or natural language metric query.
-    Supports both raw PromQL and natural language (auto-translated to PromQL).
+def prometheus_query(query: str, time_range: str = "15m", natural_language: bool = False) -> str:
+    """Run PromQL over a duration such as 15m, 1h or 1d. Set natural_language for a text question.
     """
-    _init()
-    tool = _registry.get("prometheus")
-    if not tool:
-        return "prometheus tool not available"
-    result = tool.execute(query=query, time_range=time_range)
-    return json.dumps(result.data, indent=2, default=str) if result.success else f"Error: {result.error}"
+    duration = re.fullmatch(r"([1-9][0-9]{0,9})([smhdw])", time_range)
+    if not duration:
+        raise ValueError("time_range must be a positive duration ending in s, m, h, d or w")
+    end = int(time.time())
+    seconds = int(duration[1]) * {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}[duration[2]]
+    if seconds > end:
+        raise ValueError("time_range starts before the Unix epoch")
+    arguments = {"natural_language" if natural_language else "query": query}
+    return _read_tool("prometheus", query_type="range", start=str(end - seconds), end=str(end),
+                      step=f"{max(min(seconds, 60), (seconds + 999) // 1000)}s", **arguments)
 
 
 @mcp.tool()
@@ -109,12 +126,7 @@ def search_logs(keyword: str, namespace: str = "", level: str = "", time_range: 
     """Search logs in Elasticsearch.
     Supports filtering by keyword, namespace, log level, and time range.
     """
-    _init()
-    tool = _registry.get("elasticsearch")
-    if not tool:
-        return "elasticsearch tool not available"
-    result = tool.execute(keyword=keyword, namespace=namespace, level=level, time_range=time_range)
-    return json.dumps(result.data, indent=2, default=str) if result.success else f"Error: {result.error}"
+    return _read_tool("elasticsearch", query=keyword, namespace=namespace, level=level, time_range=time_range)
 
 
 @mcp.tool()
@@ -122,12 +134,7 @@ def query_traces(service: str = "", operation: str = "", lookback: str = "1h", l
     """Query distributed traces from Jaeger.
     Returns trace summaries with span counts and durations.
     """
-    _init()
-    tool = _registry.get("jaeger")
-    if not tool:
-        return "jaeger tool not available"
-    result = tool.execute(service=service, operation=operation, lookback=lookback, limit=limit)
-    return json.dumps(result.data, indent=2, default=str) if result.success else f"Error: {result.error}"
+    return _read_tool("jaeger", service=service, operation=operation, lookback=lookback, limit=limit)
 
 
 # ─────────────────────────────────────────
@@ -135,50 +142,46 @@ def query_traces(service: str = "", operation: str = "", lookback: str = "1h", l
 # ─────────────────────────────────────────
 
 @mcp.tool()
-def analyze_metrics(query: str, namespace: str = "") -> str:
+async def analyze_metrics(query: str, namespace: str = "") -> str:
     """Run metric analysis using the MetricAgent.
     Queries Prometheus, detects anomalies with Hero 3σ and WeRCA onset detection.
     """
     _init()
-    import asyncio
     agent = MetricAgent(_llm, _registry)
-    result = asyncio.run(agent.analyze(query, namespace))
+    result = await agent.analyze(query, namespace)
     return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 
 @mcp.tool()
-def analyze_logs(query: str, namespace: str = "") -> str:
+async def analyze_logs(query: str, namespace: str = "") -> str:
     """Run log analysis using the LogAgent.
     Searches logs, clusters patterns with Drain3, identifies error patterns.
     """
     _init()
-    import asyncio
     agent = LogAgent(_llm, _registry)
-    result = asyncio.run(agent.analyze(query, namespace))
+    result = await agent.analyze(query, namespace)
     return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 
 @mcp.tool()
-def analyze_traces(query: str, namespace: str = "") -> str:
+async def analyze_traces(query: str, namespace: str = "") -> str:
     """Run trace analysis using the TraceAgent.
     Queries Jaeger, detects latency anomalies per service.
     """
     _init()
-    import asyncio
     agent = TraceAgent(_llm, _registry)
-    result = asyncio.run(agent.analyze(query, namespace=namespace))
+    result = await agent.analyze(query, namespace=namespace)
     return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 
 @mcp.tool()
-def analyze_events(query: str, namespace: str = "") -> str:
+async def analyze_events(query: str, namespace: str = "") -> str:
     """Run K8s event analysis using the EventAgent.
     Detects warning events, node issues, and problem pods.
     """
     _init()
-    import asyncio
     agent = EventAgent(_llm, _registry)
-    result = asyncio.run(agent.analyze(query, namespace))
+    result = await agent.analyze(query, namespace)
     return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 
@@ -214,15 +217,14 @@ def detect_anomalies(namespace: str = "") -> str:
 # ─────────────────────────────────────────
 
 @mcp.tool()
-def run_rca_analysis(query: str, namespace: str = "") -> str:
+async def run_rca_analysis(query: str, namespace: str = "") -> str:
     """Run full hypothesis-driven Root Cause Analysis pipeline.
     Executes 5 phases: Detection → Hypothesis → Investigation → Reasoning → Recovery.
     Returns structured RCA report with root cause, confidence, evidence, and remediation.
     """
     _init()
-    import asyncio
     from orchestrator.rca_engine import run_rca
-    result = asyncio.run(run_rca(query, namespace=namespace, config=_cfg))
+    result = await run_rca(query, namespace=namespace, config=_cfg)
     return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 

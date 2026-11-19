@@ -235,6 +235,10 @@ const ontologyExplorer = (() => {
             labels: meta.labels, ownerReferences: meta.ownerReferences, selector: spec.selector,
             templateLabels: spec.template?.metadata?.labels, nodeName: spec.nodeName || raw.node_name,
             replicas: spec.replicas, nodeSelector: spec.nodeSelector, serviceType: spec.type,
+            podDeclarationChecks: raw.spec_checks?.schema === 'pod-spec-checks/v1' ? {
+                zero_cpu_memory_requests: raw.spec_checks.checks?.zero_cpu_memory_requests,
+                no_pvc_or_ephemeral_volume: raw.spec_checks.checks?.no_pvc_or_ephemeral_volume
+            } : null,
             publishNotReadyAddresses: spec.publishNotReadyAddresses, addressType: raw.addressType,
             endpoints: Array.isArray(raw.endpoints) ? raw.endpoints.map(e => ({
                 targetRef: e?.targetRef, addresses: e?.addresses, conditions: e?.conditions
@@ -423,12 +427,17 @@ const ontologyExplorer = (() => {
         if (item.refutes_if) block.append(el('p', '预期反驳条件 · ' + item.refutes_if));
         const reason = review ? item.reason : item.update_reason;
         if (reason) block.append(el('p', reason));
+        if (review && Array.isArray(item.rationale_limits) && item.rationale_limits.length) {
+            if (item.reviewer_status) block.append(el('p', '复核模型原判断 · ' + (states[item.reviewer_status] || item.reviewer_status)));
+            block.append(el('p', '复核限制 · ' + item.rationale_limits.map(hypothesisEvidenceLabel).join('；')));
+        }
         if (review && item.assertion_requires_review) block.append(el('p', item.assertion_verified === true
             ? '提出方的确认或排除判断已通过本次复核。' : '提出方的确认或排除判断仍待核实。'));
         for (const field of ['unresolved_questions', 'missing_evidence', 'validation_errors']) {
             if (Array.isArray(item[field]) && item[field].length) {
                 const label = {unresolved_questions: '待判别问题', missing_evidence: '待补证据', validation_errors: '引用与校验缺口'}[field];
-                block.append(el('p', label + ' · ' + item[field].join('；')));
+                const values = field === 'validation_errors' ? item[field].map(hypothesisEvidenceLabel) : item[field];
+                block.append(el('p', label + ' · ' + values.join('；')));
             }
         }
         const menu = el('select'), output = el('div');
@@ -440,6 +449,10 @@ const ontologyExplorer = (() => {
             for (const id of new Set(item[field].filter(id => typeof id === 'string' && id))) {
                 menu.add(new Option(role + ' · ' + id, id));
             }
+        }
+        for (const [value, role] of [['true', '检查结果为真'], ['false', '检查结果为假']]) {
+            const id = item.conflicting_test_evidence?.[value];
+            if (typeof id === 'string' && id) menu.add(new Option(role + ' · ' + id, id));
         }
         if (menu.options.length === 1) {
             block.append(el('small', '此阶段没有记录原始观测引用。'));

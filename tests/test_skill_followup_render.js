@@ -48,4 +48,9 @@ assert(old.includes('最终质量复核') && !old.includes('补证后复核'));
 const partial = {recording_status:'recorded', rounds:[], independent_reviews:[], stop_reason:null};
 assert(context.renderStrategyAudit({...partial, status:'failed'}).includes('停止原因：未记录'));
 assert(context.renderStrategyAudit({...partial, status:'running'}).includes('停止原因：运行中，尚未记录'));
+const conflict = {id:'H1', status:'uncertain', reviewer_status:'contradicted', rationale_limits:['conflicting_pod_verification_checks'],
+    conflicting_test_evidence:{true:'obs-yes',false:'obs-no'}};
+const disputed = context.renderStrategyAudit({...partial, independent_reviews:[{items:[conflict]}]});
+assert(disputed.includes('同一 Pod 实例的同一项声明检查出现相反结果'));
+for (const id of ['obs-yes','obs-no']) assert(disputed.includes("openStrategyEvidence('" + id + "')"));
 console.log('Skill follow-up rendering checks passed');

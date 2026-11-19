@@ -322,7 +322,7 @@ class ElasticsearchTool(SRETool):
     def _stub_execute(self, query: str) -> ToolResult:
         return ToolResult(
             success=True,
-            data={"query": query, "entries": [], "note": "STUB - no Elasticsearch configured"},
+            data={"query": query, "entries": [], "stub": True, "note": "STUB - no Elasticsearch configured"},
         )
 
     def _parameters_schema(self):
@@ -525,7 +525,7 @@ class JaegerTool(SRETool):
     def _stub_execute(self, service: str) -> ToolResult:
         return ToolResult(
             success=True,
-            data={"service": service, "traces": [], "note": "STUB - no Jaeger configured"},
+            data={"service": service, "traces": [], "stub": True, "note": "STUB - no Jaeger configured"},
         )
 
     def _parameters_schema(self):

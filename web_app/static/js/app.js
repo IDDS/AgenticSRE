@@ -4604,7 +4604,8 @@ function renderStrategyAudit(data) {
     const refs=ids=>(ids||[]).map(id=>`<button class="btn btn-sm" onclick="openStrategyEvidence('${escapeHtmlAttr(id)}')">${escapeHtml(id)}</button>`).join(' ')||'无已解析引用';
     const assessments={supported:'观测支持该机制',contradicted:'直接观测反驳该机制',uncertain:'证据不足，仍不确定',invalid_or_missing:'复核缺失或校验未通过'};
     const tests={zero_cpu_memory_requests:'完整声明中的 CPU/memory requests 均为零',no_pvc_or_ephemeral_volume:'完整声明没有 PVC 或通用临时卷引用'};
-    const limits={absence_or_indirect_rationale_is_not_refutation:'未提及或间接理由不能作为反证',falsification_test_not_observed:'未引用满足条件的完整声明检查',typed_test_contradicts_support:'完整声明检查与模型支持判断冲突'};
+    const conflictRefs=h=>h.conflicting_test_evidence?.true && h.conflicting_test_evidence?.false
+        ? `<p>检查结果为真：${refs([h.conflicting_test_evidence.true])}<br>检查结果为假：${refs([h.conflicting_test_evidence.false])}</p>` : '';
     const sourceStates={untried:'尚未尝试',failed:'采集失败或结果未知',observed:'已取得可引用观测',no_citable_observations:'采集完成，当前范围内无可引用观测'};
     const sourceReasons={hypothesis_requested_failed_source_retry:'候选仍需该来源补证，安排有限重试',hypothesis_requested_untried_source:'候选建议检查尚未尝试的来源',bounded_failed_source_retry:'此前采集失败，重试次数尚未用完',untried_source:'检查尚未尝试的信息来源'};
     const readinessReasons={no_active_hypothesis:'当前没有未排除候选',leading_hypothesis_not_grounded:'主候选缺少有效且无冲突的当前引用',leading_hypothesis_not_confirmed_above_threshold:'主候选尚未达到转审状态与评分条件',leading_hypothesis_open_questions:'主候选仍有待回答的问题',close_supported_alternatives:'评分接近的其他候选也有当前引用，仍需区分',unverified_candidate_rejections:'候选的排除结论缺少直接反证',requested_source_retry_pending:'主候选请求的失败来源尚未补齐，重试仍受来源额度限制'};
@@ -4648,7 +4649,8 @@ function renderStrategyAudit(data) {
                 <p>候选评分：${prior?escapeHtml(formatConfidence(prior.confidence)):'新分支'} → ${escapeHtml(formatConfidence(h.confidence))}；模型状态：${escapeHtml(h.status||'未评估')}</p>
                 <p>支持引用：${refs(h.supporting_evidence_ids)}<br>反驳引用：${refs(h.contradicting_evidence_ids)}</p>
                 <p>${escapeHtml(h.update_reason||'未记录更新说明')}</p>
-                ${h.validation_errors?.length?`<p class="text-warning">引用或评估缺口：${h.validation_errors.map(e=>escapeHtml(e)).join('；')}</p>`:''}
+                ${conflictRefs(h)}
+                ${h.validation_errors?.length?`<p class="text-warning">引用或评估缺口：${h.validation_errors.map(e=>escapeHtml(hypothesisEvidenceLabel(e))).join('；')}</p>`:''}
                 ${h.unresolved_questions?.length?`<p>待判别：${h.unresolved_questions.map(q=>escapeHtml(q)).join('；')}</p>`:''}</div>`;}).join('')}
             <details><summary>本轮验证计划</summary><pre>${escapeHtml(JSON.stringify(r.plan||{},null,2))}</pre></details>
             ${(r.branch_proposals||[]).length?`<details><summary>新分支的接受与拒绝</summary><pre>${escapeHtml(JSON.stringify(r.branch_proposals,null,2))}</pre></details>`:''}
@@ -4660,11 +4662,30 @@ function renderStrategyAudit(data) {
             ${(review.items||[]).map(h=>`<div class="rca-remediation"><p>${escapeHtml(h.id)} · ${escapeHtml(h.description||'')}</p>
                 <p>提出角色状态：${escapeHtml(h.proposer_status||'')}；复核：${escapeHtml(assessments[h.status]||h.status||'未记录')}</p>
                 ${h.verification_test?`<p>限定可证伪检查：${escapeHtml(tests[h.verification_test]||h.verification_test)}；直接检查引用：${refs([...new Set([...(h.verified_test_evidence_ids||[]),...(h.host_test_evidence_ids||[])])])}。仅适用于该条件，不代表所有资源或存储均健康。</p>`:''}
-                ${h.rationale_limits?.length?`<p class="text-warning">复核模型原判断为 ${escapeHtml(assessments[h.reviewer_status]||h.reviewer_status)}；宿主保留不确定状态：${h.rationale_limits.map(code=>escapeHtml(limits[code]||code)).join('；')}。</p>`:''}
+                ${h.rationale_limits?.length?`<p class="text-warning">复核模型原判断为 ${escapeHtml(assessments[h.reviewer_status]||h.reviewer_status)}；宿主保留不确定状态：${h.rationale_limits.map(code=>escapeHtml(hypothesisEvidenceLabel(code))).join('；')}。</p>`:''}
                 <p>${escapeHtml(h.reason||'未返回有效说明')}<br>支持引用：${refs(h.supporting_evidence_ids)}<br>反驳引用：${refs(h.contradicting_evidence_ids)}</p>
                 <p>待补观测：${(h.missing_evidence||[]).map(q=>escapeHtml(q)).join('；')||'无已记录项'}</p>
-                ${h.validation_errors?.length?`<p class="text-warning">复核缺口：${h.validation_errors.map(q=>escapeHtml(q)).join('；')}</p>`:''}</div>`).join('')}</details>`).join(''):'<p>本次调查未保存逐假设的独立角色复核记录。</p>'}
+                ${conflictRefs(h)}
+                ${h.validation_errors?.length?`<p class="text-warning">复核缺口：${h.validation_errors.map(q=>escapeHtml(hypothesisEvidenceLabel(q))).join('；')}</p>`:''}</div>`).join('')}</details>`).join(''):'<p>本次调查未保存逐假设的独立角色复核记录。</p>'}
         <p>停止原因：${escapeHtml(STRATEGY_REASONS[data.stop_reason]||data.stop_reason||(data.status==='running'?'运行中，尚未记录':'未记录'))}。本次调整不是已验证的跨事故策略学习或准确率提升。</p>`;
+}
+
+const HYPOTHESIS_EVIDENCE_LABELS = {
+    conflicting_pod_verification_checks: '同一 Pod 实例的同一项声明检查出现相反结果，需核对两次观测',
+    pod_verification_target_not_cited: '支持引用中缺少能唯一定位目标 Pod 的观测',
+    typed_test_refutes_confirmation: '目标 Pod 的声明检查与确认判断冲突',
+    same_observation_both_supports_and_contradicts: '同一条观测被同时列为支持和反驳',
+    absence_or_indirect_rationale_is_not_refutation: '缺少记录或间接依据不足以排除候选',
+    falsification_test_not_observed: '未引用满足条件的完整声明检查',
+    typed_test_contradicts_support: '完整声明检查与模型支持判断冲突',
+    selector_mismatch_causality_not_verified: '选择器观测尚未证明因果关系',
+    pod_state_causality_not_verified: 'Pod 状态观测尚未证明因果关系',
+    zero_replicas_does_not_refute_other_mechanisms: '零副本观测不足以排除其他故障机制',
+    direct_falsification_not_observed: '缺少直接反证',
+    unverified_rejection: '排除判断仍待核实',
+};
+function hypothesisEvidenceLabel(code) {
+    return HYPOTHESIS_EVIDENCE_LABELS[code] || code;
 }
 
 async function openStrategyEvidence(id) {

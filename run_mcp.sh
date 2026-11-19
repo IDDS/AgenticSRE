@@ -5,5 +5,5 @@ set -e
 cd "$(dirname "$0")"
 export PYTHONPATH="$(pwd):$PYTHONPATH"
 
-echo "🔌 Starting AgenticSRE MCP Server (stdio)..."
-python mcp_server.py
+echo "Starting AgenticSRE MCP Server (stdio)..." >&2
+exec python mcp_server.py

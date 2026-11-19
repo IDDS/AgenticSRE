@@ -51,6 +51,29 @@ def semantic_fingerprint(item):
     return hashlib.sha256(_json(_semantic(fields)).encode()).hexdigest()
 
 
+POD_CHECKS = ("zero_cpu_memory_requests", "no_pvc_or_ephemeral_volume")
+
+
+def _pod_identity(row):
+    entity = _dict(row.get("entity"))
+    if entity.get("kind") == "Pod" and entity.get("uid") and entity.get("name"):
+        return tuple(entity.get(k) for k in ("cluster_id", "namespace", "name", "uid"))
+
+
+def _pod_check_index(rows):
+    identities, witnesses = set(), {}
+    for row in rows:
+        pod = _pod_identity(row)
+        if pod is None:
+            continue
+        identities.add(pod)
+        for check, value in _dict(row.get("verification_checks")).items():
+            if check in POD_CHECKS and type(value) is bool:
+                pair = witnesses.setdefault((pod, check), {})
+                pair.setdefault("true" if value else "false", row["id"])
+    return identities, witnesses
+
+
 def evidence_catalog(evidence, history, *, limit=24):
     """Use only currently scoped facts that can resolve to recorded observations.
 
@@ -85,15 +108,30 @@ def evidence_catalog(evidence, history, *, limit=24):
                     and projection.get('schema')=='pod-spec-checks/v1'
                     and raw.get('pod_uid') and raw.get('resource_version')):
                 group[-1]['verification_checks']={key:value for key,value in _dict(projection.get('checks')).items()
-                    if key in ('zero_cpu_memory_requests','no_pvc_or_ephemeral_volume') and (type(value) is bool or value is None)}
+                    if key in POD_CHECKS and (type(value) is bool or value is None)}
         if group:
             groups.append(group)
+    # A display/prompt budget must not erase a competing UID or an opposite check.
+    truncated = sum(len(group) for group in groups) > limit
+    if truncated:
+        identities, witnesses = _pod_check_index(row for group in groups for row in group)
+        names = Counter(pod[2] for pod in identities)
     result, seen=[],set()
     while groups and len(result)<limit:
         remaining=[]
         for group in groups:
             row=group.pop(0)
             if row["id"] not in seen:
+                if truncated:
+                    pod = _pod_identity(row)
+                    if pod:
+                        if names[pod[2]] > 1:
+                            row["verification_target_ambiguous"] = True
+                        if len(identities) > 1:
+                            row["verification_requires_named_target"] = True
+                        samples = {k: witnesses[pod, k] for k in POD_CHECKS if (pod, k) in witnesses}
+                        if samples:
+                            row["verification_witnesses"] = samples
                 seen.add(row["id"]); result.append(row)
             if group:
                 remaining.append(group)
@@ -174,23 +212,37 @@ def hypothesis_review_context(hypotheses, catalog):
             "semantics":{"proposer_status_is_verified":False,"citation_resolution_is_entailment":False}}
 
 
-def falsification_evidence(hypothesis,catalog,refs):
-    """Resolve only host-assigned narrow tests against one observed Pod UID."""
-    test=hypothesis.get('verification_test')
-    if test not in ('zero_cpu_memory_requests','no_pvc_or_ephemeral_volume'):
-        return []
-    service=hypothesis.get('service')
-    identity_fields=('cluster_id','namespace','name','uid')
-    objects={tuple(_dict(c.get('entity')).get(k) for k in identity_fields)
-        for c in catalog if _dict(c.get('entity')).get('kind')=='Pod'
-        and _dict(c.get('entity')).get('uid') and (not service or _dict(c.get('entity')).get('name')==service)}
-    if len(objects)!=1:
-        return []
-    target=next(iter(objects))
-    return [c['id'] for c in catalog if c.get('id') in refs
-        and _dict(c.get('entity')).get('kind')=='Pod'
-        and tuple(_dict(c.get('entity')).get(k) for k in identity_fields)==target
-        and _dict(c.get('verification_checks')).get(test) is True]
+def pod_check_findings(hypothesis, catalog):
+    """Return true observations, conflict witnesses, and references bound to the target."""
+    test, name = hypothesis.get("verification_test"), hypothesis.get("service")
+    if test not in POD_CHECKS:
+        return [], {}, set()
+    identities, witnesses = _pod_check_index(catalog)
+    targets = [pod for pod in identities if not name or pod[2] == name]
+    if len(targets) != 1:
+        return [], {}, set()
+    target = targets[0]
+    rows = [r for r in catalog if _pod_identity(r) == target]
+    if any(r.get("verification_target_ambiguous") or (not name and r.get("verification_requires_named_target")) for r in rows):
+        return [], {}, set()
+    target_refs = {r["id"] for r in rows}
+    pair = witnesses.get((target, test), {})
+    for row in rows:
+        full_pair = _dict(row.get("verification_witnesses")).get(test)
+        if full_pair:
+            pair = full_pair
+            break
+    if len(pair) == 2:
+        return [], pair, target_refs
+    positives = [r["id"] for r in rows if _dict(r.get("verification_checks")).get(test) is True]
+    if pair.get("true") and pair["true"] not in positives:
+        positives.append(pair["true"])
+    return positives, {}, target_refs
+
+
+def falsification_evidence(hypothesis, catalog, refs):
+    positives, _, target_refs = pod_check_findings(hypothesis, catalog)
+    return [ref for ref in positives if ref in refs and ref in target_refs]
 
 
 def validate_hypothesis_review(context, response):
@@ -240,8 +292,14 @@ def validate_hypothesis_review(context, response):
         # Reviewer claims cannot repair malformed proposer updates in place.
         pending_rejection=(hypothesis.get('status')=='active' and hypothesis.get('proposed_status')=='rejected'
                            and 'unverified_rejection' in _rows(hypothesis.get('validation_errors')))
-        asserted=hypothesis.get("status") in ("confirmed","rejected") or pending_rejection
-        if asserted and hypothesis.get("validation_errors"):
+        host_test_evidence, check_conflict, target_refs = pod_check_findings(hypothesis, catalog)
+        proposer_errors = _rows(hypothesis.get("validation_errors"))
+        pending_conflict = (hypothesis.get("status") == "active" and
+                            hypothesis.get("proposed_status") in ("confirmed", "rejected") and
+                            "conflicting_pod_verification_checks" in proposer_errors)
+        asserted=hypothesis.get("status") in ("confirmed","rejected") or pending_rejection or pending_conflict
+        if asserted and proposer_errors and not (check_conflict and pending_conflict and
+                all(e in ("conflicting_pod_verification_checks","unverified_rejection") for e in proposer_errors)):
             errors.append("proposer_assertion_has_validation_gaps")
         errors=list(dict.fromkeys(errors))
         validated=not errors
@@ -266,11 +324,14 @@ def validate_hypothesis_review(context, response):
             'crashloop', 'oomkilled', 'crashed', 'not ready', 'unready', '未就绪', '崩溃')))
         if validated and status == 'supported' and pod_state_claim:
             rationale_limits.append('pod_state_causality_not_verified')
-        host_test_evidence=falsification_evidence(hypothesis,catalog,[c['id'] for c in catalog])
+        if check_conflict:
+            rationale_limits.append('conflicting_pod_verification_checks')
+        elif validated and status == "supported" and hypothesis.get("verification_test") in POD_CHECKS and target_refs.isdisjoint(support):
+            rationale_limits.append("pod_verification_target_not_cited")
         if validated and status=='supported' and host_test_evidence:
             rationale_limits.append('typed_test_contradicts_support')
-        test_evidence=falsification_evidence(hypothesis,catalog,oppose) if status=='contradicted' else []
-        if validated and status=='contradicted' and hypothesis.get('verification_test') and not test_evidence:
+        test_evidence=[ref for ref in host_test_evidence if ref in oppose] if status=='contradicted' else []
+        if validated and status=='contradicted' and hypothesis.get('verification_test') and not test_evidence and not check_conflict:
             rationale_limits.append('falsification_test_not_observed')
         # A zero-sized Deployment explains a current absence of Pods but says
         # nothing about selector, network, or Pod conditions if replicas later
@@ -292,7 +353,8 @@ def validate_hypothesis_review(context, response):
             row.get("reason", ""),re.IGNORECASE) and not test_evidence:
             rationale_limits.append("absence_or_indirect_rationale_is_not_refutation")
         qualified_status="uncertain" if rationale_limits else status
-        required="supported" if hypothesis.get("status")=="confirmed" and not pending_rejection else "contradicted"
+        assertion = hypothesis.get("proposed_status") if pending_conflict or pending_rejection else hypothesis.get("status")
+        required="supported" if assertion=="confirmed" else "contradicted"
         assertion_verified=asserted and validated and qualified_status==required
         items.append({"id":hid,"description":hypothesis.get("description", ""),
             "proposer_status":hypothesis.get("status","active"),"proposed_status":hypothesis.get("proposed_status", ""),
@@ -302,6 +364,7 @@ def validate_hypothesis_review(context, response):
             "rationale_limits":rationale_limits,
             "verification_test":hypothesis.get('verification_test',''),"verified_test_evidence_ids":test_evidence,
             "host_test_evidence_ids":host_test_evidence,
+            **({"conflicting_test_evidence": check_conflict} if check_conflict else {}),
             "supporting_evidence_ids":support,"contradicting_evidence_ids":oppose,
             "reason":str(row.get("reason") or "")[:600],
             "missing_evidence":[q[:300] for q in _rows(row.get("missing_evidence")) if isinstance(q,str)][:6],

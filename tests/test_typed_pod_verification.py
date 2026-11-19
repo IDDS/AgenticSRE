@@ -131,6 +131,76 @@ def test_same_pod_identity_in_two_clusters_is_ambiguous():
     assert falsification_evidence(hyp,catalog,['east']) == []
 
 
+def spec_fact(value):
+    session, _ = collect(value)
+    return next(f for f in session.evidence['event_agent']['evidence_items'] if f['signal_type'] == 'pod_spec_checks')
+
+
+@pytest.mark.parametrize('limit', [1, 24])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_a_conflicting_pod_declaration_cannot_be_cherry_picked_for_either_verdict(limit, reverse):
+    first, second = pod(), pod()
+    second['metadata']['resourceVersion'] = 'v-other'
+    second['spec']['containers'][0]['resources'] = {'requests': {'cpu': '100m'}}
+    facts = [spec_fact(first), spec_fact(second)]
+    session = RCASession(namespace='shop')
+    session.record_evidence('event_agent', {'evidence_items': list(reversed(facts)) if reverse else facts})
+    catalog = evidence_catalog(session.evidence, session.observation_history, limit=limit)
+    model = build_investigation({'id':'test','namespace':'shop','result':{'observations':session.observation_history}})
+    key = 'zero_cpu_memory_requests'
+    ids = {str(o['raw_ref']['spec_checks']['checks'][key]).lower():o['id'] for o in model['observations']}
+    assert set(ids) == {'true', 'false'} and len(catalog) == min(2,limit)
+    agent = HypothesisAgent(None)
+    agent.set_evidence_catalog(catalog)
+    for proposal, judgement in [('confirmed','supported'), ('rejected','contradicted')]:
+        hyp = agent.generate('Pod/target Pending')[0]
+        assert hyp.verification_test == key
+        assert not falsification_evidence(hyp.to_dict(), catalog, [ids['true']])
+        ref = catalog[0]['id']
+        support, oppose = ([ref], []) if proposal == 'confirmed' else ([], [ref])
+        update = {'id':hyp.id,'confidence':.99,'status':proposal,'supporting_evidence_ids':support,
+                  'contradicting_evidence_ids':oppose}
+        agent._grounded_updates([hyp], {'hypotheses':[update]}, False, 6)
+        assert hyp.status == 'active' and hyp.proposed_status == proposal
+        assert hyp.to_dict()['conflicting_test_evidence'] == ids
+        review = validate_hypothesis_review(hypothesis_review_context([hyp.to_dict()],catalog),
+            {'hypothesis_reviews':[{**update,'status':judgement,'reason':'声明检查'}]})
+        item = review['items'][0]
+        assert item['status'] == 'uncertain' and item['reviewer_status'] == judgement
+        assert item['conflicting_test_evidence'] == ids and item['host_test_evidence_ids'] == []
+        assert item['rationale_limits'] == ['conflicting_pod_verification_checks']
+        assert item['assertion_requires_review'] and not item['assertion_verified'] and review['blockers']
+    # The independently consistent storage check is still usable.
+    volume = agent.generate('Pod/target Pending')[2]
+    assert falsification_evidence(volume.to_dict(),catalog,[ref]) == [ref]
+
+
+@pytest.mark.parametrize('status', ['confirmed','rejected'])
+def test_conflicting_observations_reopen_an_old_assertion_without_a_new_model_response(status):
+    agent = HypothesisAgent(None)
+    hyp = agent.generate('Pod/target Pending')[0]
+    entity = {'kind':'Pod','name':'target','uid':'u','namespace':'shop','cluster_id':'east'}
+    agent.set_evidence_catalog([{'entity':entity,'id':str(v),'verification_checks':{hyp.verification_test:v}}
+                                for v in [True, False]])
+    hyp.status = status
+    agent._grounded_updates([hyp], None, False, 6)
+    assert hyp.status == 'active' and hyp.proposed_status == status
+    assert hyp.conflicting_test_evidence == {'true':'True','false':'False'}
+
+
+@pytest.mark.parametrize('same_name', [True, False])
+def test_citation_limit_cannot_turn_an_ambiguous_pod_into_a_unique_target(same_name):
+    peer = pod()
+    peer['metadata'].update(uid='another',name='target' if same_name else 'another')
+    session = RCASession(namespace='shop')
+    session.record_evidence('event_agent', {'evidence_items':[spec_fact(pod()),spec_fact(peer)]})
+    catalog = evidence_catalog(session.evidence,session.observation_history,limit=1)
+    hyp = {'verification_test':'no_pvc_or_ephemeral_volume'}
+    ref = catalog[0]['id']
+    assert not falsification_evidence(hyp,catalog,[ref])
+    assert falsification_evidence({**hyp,'service':'target'},catalog,[ref]) == ([] if same_name else [ref])
+
+
 def test_other_event_or_model_only_summary_cannot_falsify_registered_test():
     _,catalog=collect();h=HypothesisAgent(None).generate('Pod/target Pending')[2]
     other=next(c for c in catalog if c['signal_type']=='pod_waiting_state')

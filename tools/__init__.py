@@ -33,6 +33,13 @@ __all__ = [
 ]
 
 
+def configured_llm(settings):
+    key = str(getattr(settings, "api_key", "") or "").strip()
+    configured = bool(key) and not (key.startswith("${") and key.endswith("}")) and key.lower() not in {
+        "sk-your-api-key-here", "your-api-key", "change-me"}
+    return LLMClient(settings) if configured else None
+
+
 def build_tool_registry(
     config=None,
     allow_write: bool = False,
@@ -61,10 +68,7 @@ def build_tool_registry(
     registry.reset()  # Clean slate
     
     # ── LLM Client ──
-    key = str(getattr(cfg.llm, 'api_key', '') or '').strip()
-    configured = bool(key) and not (key.startswith('${') and key.endswith('}')) and key.lower() not in {
-        'sk-your-api-key-here', 'your-api-key', 'change-me'}
-    llm = LLMClient(cfg.llm) if configured else None
+    llm = configured_llm(cfg.llm)
 
     # ── K8s Tools ──
     kubectl = KubectlTool(

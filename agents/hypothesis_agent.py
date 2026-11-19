@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 from tools.llm_client import LLMClient
 from agents.evidence import format_evidence
-from diagnostic_strategy import citation_update, finite_confidence, AGENTS, falsification_evidence
+from diagnostic_strategy import citation_update, finite_confidence, AGENTS, POD_CHECKS, pod_check_findings
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ class Hypothesis:
     refutes_if: str = ""
     verification_test: str = ""
     proposed_status: str = ""
+    conflicting_test_evidence: Dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> Dict:
         return {
@@ -62,6 +63,7 @@ class Hypothesis:
             "refutes_if": self.refutes_if,
             "verification_test":self.verification_test,
             "proposed_status":self.proposed_status,
+            **({"conflicting_test_evidence": dict(self.conflicting_test_evidence)} if self.conflicting_test_evidence else {}),
         }
 
 
@@ -550,13 +552,14 @@ New Evidence:
 
         except Exception as e:
             logger.error(f"Hypothesis reranking failed: {e}")
+            if self.evidence_catalog is not None:
+                return self._grounded_updates(hypotheses, None, False, max_hypotheses)
             return hypotheses
 
     def _grounded_updates(self, hypotheses, result, allow_expansion, max_hypotheses):
         """Apply only observed references; preserve model assertions as judgments."""
-        if not isinstance(result, dict):
-            return hypotheses
-        rows = result.get("hypotheses") if isinstance(result.get("hypotheses"),list) else []
+        valid_result = isinstance(result, dict)
+        rows = result.get("hypotheses") if valid_result and isinstance(result.get("hypotheses"),list) else []
         updates = {str(row.get("id")):row for row in rows if isinstance(row,dict)}
         counts = Counter(str(row.get("id")) for row in rows if isinstance(row,dict))
         def retain_unverified_rejection(hyp, previous=None, followup=None):
@@ -577,6 +580,23 @@ New Evidence:
             if question not in hyp.unresolved_questions and len(hyp.unresolved_questions) < 6:
                 hyp.unresolved_questions = [*hyp.unresolved_questions, question]
         for hyp in hypotheses:
+            positives, conflict, target_refs = pod_check_findings(hyp.to_dict(), self.evidence_catalog)
+            if conflict:
+                update = updates.get(hyp.id, {})
+                proposed = update.get("status") if counts[hyp.id] == 1 else None
+                if proposed in ("confirmed", "rejected", "active"):
+                    hyp.proposed_status = proposed
+                elif hyp.status in ("confirmed", "rejected") or not hyp.proposed_status:
+                    hyp.proposed_status = hyp.status
+                hyp.status = "active"
+                hyp.conflicting_test_evidence = dict(conflict)
+                hyp.validation_errors = ["conflicting_pod_verification_checks"]
+                if hyp.proposed_status == "rejected":
+                    retain_unverified_rejection(hyp)
+                continue
+            if not valid_result:
+                continue
+            hyp.conflicting_test_evidence = {}
             pending_rejection = (hyp.proposed_status == 'rejected' and
                                  'unverified_rejection' in hyp.validation_errors)
             previous = {'supporting_evidence_ids': list(hyp.supporting_evidence_ids),
@@ -638,16 +658,24 @@ New Evidence:
                 if status == 'rejected' or pending_rejection:
                     retain_unverified_rejection(hyp, saved_for_pending, (questions, next_agents))
                 continue
-            if status=='rejected' and not falsification_evidence(hyp.to_dict(),self.evidence_catalog,oppose):
+            if status=='rejected' and not any(ref in oppose for ref in positives):
                 hyp.validation_errors.append('falsification_test_not_observed')
                 retain_unverified_rejection(hyp, saved_for_pending, (questions, next_agents))
                 continue
             if pending_rejection and status != 'rejected':
                 retain_unverified_rejection(hyp, saved_for_pending)
                 continue
-            if status=='confirmed' and falsification_evidence(hyp.to_dict(),self.evidence_catalog,[c['id'] for c in self.evidence_catalog]):
+            if status=='confirmed' and positives:
                 restore_evidence()
+                hyp.status = 'active'
+                hyp.proposed_status = 'confirmed'
                 hyp.validation_errors.append('typed_test_refutes_confirmation')
+                continue
+            if status == 'confirmed' and hyp.verification_test in POD_CHECKS and target_refs.isdisjoint(support):
+                restore_evidence()
+                hyp.status = 'active'
+                hyp.proposed_status = 'confirmed'
+                hyp.validation_errors.append('pod_verification_target_not_cited')
                 continue
             # Missing or invalid fields cannot silently close an earlier gap.
             # A valid cited assessment may explicitly clear a list with [].
@@ -660,7 +688,7 @@ New Evidence:
                 hyp.confidence = 0.0
             hyp.supporting_evidence = [str(x)[:300] for x in update.get("supporting_evidence",[]) if isinstance(x,str)][:8] if isinstance(update.get("supporting_evidence"),list) else []
             hyp.contradicting_evidence = [str(x)[:300] for x in update.get("contradicting_evidence",[]) if isinstance(x,str)][:8] if isinstance(update.get("contradicting_evidence"),list) else []
-        if allow_expansion:
+        if allow_expansion and valid_result:
             known={" ".join(h.description.casefold().split()) for h in hypotheses}
             next_id=max([int(h.id[1:]) for h in hypotheses if h.id.startswith("H") and h.id[1:].isdigit()] or [0])+1
             for item in (result.get("new_hypotheses") if isinstance(result.get("new_hypotheses"),list) else [])[:2]:
@@ -691,5 +719,6 @@ New Evidence:
                 self.branch_decisions.append({"description":description[:500],"accepted":True,"hypothesis_id":hypothesis.id,
                                              "supporting_evidence_ids":support})
                 hypotheses.append(hypothesis); known.add(normalized); next_id+=1
-        hypotheses.sort(key=lambda h:h.confidence,reverse=True)
+        if valid_result:
+            hypotheses.sort(key=lambda h: h.confidence, reverse=True)
         return hypotheses

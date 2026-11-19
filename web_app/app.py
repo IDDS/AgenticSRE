@@ -2576,7 +2576,7 @@ def _llm_fault_environment() -> Dict[str, Any]:
         "credential_mode": "passwords are runtime-only; do not persist in AgenticSRE",
     }
 
-from configs.config_loader import get_config, reload_config
+from configs.config_loader import apply_connection_overrides, get_config, reload_config
 from tools import build_tool_registry, LLMClient
 from agents import DetectionAgent, AlertAgent
 from agents.alert_compression import CompressionStore, compress_alerts, propose_relations
@@ -3647,31 +3647,7 @@ def _apply_platform_config() -> None:
         return
     cfg = _get_config()
 
-    llm = data.get("llm")
-    if isinstance(llm, dict):
-        for field_name in ("base_url", "model", "temperature", "max_tokens", "timeout"):
-            if field_name in llm and hasattr(cfg.llm, field_name):
-                current = getattr(cfg.llm, field_name)
-                value = llm[field_name]
-                try:
-                    if isinstance(current, bool):
-                        value = bool(value)
-                    elif isinstance(current, int):
-                        value = int(value)
-                    elif isinstance(current, float):
-                        value = float(value)
-                except Exception:
-                    pass
-                setattr(cfg.llm, field_name, value)
-        if llm.get("api_key"):
-            cfg.llm.api_key = str(llm["api_key"])
-
-    observability = data.get("observability")
-    if isinstance(observability, dict):
-        obs = cfg.observability
-        for field_name in ("prometheus_url", "otel_prometheus_url", "jaeger_url", "grafana_url", "elasticsearch_url"):
-            if field_name in observability and hasattr(obs, field_name):
-                setattr(obs, field_name, str(observability[field_name] or "").strip())
+    apply_connection_overrides(cfg, data)
 
     detection = data.get("detection")
     if isinstance(detection, dict):

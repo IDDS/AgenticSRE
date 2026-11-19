@@ -380,6 +380,35 @@ def _dict_to_dataclass(dc_class, data: dict):
     return dc_class(**filtered)
 
 
+def apply_connection_overrides(cfg: AppConfig, data: dict) -> None:
+    """Apply the model and observability connections saved by the config center."""
+    llm = data.get("llm")
+    if isinstance(llm, dict):
+        for field_name in ("base_url", "model", "temperature", "max_tokens", "timeout"):
+            if field_name in llm and hasattr(cfg.llm, field_name):
+                current = getattr(cfg.llm, field_name)
+                value = llm[field_name]
+                try:
+                    if isinstance(current, bool):
+                        value = bool(value)
+                    elif isinstance(current, int):
+                        value = int(value)
+                    elif isinstance(current, float):
+                        value = float(value)
+                except Exception:
+                    pass
+                setattr(cfg.llm, field_name, value)
+        if llm.get("api_key"):
+            cfg.llm.api_key = str(llm["api_key"])
+
+    observability = data.get("observability")
+    if isinstance(observability, dict):
+        obs = cfg.observability
+        for field_name in ("prometheus_url", "otel_prometheus_url", "jaeger_url", "grafana_url", "elasticsearch_url"):
+            if field_name in observability and hasattr(obs, field_name):
+                setattr(obs, field_name, str(observability[field_name] or "").strip())
+
+
 def _load_dotenv():
     """Load .env file from project root if present."""
     for candidate in [
