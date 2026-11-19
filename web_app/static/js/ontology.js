@@ -9,6 +9,7 @@ const ontologyExplorer = (() => {
         endpoint_targets_pod: '端点指向 Pod'
     };
     const identities = {uid_bound: '已绑定 UID', name_bound: '按名称识别', scope_incomplete: '范围信息不全'};
+    const relationLabel = type => relations[type] || type;
     let run = '', revision = '', cursor = '', historyVersion = 0, graphVersion = 0, evidenceVersion = 0;
     let initialized = false, model = null, query = '', offset = 0, focus = '', edgeOffset = 0;
 
@@ -41,12 +42,20 @@ const ontologyExplorer = (() => {
             ++graphVersion;
             model = null;
             byId('model').hidden = true;
-            failure(byId('status'), error, () => selectRun(run));
+            byId('status').replaceChildren(el('p', error.message), button('读取最新调查版本', refresh));
         } else failure(host, error, retry);
     }
-    function selectRun(id) {
+    function refresh() {
+        revision = '';
+        edgeOffset = offset = 0;
+        loadGraph(true);
+        history();
+    }
+    function selectRun(id, objectId = '', sourceRevision = '') {
         run = id;
-        revision = query = focus = '';
+        revision = sourceRevision;
+        focus = objectId;
+        query = '';
         offset = edgeOffset = 0;
         byId('query').value = '';
         byId('rca').disabled = !id;
@@ -54,7 +63,7 @@ const ontologyExplorer = (() => {
             byId('run').add(new Option(id, id));
         }
         byId('run').value = id;
-        return loadGraph();
+        return loadGraph(Boolean(objectId));
     }
     async function history(append = false) {
         const version = ++historyVersion;
@@ -104,7 +113,11 @@ const ontologyExplorer = (() => {
             byId('model').hidden = false;
             if (focusHeading) (byId('map').querySelector('h3') || byId('query')).focus();
         } catch (err) {
-            if (version === graphVersion) errorView(byId('status'), err, () => loadGraph());
+            if (version !== graphVersion) return;
+            errorView(byId('status'), err, () => loadGraph());
+            if (err.status === 404 && focus) {
+                byId('status').append(button('浏览本次调查的对象', () => selectRun(run, '', revision)));
+            }
         }
     }
     function pick(id) {
@@ -182,7 +195,7 @@ const ontologyExplorer = (() => {
             const outgoing = edge.source_id === o.id;
             const row = el('div', null, 'og-branch');
             const direction = same ? '↺ 自关联' : outgoing ? '→ 出向' : '← 入向';
-            const label = relations[edge.type] || edge.type;
+            const label = relationLabel(edge.type);
             const line = el('span', direction + ' · ' + label, 'og-predicate');
             line.title = edge.type;
             const node = resourceButton(edge.neighbor, 'og-neighbor');
@@ -260,7 +273,7 @@ const ontologyExplorer = (() => {
     function showEdge(edge) {
         const outgoing = model.focus.id === edge.source_id;
         const a = outgoing ? model.focus : edge.neighbor, b = outgoing ? edge.neighbor : model.focus;
-        inspectAssertions('关系依据', a.kind + '/' + a.name + ' → ' + (relations[edge.type] || edge.type) +
+        inspectAssertions('关系依据', a.kind + '/' + a.name + ' → ' + relationLabel(edge.type) +
             ' → ' + b.kind + '/' + b.name,
             edge.assertions?.length ? edge.assertions : [{attributes: {}, evidence_ids: edge.evidence_ids}],
             '记录的条件组合');
@@ -385,18 +398,18 @@ const ontologyExplorer = (() => {
                 el('h4', '关系与构建依据'));
             const list = el('dl');
             for (const [type, spec] of Object.entries(data.relation_types)) {
-                list.append(el('dt', relations[type] || type), el('dd', type + ' · ' + spec.source));
+                list.append(el('dt', relationLabel(type)), el('dd', type + ' · ' + spec.source));
             }
             host.append(list, el('h4', '对象动作'), el('p', data.action_types.map(a =>
                 a.object_types.join('/') + ' · ' + a.id).join('，')));
         } catch (err) { failure(host, err, schema); }
     }
-    function open() {
+    function open(location) {
         if (!initialized) {
             initialized = true;
             byId('run').addEventListener('change', e => selectRun(e.target.value));
             byId('more-runs').addEventListener('click', () => history(true));
-            byId('refresh').addEventListener('click', open);
+            byId('refresh').addEventListener('click', refresh);
             byId('export').addEventListener('click', download);
             byId('hypotheses').addEventListener('toggle', () => {
                 if (byId('hypotheses').open && !byId('hypotheses').querySelector('div').childNodes.length) hypotheses();
@@ -410,12 +423,12 @@ const ontologyExplorer = (() => {
                 if (byId('schema').open && !byId('schema-body').childNodes.length) schema();
             });
         }
-        selectRun(run);
+        if (location) selectRun(location.runId, location.objectId, location.revision);
+        else loadGraph();
         history();
     }
-    function fromRun(id) {
-        run = id || '';
-        switchView('ontology');
+    function fromRun(runId, objectId = '', revision = '') {
+        switchView('ontology', {ontologyLocation: {runId, objectId, revision}});
     }
-    return {open, fromRun};
+    return {open, fromRun, relationLabel};
 })();

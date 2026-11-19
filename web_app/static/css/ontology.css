@@ -6,6 +6,8 @@
     overflow-wrap: anywhere;
 }
 #view-ontology [hidden] { display: none; }
+#rca-ontology-items select, #rca-ontology-panel [data-ontology-focus] { max-width: 100%; }
+#rca-ontology-panel [data-ontology-focus] { white-space: normal; overflow-wrap: anywhere; }
 #view-ontology h2, #view-ontology h3, #view-ontology h4 { color: var(--og-ink); margin: 0; }
 #view-ontology small, #view-ontology label { color: #466378; }
 #view-ontology select, #view-ontology input {

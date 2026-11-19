@@ -5,7 +5,7 @@ from fastapi import HTTPException, Response
 from semantica.explorer.session import GraphSession
 
 from integrations.semantica_graph import export_investigation, investigation_neighborhood
-from operational_ontology import build_investigation
+from operational_ontology import build_investigation, query_investigation
 from web_app import app as dashboard
 
 
@@ -42,6 +42,25 @@ def test_directed_graph_pagination_and_uid_identity():
     assert all(e["target_id"] == neighbor["focus"]["id"] for e in neighbor["edges"])
     assert browse(model, query="absent")["focus"] is None
     assert browse(model, offset=1, limit=1)["objects"] != browse(model, limit=1)["objects"]
+
+
+def test_rca_relation_labels_and_observations_keep_same_name_pod_uids_distinct():
+    model = build_investigation(investigation())
+    pods = [o for o in model["objects"] if o["kind"] == "Pod"]
+    assert {p["uid"] for p in pods} == {"p1", "p2"}
+    for pod in pods:
+        page = query_investigation(model, "relations", entity_id=pod["id"], limit=1)
+        assert page["revision"] == model["revision"] and len(page["items"]) == 1
+        edge = page["items"][0]
+        assert edge["source_label"] == "Pod/api"
+        for side in ("source", "target"):
+            graph = browse(model, focus_id=edge[side + "_id"])
+            obj = graph["focus"]
+            assert edge[side + "_label"] == f'{obj["kind"]}/{obj["name"]}'
+            if side == "source":
+                assert obj["uid"] == pod["uid"]
+        obs = query_investigation(model, "observations", record_id=edge["evidence_id"])
+        assert obs["items"][0]["entity_id"] == pod["id"]
 
 
 def test_native_explorer_roundtrip_preserves_references_and_parallel_predicates(tmp_path):

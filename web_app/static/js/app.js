@@ -526,7 +526,7 @@ function setMobileSidebar(open) {
     syncSidebarExpanded();
 }
 
-function switchView(viewId) {
+function switchView(viewId, options = {}) {
     document.querySelectorAll('.nav-item').forEach(el => {
         el.classList.remove('active');
         el.removeAttribute('aria-current');
@@ -575,7 +575,7 @@ function switchView(viewId) {
     if (subtitle) subtitle.textContent = subtitles[viewId] || '';
 
     state.currentView = viewId;
-    refreshCurrentView({ navigation: true });
+    refreshCurrentView({ ...options, navigation: true });
 }
 
 function toggleOverviewDetails(details) {
@@ -589,7 +589,7 @@ function refreshCurrentView(options = {}) {
     }
     const loaders = {
         overview: loadOverview,
-        ontology: () => ontologyExplorer.open(),
+        ontology: () => ontologyExplorer.open(options.ontologyLocation),
         metrics: loadMetrics,
         logs: () => loadNamespaces('log-ns'),
         alerts: () => { loadAlertList(); loadDetectionConfig(); },
@@ -4557,7 +4557,8 @@ async function loadRCAOntology(runId) {
     const counts = model.counts || {};
     const action = model.action_context || {};
     panel.innerHTML = `<strong>运维对象与证据</strong>
-        <button type="button" class="btn btn-sm" onclick="ontologyExplorer.fromRun(state.rcaRunId)">打开本次调查图谱</button>
+        <button type="button" class="btn btn-sm" data-ontology-focus="">打开本次调查图谱</button>
+        ${action.target?.id ? `<button type="button" class="btn btn-sm" data-ontology-focus="${escapeHtmlAttr(action.target.id)}">定位诊断目标 ${escapeHtml(action.target.kind)}/${escapeHtml(action.target.name)}</button>` : ''}
         <p class="text-muted">本次调查记录 · 关系表示观测关联，不能单独证明因果；历史记录不代表当前集群状态。</p>
         <p>${Number(counts.objects || 0)} 个对象 · ${Number(counts.observations || 0)} 项观测 · ${Number(counts.relations || 0)} 条关系 · ${Number(counts.tool_executions || 0)} 次工具执行</p>
         ${(model.gaps || []).length ? `<p class="text-warning">数据缺口：${model.gaps.map(g => escapeHtml(ONTOLOGY_GAP_LABELS[g] || g)).join('；')}</p>` : ''}
@@ -4572,6 +4573,16 @@ async function loadRCAOntology(runId) {
             <button class="btn btn-sm" onclick="loadOntologyCollection('relations')">关系</button>
             <button class="btn btn-sm" onclick="loadOntologyCollection('tool_executions')">工具执行</button>
         </div><div id="rca-ontology-items"></div><div id="rca-object-history-panel" aria-live="polite"></div><div id="rca-lineage-panel"></div>`;
+    panel.onclick = event => {
+        const button = event.target.closest('button');
+        if (!button || !panel.contains(button) || state._lastOntology !== model || state.rcaRunId !== runId) return;
+        if (button.hasAttribute('data-ontology-focus')) {
+            ontologyExplorer.fromRun(runId, button.dataset.ontologyFocus, model.revision);
+        } else if (button.hasAttribute('data-ontology-citation')) {
+            const id = button.dataset.ontologyCitation || button.parentElement.querySelector('select')?.value;
+            if (id) loadOntologyCollection('observations', '', 0, id);
+        }
+    };
     loadOntologyCollection('objects');
     loadRCALineage(model);
 }
@@ -4685,6 +4696,7 @@ async function loadOntologyCollection(collection, entityId = '', offset = 0, rec
                 <p>UID：${escapeHtml(row.uid || '未采集')} · ${row.identity_status === 'uid_bound' ? '已绑定对象版本身份' : '身份信息不完整'}</p>
                 <button class="btn btn-sm" onclick="loadOntologyCollection('observations','${escapeHtmlAttr(row.id)}')">查看该对象观测</button>
                 <button class="btn btn-sm" onclick="loadOntologyCollection('relations','${escapeHtmlAttr(row.id)}')">查看该对象关系</button>
+                <button type="button" class="btn btn-sm" data-ontology-focus="${escapeHtmlAttr(row.id)}">在图谱中定位此对象</button>
                 ${(model.history_eligible_object_ids || []).includes(row.id) ? `<button class="btn btn-sm" onclick="loadOntologyObjectHistory('${escapeHtmlAttr(row.id)}')">跨调查历史</button>` : ''}
                 ${row.identity_status === 'uid_bound' && ['Pod','ReplicaSet','Deployment','StatefulSet','DaemonSet','Job','CronJob'].includes(row.kind) && row.cluster_id === model.scope.cluster_id && (!model.scope.namespace || row.namespace === model.scope.namespace) ? `<button class="btn btn-sm" onclick="collectRCALineage('${escapeHtmlAttr(row.id)}',this)">采集发布与镜像追溯</button>` : ''}
                 <code>${escapeHtml(row.id)}</code></details>`;
@@ -4694,11 +4706,23 @@ async function loadOntologyCollection(collection, entityId = '', offset = 0, rec
                 <p>采集时间：${escapeHtml(String(row.observed_at || '未采集'))} · 事件时间：${escapeHtml(String(row.event_time || '无'))} · 样本时间：${escapeHtml(String(row.sampled_at || '无'))}</p>
                 <p>${row.temporality === 'historical' ? '历史状态' : '观测记录'} · 资源版本：${escapeHtml(row.resource_version || '未采集')}${row.excerpted ? ' · 内容为节选' : ''}</p>
                 <p>来源：${escapeHtml(row.source || '')}</p><pre>${escapeHtml(row.observation || '')}</pre>
+                ${row.entity_id ? `<button type="button" class="btn btn-sm" data-ontology-focus="${escapeHtmlAttr(row.entity_id)}">在图谱中定位观测对象</button>` : ''}
                 <details><summary>结构化原始引用</summary><pre>${escapeHtml(JSON.stringify(row.raw_ref || {}, null, 2))}</pre></details></details>`;
         } else if (collection === 'relations') {
-            const label = {scheduled_on: '调度到', owned_by: '归属于'}[row.type] || row.type;
-            html += `<div class="rca-remediation"><p>${escapeHtml(row.source_label || row.source_id)} → ${escapeHtml(label)} → ${escapeHtml(row.target_label || row.target_id)}</p>
-                <p>依据：<button class="btn btn-sm" onclick="loadOntologyCollection('observations','',0,'${escapeHtmlAttr(row.evidence_id)}')">${escapeHtml(row.evidence_id)}</button> · ${escapeHtml(String(row.observed_at || '时间未采集'))}</p></div>`;
+            const ids = [...new Set([row.evidence_id, ...(row.evidence_ids || [])].filter(Boolean))];
+            let citations = '未记录观测引用';
+            if (ids.length === 1) {
+                citations = `<button type="button" class="btn btn-sm" data-ontology-citation="${escapeHtmlAttr(ids[0])}">${escapeHtml(ids[0])}</button> · ${escapeHtml(String(row.observed_at || '时间未采集'))}`;
+            } else if (ids.length > 1) {
+                citations = `<label>${ids.length} 条原始观测 <select class="select-sm">${ids.map(id => {
+                    const at = row.observation_times?.[id];
+                    return `<option value="${escapeHtmlAttr(id)}">${escapeHtml(id)}${at ? ' · ' + escapeHtml(String(at)) : ''}</option>`;
+                }).join('')}</select></label> <button type="button" class="btn btn-sm" data-ontology-citation="">查看所选观测</button>`;
+            }
+            html += `<div class="rca-remediation"><p><button type="button" class="btn btn-sm" data-ontology-focus="${escapeHtmlAttr(row.source_id)}">${escapeHtml(row.source_label || row.source_id)}</button>
+                → ${escapeHtml(ontologyExplorer.relationLabel(row.type))} →
+                <button type="button" class="btn btn-sm" data-ontology-focus="${escapeHtmlAttr(row.target_id)}">${escapeHtml(row.target_label || row.target_id)}</button></p>
+                <p>依据：${citations}</p></div>`;
         } else {
             const status = {unknown: '结果未确认', succeeded: '已确认执行成功', failed: '执行失败', not_executed: '未确认已执行'}[row.status] || row.status;
             html += `<details class="skill-raw-fold"><summary>${escapeHtml(status)} · ${escapeHtml(row.tool || '')}</summary><pre>${escapeHtml(row.command || '')}</pre><p>${escapeHtml(row.error || '')}</p></details>`;
