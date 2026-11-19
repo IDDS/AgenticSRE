@@ -119,7 +119,11 @@ def annotate_groups(result, baseline=None):
                 "samples": len(values), "unique_samples": len({(r["timestamp"], v) for r, v in zip(members, values)}),
                 "min_alert_id": members[values.index(min(values))]["alert_id"],
                 "max_alert_id": members[values.index(max(values))]["alert_id"]}
-        if not same_template:
+        if g.get("grouping_reason") == "verified_pod_scheduling" and g.get("event_merge", {}).get("scheduling"):
+            from agents.alert_compression import digest
+            g["template_id"] = digest(["pod_unschedulable_v1", g["cluster_id"], g["namespace"], g["entity_uid"]])
+            g["symbolic"].update(kind="event", template="Pod 调度失败且持续 Pending", merge_guard="verified_pod_scheduling")
+        elif not same_template:
             g["symbolic"].update(kind="mixed", template="人工合并的多种模板；请查看原文", merge_guard="manual merge")
         count = baseline_counts[signature]
         expected = count * result["time_window"] / duration if baseline is not None else None

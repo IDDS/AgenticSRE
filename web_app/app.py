@@ -9667,6 +9667,7 @@ async def cluster_services(namespace: str = ""):
 @app.get("/api/cluster/topology")
 async def cluster_topology(cluster_id: str = ""):
     """完整拓扑数据：nodes + pods + deployments + services + 故障标记"""
+    from agents.alert_pod_scheduling import scheduling_condition
     cluster = _find_k8s_cluster(cluster_id) if cluster_id else None
     effective_cluster_id = cluster.get("id") if cluster else None
     nodes_raw, pods_raw, deploy_raw, svc_raw = await asyncio.gather(
@@ -9736,6 +9737,7 @@ async def cluster_topology(cluster_id: str = ""):
             "owner_uid": owner_refs[0].get("uid", "") if owner_refs else "",
             "node": p.get("spec", {}).get("nodeName", ""),
             "phase": phase,
+            "unschedulable": scheduling_condition(p) if phase == "Pending" else None,
             "restarts": restarts,
             "is_faulty": is_faulty,
             "fault_reason": fault_reason,
@@ -11063,7 +11065,7 @@ async def _prepare_live_alert_scan(namespace: str, cluster_id: str, *, for_job=F
         cfg.observability.prometheus_url = observed_backend
     topology = await _enrich_alert_groups(result, cfg, llm=None if for_job else llm,
                                           live_cluster=resolved_cluster_id, build_graph=not for_job)
-    if any(result.get(k, {}).get('status') == 'applied' for k in ('threshold_compression', 'trace_compression', 'window_compression')):
+    if any(result.get(k, {}).get('status') == 'applied' for k in ('threshold_compression', 'trace_compression', 'window_compression', 'scheduling_compression')):
         try:
             await asyncio.to_thread(history.apply, result, namespace)
         except Exception as exc:
@@ -11149,6 +11151,14 @@ async def _enrich_alert_groups(result, cfg, llm=None, topology=None, live_cluste
                 await enrich_retrieval(result)
         except Exception as exc:
             result['window_evidence'] = {'status':'unavailable','error':type(exc).__name__,'proofs':[]}
+        from agents.alert_pod_scheduling import merge_pod_scheduling
+        try:
+            scheduling_merged = await asyncio.to_thread(merge_pod_scheduling, result, observed, cfg.observability.prometheus_url)
+        except (ValueError, TypeError, KeyError, OSError) as exc:
+            result['scheduling_compression'] = {'status': 'unavailable', 'error': type(exc).__name__}
+        else:
+            if scheduling_merged:
+                await enrich_retrieval(result)
     from agents.alert_context import recall_context
     await asyncio.to_thread(recall_context, result)
     if llm is not None:

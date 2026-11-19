@@ -487,6 +487,8 @@ class CompressionStore:
                 data['window_evidence'] = {'status':'invalidated_by_edit','proofs':[]}
             if 'window_compression' in data:
                 data['window_compression'] = {'status':'invalidated_by_edit'}
+            if 'scheduling_compression' in data:
+                data['scheduling_compression'] = {'status':'invalidated_by_edit'}
             from agents.alert_semantics import annotate_groups
             annotate_groups(data)
             regroup_stats(data)

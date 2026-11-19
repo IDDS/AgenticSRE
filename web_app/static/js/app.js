@@ -3738,6 +3738,10 @@ function renderAlertCompression(data) {
             ${g.metric_summary ? `<p>指标范围：${escapeHtml(String(g.metric_summary.min))} ～ ${escapeHtml(String(g.metric_summary.max))}，${g.metric_summary.samples} 个样本（峰值保留）</p>` : ''}
             ${g.threshold_merge ? `<p>已归并 ${Number(g.threshold_merge.original_groups)} 组同指标嵌套阈值，最高严重度与全部原文保留。</p><details><summary>查看归并规则依据</summary>${g.threshold_merge.rules.map(r => `<p>${escapeHtml(r.rule.name)}：<code class="metric-code">${escapeHtml(r.rule.expression)}</code></p>`).join('')}</details>` : ''}
             ${g.event_merge?.window ? `<details><summary>请求窗口的跨指标归并依据</summary><p>已用真实 Trace 重算窗口测量值，验证 ${Number(g.event_merge.window.request_count)} 个请求均为慢且失败。表示同一批请求的观测，不是根因确认。</p><p>窗口：${escapeHtml(new Date(g.event_merge.window.start * 1000).toISOString())} — ${escapeHtml(new Date(g.event_merge.window.end * 1000).toISOString())}</p><p>保留 ${Number(g.event_merge.original_groups.length)} 个原分组及全部原文。</p></details>` : g.event_merge?.span ? `<details><summary>同一失败请求的跨指标归并依据</summary><p>指标值与同一真实失败 Span 一致；表示同一请求的观测，不是根因确认。</p><p class="metric-code">Trace：${escapeHtml(g.event_merge.span.trace_id)}<br>Span：${escapeHtml(g.event_merge.span.span_id)}</p><p>保留 ${Number(g.event_merge.original_groups.length)} 个原分组及全部原文。</p></details>` : ''}
+            ${g.event_merge?.scheduling ? `<details><summary>归并依据 · 同一 Pod 调度失败</summary>
+                <p>调度事件、Pending 指标与 Kubernetes 对象的 Pod UID 一致。调度器为 ${escapeHtml(g.event_merge.scheduling.scheduler)}，PodScheduled 条件为 False，原因为 Unschedulable。</p>
+                <p>事件观测于 ${escapeHtml(new Date(g.event_merge.scheduling.event_at * 1000).toLocaleString())}，Pending 指标核验于 ${escapeHtml(new Date(g.event_merge.scheduling.phase_at * 1000).toLocaleString())}。</p>
+                </details>` : ''}
             ${renderGroupMetricEvidence(data, g)}
             <p>频率偏移：${['supplied_baseline', 'automatic_snapshot_baseline'].includes(g.frequency?.status) ? escapeHtml(String(g.frequency.deviation_score)) : '缺少历史基线，未判定'}</p>
             <button class="btn btn-sm" onclick="startRCAFromGroup(${gi})">证据包诊断</button>
