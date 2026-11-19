@@ -110,3 +110,36 @@ def test_unbound_observations_remain_reachable_with_no_resource_and_pin_revision
     assert exc.value.status_code == 409
     empty = build_investigation(record)
     assert browse(empty)['focus'] is None and page(0, empty['revision'])['total'] == 1
+
+
+def test_endpoint_variants_and_their_support_survive_browser_projection_and_native_readback(tmp_path):
+    model = build_investigation(investigation())
+    first, second, third = [o['id'] for o in model['observations'][:3]]
+    pair = model['relations'][0]
+    claims = [
+        (['192.0.2.1'], True, [first, second]),
+        (['192.0.2.2'], None, [third]),
+        (['192.0.2.1'], True, [third]),
+    ]
+    model['relations'] = [{**pair, 'type': 'endpoint_targets_pod', 'addresses': addresses,
+        'endpoint_conditions': {'ready': ready}, 'evidence_id': refs[0], 'evidence_ids': refs,
+        'publish_not_ready_addresses': False, 'snapshot_consistency': 'not_atomic',
+        'readiness_is_health_proof': False} for addresses, ready, refs in claims]
+    neighborhood = browse(model, focus_id=pair['source_id'])
+    edge = neighborhood['edges'][0]
+    assert neighborhood['counts']['edges'] == 1
+    assert set(neighborhood['evidence_objects']) == {first, second, third}
+    path = tmp_path / 'conditions.json'
+    path.write_text(json.dumps(export_investigation(model)))
+    native = next(e for e in GraphSession.from_file(str(path)).graph.to_dict()['edges']
+                  if e['type'] == 'endpoint_targets_pod')['metadata']
+    assert edge['assertions'] == native['assertions']
+    assert set(native['evidence_ids']) == {first, second, third}
+    by_address = {a['attributes']['addresses'][0]: a for a in edge['assertions']}
+    assert len(by_address) == 2
+    assert set(by_address['192.0.2.1']['evidence_ids']) == {first, second, third}
+    assert by_address['192.0.2.1']['attributes']['endpoint_conditions']['ready'] is True
+    variant = by_address['192.0.2.2']
+    assert variant['evidence_ids'] == [third] and variant['attributes']['endpoint_conditions']['ready'] is None
+    assert variant['attributes']['publish_not_ready_addresses'] is False
+    assert variant['attributes']['readiness_is_health_proof'] is False

@@ -433,3 +433,85 @@ def test_empty_unscoped_inventory_does_not_trigger_wider_second_read():
     agent = EventAgent(None, SimpleNamespace(get=lambda _: SimpleNamespace(execute=execute)))
     assert agent._fetch_workload_state('')['topology_collection'] == {'workload_resources': {'status': 'complete'}}
     assert calls == ['get deployment,service,endpoints -o json']
+
+
+def test_repeated_reads_keep_all_direct_evidence_including_the_service_policy():
+    rows = resources()
+    repeats = [observation(row) for row in (rows[0], rows[3], rows[4])]
+    for repeat in repeats:
+        repeat['raw_ref']['observed_at'] = '2026-10-23T10:01:00Z'
+        repeat['raw_ref']['metadata']['resourceVersion'] = 'another-version'
+    view = model(rows, repeats)
+    edge = edges(view, 'endpoint_targets_pod')[0][2]
+    expected = {o['id']: o['observed_at'] for o in view['observations']
+                if o['raw_ref']['kind'] in {'Service', 'EndpointSlice', 'Pod'}}
+    assert len(expected) == 6
+    assert edge['evidence_ids'] == sorted(expected)
+    assert edge['observation_times'] == expected
+    assert edge['publish_not_ready_addresses'] is False
+    assert len(edges(view, 'selects_pod')[0][2]['evidence_ids']) == 4
+
+
+@pytest.mark.parametrize('manual', [True, False])
+def test_unverified_service_policy_is_not_attributed_to_endpoint(manual):
+    rows = resources()
+    if manual:
+        rows[4]['metadata'].pop('ownerReferences')
+        rows[0]['spec']['publishNotReadyAddresses'] = True
+    else:
+        rows[0]['spec']['publishNotReadyAddresses'] = 'false'
+    view = model(rows)
+    edge = edges(view, 'endpoint_targets_pod')[0][2]
+    assert 'publish_not_ready_addresses' not in edge
+    sources = {o['raw_ref']['kind'] for o in view['observations'] if o['id'] in edge['evidence_ids']}
+    assert sources == {'EndpointSlice', 'Pod'}
+    assert ('service_publish_policy_unresolved' in view['gaps']) == (not manual)
+
+
+def test_conflicting_old_incarnation_cannot_disambiguate_a_same_name_service():
+    rows = resources()
+    old = copy.deepcopy(rows[0])
+    old['metadata']['uid'] = 'earlier-uid'
+    changed = copy.deepcopy(old)
+    changed['spec']['selector'] = {'backend': 'changed'}
+    view = model([*rows, old, changed])
+    assert {'topology_instance_ambiguous', 'conflicting_topology_observations'} <= set(view['gaps'])
+    assert not edges(view, 'selects_pod') and not edges(view, 'has_endpoint_slice')
+
+
+def test_reordering_endpoint_addresses_does_not_create_a_false_conflict():
+    rows = resources()
+    ep = rows[4]['endpoints'][0]
+    ep['addresses'] = ['192.0.2.9', '192.0.2.10']
+    rows[4]['endpoints'].append({**copy.deepcopy(ep), 'addresses': ['192.0.2.11']})
+    later = copy.deepcopy(rows[4])
+    later['metadata']['resourceVersion'] = 'v-b'
+    later['endpoints'][0]['addresses'].reverse()
+    later['endpoints'].reverse()
+    view = model(rows, [observation(later)])
+    assert 'conflicting_topology_observations' not in view['gaps']
+    assert len(edges(view, 'endpoint_targets_pod')) == 2
+    assert all(len(e['evidence_ids']) == 4 for _, _, e in edges(view, 'endpoint_targets_pod'))
+
+
+def test_conflict_inspector_points_to_distinct_recorded_field_values(tmp_path):
+    from integrations.semantica_graph import export_investigation, investigation_neighborhood
+    from semantica.explorer.session import GraphSession
+    rows = resources()
+    changed = copy.deepcopy(rows[0])
+    changed['spec']['selector'] = {'backend': 'b'}
+    view = model(rows, [observation(changed)])
+    service = next(o for o in view['objects'] if o['kind'] == 'Service')
+    conflict = view['topology_conflicts'][service['id']]
+    assert conflict['changed_fields'] == ['spec.selector']
+    index = {o['id']: o for o in view['observations']}
+    assert [index[refs[0]]['raw_ref']['spec']['selector'] for refs in conflict['variants']] == [
+        {'backend': 'a'}, {'backend': 'b'}]
+    assert not edges(view, 'selects_pod')
+    page = investigation_neighborhood(view, focus_id=service['id'], query='', offset=0, edge_offset=0, limit=12)
+    assert page['focus']['topology_conflict'] == conflict
+    file = tmp_path / 'conflict.json'
+    file.write_text(json.dumps(export_investigation(view)))
+    loaded = GraphSession.from_file(str(file)).graph.to_dict()
+    node = next(n for n in loaded['nodes'] if n['id'] == service['id'])
+    assert node['properties']['topology_conflict'] == conflict

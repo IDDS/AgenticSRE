@@ -402,7 +402,8 @@ def build_investigation(run: dict) -> dict:
                              "status": "resolved" if matches else "unresolved"})
     if any(link["status"] == "unresolved" for link in review_links):
         gaps.append("review_citation_unresolved")
-    service_links, service_gaps = topology_relations(objects, observations)
+    topology_conflicts = {}
+    service_links, service_gaps = topology_relations(objects, observations, conflict_evidence=topology_conflicts)
     links.extend(service_links)
     gaps.extend(service_gaps)
     for link in links:
@@ -425,6 +426,8 @@ def build_investigation(run: dict) -> dict:
                           "review_blockers": judge.get("review_blockers", [])},
              "semantics": {"relations_are_causal_proof": False, "times_are_collection_or_event_times": True,
                            "scope": "recorded_investigation_only", "live_state_verified": False}}
+    if topology_conflicts:
+        model["topology_conflicts"] = topology_conflicts
     model["revision"] = _hash("rev-", model)
     return model
 

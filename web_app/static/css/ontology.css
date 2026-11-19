@@ -61,6 +61,7 @@
 .og-empty { text-align: center; padding: .75rem 0; }
 #og-evidence:not(:empty) { background: var(--og-tint); border-left: 3px solid var(--og-blue); padding: .85rem; margin-top: .8rem; }
 #og-evidence select { margin: .5rem 0; }
+.og-assertion:not(:empty) { margin-top: .5rem; padding: .45rem .65rem; background: white; border-left: 2px solid var(--og-line); }
 .og-record { border-top: 1px solid #cfdee7; padding: .5rem 0; }
 .og-record p { white-space: pre-wrap; max-height: 16rem; overflow: auto; }
 .og-unbound-records { max-height: 22rem; overflow-y: auto; }

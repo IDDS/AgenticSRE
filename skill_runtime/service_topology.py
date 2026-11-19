@@ -125,7 +125,20 @@ def project_resource(resource):
     return projected
 
 
-def topology_relations(objects, observations):
+def _structure_signature(projected):
+    """Compare observed fields; Kubernetes endpoint and owner lists are unordered."""
+    meta = projected['metadata']
+    fields = {'metadata.labels': meta['labels'], 'metadata.ownerReferences': sorted(
+        meta['ownerReferences'], key=lambda r: json.dumps(r, sort_keys=True))}
+    fields.update({'spec.' + k: v for k, v in projected['spec'].items()})
+    if 'endpoints' in projected:
+        ends = [{**e, 'addresses': sorted(e['addresses'])} for e in projected['endpoints']]
+        fields['endpoints'] = sorted(ends, key=lambda e: json.dumps(e, sort_keys=True))
+        fields['addressType'] = projected.get('addressType')
+    return json.dumps(fields, sort_keys=True)
+
+
+def topology_relations(objects, observations, *, conflict_evidence=None):
     """Positive structural facts only. Missing inventories do not prove absence."""
     gaps, by_id = set(), {}
     if len(observations) > 4096:
@@ -153,22 +166,29 @@ def topology_relations(objects, observations):
         if not projected['topology_fields_complete']:
             gaps.add('topology_projection_incomplete')
             continue
-        # Repeated identical structure can cite any of its observations. Conflicting
-        # versions cannot be resolved by treating opaque resourceVersion as a clock.
-        signature = json.dumps({k: projected.get(k) for k in ('kind', 'spec', 'endpoints', 'addressType')} | {
-            'labels': projected['metadata']['labels'],
-            'owners': projected['metadata']['ownerReferences']}, sort_keys=True)
+        # Resource versions are opaque. Only combine readings of identical structure.
+        signature = _structure_signature(projected)
         by_id.setdefault(obj['id'], []).append((signature, obj, projected, obs))
-    active = {}
+    active, support, incarnations = {}, {}, {}
     for identity, rows in by_id.items():
-        if len({r[0] for r in rows}) > 1:
-            gaps.add('conflicting_topology_observations')
-        else:
-            active[identity] = rows[0][1:]
-    incarnations = {}
-    for identity, (obj, _, _) in active.items():
+        obj = rows[0][1]
         logical = tuple(obj[k] for k in ('cluster_id', 'namespace', 'kind', 'name'))
         incarnations.setdefault(logical, []).append(identity)
+        variants = {}
+        for signature, _, _, obs in rows:
+            variants.setdefault(signature, []).append(obs['id'])
+        if len(variants) > 1:
+            gaps.add('conflicting_topology_observations')
+            if conflict_evidence is not None:
+                states = [json.loads(s) for s in variants]
+                keys = set().union(*(s.keys() for s in states))
+                fields = [k for k in keys if len({json.dumps(s[k], sort_keys=True) if k in s else None
+                                                  for s in states}) > 1]
+                conflict_evidence[identity] = {'changed_fields': sorted(fields),
+                                               'variants': [sorted(ids) for ids in variants.values()]}
+        else:
+            active[identity] = rows[0][1:]
+            support[identity] = {obs['id']: obs.get('observed_at') for _, _, _, obs in rows}
     for ids in incarnations.values():
         if len(ids) > 1:
             gaps.add('topology_instance_ambiguous')
@@ -180,10 +200,13 @@ def topology_relations(objects, observations):
                 for record in active.values() for obj in [record[0]] if obj['kind'] == 'Service'}
     links, seen = [], set()
 
-    def link(kind, source, target, **extra):
+    def link(kind, source, target, *, policy_source=None, **extra):
         a, _, a_obs = source
-        b, _, b_obs = target
-        evidence_ids = sorted({a_obs['id'], b_obs['id']})
+        b = target[0]
+        times = {**support[a['id']], **support[b['id']]}
+        if policy_source is not None:
+            times.update(support[policy_source['id']])
+        evidence_ids = sorted(times)
         key = json.dumps([kind, a['id'], b['id'], evidence_ids, extra], sort_keys=True)
         if key in seen:
             return
@@ -192,7 +215,7 @@ def topology_relations(objects, observations):
             'source_id': a['id'], 'target_id': b['id'], 'type': kind,
             'evidence_id': a_obs['id'], 'evidence_ids': evidence_ids,
             'observed_at': a_obs.get('observed_at'),
-            'observation_times': {o['id']: o.get('observed_at') for o in (a_obs, b_obs)},
+            'observation_times': times,
             'snapshot_consistency': 'not_atomic', 'is_causal_proof': False, **extra})
 
     for record in active.values():
@@ -247,6 +270,10 @@ def topology_relations(objects, observations):
             # proof of the current Service incarnation after a same-name rebuild.
             link('endpoint_slice_label_association', service, record, binding='service_name_label_only',
                  service_instance_verified=False)
+        policy = service[1]['spec'].get('publishNotReadyAddresses', False)
+        policy_verified = bool(refs) and type(policy) is bool
+        if refs and not policy_verified:
+            gaps.add('service_publish_policy_unresolved')
         for endpoint in raw['endpoints']:
             ref = endpoint['targetRef']
             target = indexed.get((obj['cluster_id'], ref.get('namespace') or obj['namespace'],
@@ -255,10 +282,11 @@ def topology_relations(objects, observations):
                 gaps.add('endpoint_target_unresolved')
                 continue
             cond = endpoint['conditions']
-            link('endpoint_targets_pod', record, target, addresses=endpoint['addresses'],
+            link('endpoint_targets_pod', record, target, addresses=sorted(endpoint['addresses']),
                 endpoint_conditions={**cond, 'effective_ready': cond['ready'] is not False,
                     'effective_serving': cond['serving'] is not False,
                     'effective_terminating': cond['terminating'] is True},
-                publish_not_ready_addresses=service[1]['spec'].get('publishNotReadyAddresses') is True,
-                readiness_is_health_proof=False)
+                readiness_is_health_proof=False,
+                policy_source=service_obj if policy_verified else None,
+                **({'publish_not_ready_addresses': policy} if policy_verified else {}))
     return links, sorted(gaps)

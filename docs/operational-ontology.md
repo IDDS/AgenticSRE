@@ -20,6 +20,10 @@ semantica-explorer --graph "semantica-rev-xxxx.json" --host 127.0.0.1
 
 对指定命名空间的新调查，事件智能体单独读取 Pod 和 ReplicaSet。没有 Service 时仍可通过 Pod 的 nodeName 和 ownerReferences 构建调度与归属关系。任一资源列表读取失败会留下采集缺口，其他成功读取的来源仍可查询。Kubernetes Event 自身的版本和它提到的对象版本分别保留；自愈版本前置条件要求目标资源的直接观测。
 
+在关系的「查看依据」中可以选择具体观测。端点关系显示地址、原始 ready、serving、terminating 条件及可确认的 Service 发布策略。两轮采集取得相同结构时会保留两轮的证据 ID。仅通过名称标签关联 Service 的 EndpointSlice 会把发布策略显示为「未确认」。同一对资源有多组端点条件时，可切换条件组合，各组保留自己的引用。导出文件在结构边的 `metadata.assertions` 中保存同样的组合。
+
+如果同一 UID 的采集结果存在结构差异，选中该对象并点击「核对冲突观测」可以查看不同字段及其对应的记录。对象详情保留每组观测，跨资源推导会跳过冲突对象。端点列表、地址和所有者引用的顺序变化按相同结构处理。
+
 ## 当前实现
 
 ```mermaid

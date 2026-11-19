@@ -1,6 +1,12 @@
 """Semantica ContextGraph projection of a single recorded investigation."""
 from collections import Counter
 from importlib.metadata import version
+import json
+
+
+RELATION_ATTRIBUTES = ("snapshot_consistency", "binding", "selector", "proves_runtime_ownership",
+                       "service_instance_verified", "addresses", "endpoint_conditions",
+                       "publish_not_ready_addresses", "readiness_is_health_proof")
 
 
 class UnknownFocus(LookupError):
@@ -19,16 +25,30 @@ def resource_graph(model):
         raise SemanticaUnavailable("Semantica 图引擎加载失败，请检查服务端依赖。") from exc
 
     graph = ContextGraph(advanced_analytics=False, extract_entities=False, extract_relationships=False)
-    graph.add_nodes([{"id": o["id"], "type": o["kind"], "content": o["name"], "properties": o}
-                     for o in model["objects"]])
+    conflicts = model.get("topology_conflicts", {})
+    nodes = []
+    for o in model["objects"]:
+        properties = {**o, "topology_conflict": conflicts[o["id"]]} if o["id"] in conflicts else o
+        nodes.append({"id": o["id"], "type": o["kind"], "content": o["name"], "properties": properties})
+    graph.add_nodes(nodes)
     grouped = {}
     for link in model["relations"]:
         key = (link["source_id"], link["type"], link["target_id"])
         refs = [link.get("evidence_id"), *(link.get("evidence_ids") or [])]
-        grouped.setdefault(key, set()).update(ref for ref in refs if ref)
-    graph.add_edges([{"source_id": a, "type": kind, "target_id": b,
-                      "metadata": {"evidence_ids": sorted(refs), "is_causal_proof": False}}
-                     for (a, kind, b), refs in grouped.items()])
+        attributes = {k: link[k] for k in RELATION_ATTRIBUTES if k in link}
+        signature = json.dumps(attributes, sort_keys=True)
+        variants = grouped.setdefault(key, {})
+        if signature not in variants:
+            variants[signature] = (attributes, set())
+        variants[signature][1].update(ref for ref in refs if ref)
+    edges = []
+    for (a, kind, b), variants in grouped.items():
+        assertions = [{"attributes": attrs, "evidence_ids": sorted(ids)}
+                      for attrs, ids in variants.values()]
+        refs = sorted({ref for assertion in assertions for ref in assertion["evidence_ids"]})
+        edges.append({"source_id": a, "type": kind, "target_id": b,
+                      "metadata": {"evidence_ids": refs, "assertions": assertions, "is_causal_proof": False}})
+    graph.add_edges(edges)
     return graph
 
 
@@ -72,14 +92,18 @@ def investigation_neighborhood(model: dict, *, focus_id: str, query: str, offset
             source, relation, target = e["source"], e["type"], e["target"]
             if identity in (source, target):
                 neighbor = objects[target if source == identity else source]
-                rows.append({"source_id": source, "target_id": target, "type": relation,
-                             "neighbor": neighbor, "evidence_ids": e["metadata"]["evidence_ids"]})
+                rows.append({"source_id": source, "target_id": target, "type": relation, "neighbor": neighbor,
+                             "evidence_ids": e["metadata"]["evidence_ids"], "assertions": e["metadata"]["assertions"]})
         rows.sort(key=lambda e: (e["type"], e["neighbor"]["name"], e["source_id"], e["target_id"]))
+    visible = rows[edge_offset:edge_offset + limit]
+    cited = {ref for e in visible for ref in e["evidence_ids"]}
+    evidence_objects = {o["id"]: objects[o["entity_id"]]["kind"] + "/" + objects[o["entity_id"]]["name"]
+                        for o in model["observations"] if o["id"] in cited and o["entity_id"] in objects}
     return {"engine": "Semantica", "engine_version": version("semantica"),
             "run_id": model["run_id"], "revision": model["revision"], "scope": model["scope"],
             "coverage": {"unbound_observations": sum(o["entity_id"] is None for o in model["observations"]),
                          "tool_executions": len(model["tool_executions"])},
             "counts": {"objects": len(objects), "edges": len(edges), "observations": len(model["observations"])},
             "objects": page, "total_objects": len(matches), "offset": offset, "limit": limit,
-            "focus": focus, "edges": rows[edge_offset:edge_offset + limit],
+            "focus": focus, "edges": visible, "evidence_objects": evidence_objects,
             "total_edges": len(rows), "edge_offset": edge_offset, "gaps": model["gaps"]}

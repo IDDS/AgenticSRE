@@ -169,6 +169,13 @@ const ontologyExplorer = (() => {
         center.append(el('small', o.kind), title, el('p', [o.cluster_id, o.namespace, identities[o.identity_status]].filter(Boolean).join(' / ')));
         if (o.uid) center.append(el('code', o.uid));
         map.append(center);
+        if (o.topology_conflict) {
+            const conflict = o.topology_conflict;
+            const open = button('核对冲突观测', () => inspectAssertions('拓扑观测冲突',
+                o.kind + '/' + o.name + ' · 取值不同的字段：' + conflict.changed_fields.join('、'),
+                conflict.variants.map(ids => ({attributes: {}, evidence_ids: ids})), '字段取值组合'));
+            byId('observations').append(el('p', '该 UID 记录了 ' + conflict.variants.length + ' 组不同的拓扑取值。'), open);
+        }
         const branches = el('div', null, 'og-branches');
         for (const edge of m.edges) {
             const same = edge.source_id === edge.target_id;
@@ -214,7 +221,11 @@ const ontologyExplorer = (() => {
             eventResourceVersion: o.event_resource_version, referencedResourceVersion: o.referenced_resource_version,
             labels: meta.labels, ownerReferences: meta.ownerReferences, selector: spec.selector,
             templateLabels: spec.template?.metadata?.labels, nodeName: spec.nodeName || raw.node_name,
-            endpointTargets: Array.isArray(raw.endpoints) ? raw.endpoints.map(e => e?.targetRef).filter(Boolean) : null
+            replicas: spec.replicas, nodeSelector: spec.nodeSelector, serviceType: spec.type,
+            publishNotReadyAddresses: spec.publishNotReadyAddresses, addressType: raw.addressType,
+            endpoints: Array.isArray(raw.endpoints) ? raw.endpoints.map(e => ({
+                targetRef: e?.targetRef, addresses: e?.addresses, conditions: e?.conditions
+            })) : null
         }).filter(([, value]) => value != null));
         if (Object.keys(fields).length) {
             const details = el('details');
@@ -247,13 +258,19 @@ const ontologyExplorer = (() => {
         }
     }
     function showEdge(edge) {
-        const version = graphVersion, host = byId('evidence');
-        ++evidenceVersion;
         const outgoing = model.focus.id === edge.source_id;
         const a = outgoing ? model.focus : edge.neighbor, b = outgoing ? edge.neighbor : model.focus;
-        const title = el('h4', '关系依据');
+        inspectAssertions('关系依据', a.kind + '/' + a.name + ' → ' + (relations[edge.type] || edge.type) +
+            ' → ' + b.kind + '/' + b.name,
+            edge.assertions?.length ? edge.assertions : [{attributes: {}, evidence_ids: edge.evidence_ids}],
+            '记录的条件组合');
+    }
+    function inspectAssertions(heading, description, assertions, choiceLabel) {
+        const version = graphVersion, host = byId('evidence');
+        ++evidenceVersion;
+        const title = el('h4', heading);
         title.tabIndex = -1;
-        host.replaceChildren(title, el('p', a.kind + '/' + a.name + ' → ' + (relations[edge.type] || edge.type) + ' → ' + b.kind + '/' + b.name));
+        host.replaceChildren(title, el('p', description));
         const body = el('div');
         const show = async id => {
             const ticket = ++evidenceVersion;
@@ -266,14 +283,54 @@ const ontologyExplorer = (() => {
                 if (version === graphVersion && ticket === evidenceVersion) errorView(body, err, () => show(id));
             }
         };
-        if (edge.evidence_ids.length) {
+        const fields = el('div', null, 'og-assertion');
+        const sources = el('div');
+        const toggle = value => value === true ? '是' : value === false ? '否' : '未记录';
+        const renderAssertion = assertion => {
+            ++evidenceVersion;
+            fields.replaceChildren();
+            sources.replaceChildren();
+            body.replaceChildren();
+            const attr = assertion.attributes;
+            if (attr.selector) {
+                fields.append(el('p', '匹配的选择器 · ' + Object.entries(attr.selector).map(([k, v]) => k + '=' + v).join('，')));
+            }
+            if (attr.binding === 'service_label_and_owner_uid') fields.append(el('p', '关联依据 · Service 名称标签和所有者 UID 均匹配'));
+            if (attr.binding === 'service_name_label_only') fields.append(el('p', '关联依据 · Service 名称标签匹配，实例 UID 尚未验证'));
+            if (attr.addresses) fields.append(el('p', '端点地址 · ' + attr.addresses.join('，')));
+            if (attr.endpoint_conditions) {
+                const c = attr.endpoint_conditions;
+                fields.append(el('p', '端点原始条件 · ready ' + toggle(c.ready) + ' / serving ' + toggle(c.serving) +
+                    ' / terminating ' + toggle(c.terminating)));
+                fields.append(el('p', 'Service 发布未就绪地址 · ' + (typeof attr.publish_not_ready_addresses === 'boolean'
+                    ? toggle(attr.publish_not_ready_addresses) : '未确认')));
+            }
+            if (attr.snapshot_consistency === 'not_atomic') fields.append(el('small', '涉及的资源分别采集，采集时间见各条观测。'));
+            const ids = assertion.evidence_ids;
+            if (!ids.length) {
+                sources.textContent = '这组关系条件没有观测引用。';
+                return;
+            }
             const menu = el('select');
             menu.setAttribute('aria-label', '关系引用的观测');
-            edge.evidence_ids.forEach(id => menu.add(new Option(id, id)));
+            ids.forEach(id => menu.add(new Option([model.evidence_objects?.[id], id].filter(Boolean).join(' · '), id)));
             menu.addEventListener('change', () => show(menu.value));
-            host.append(menu, body);
+            sources.append(menu);
             show(menu.value);
-        } else host.append(el('p', '这条关系未记录观测引用。'));
+        };
+        if (assertions.length > 1) {
+            const label = el('label', choiceLabel + ' ');
+            const choice = el('select');
+            assertions.forEach((assertion, index) => {
+                const address = assertion.attributes.addresses?.join('，');
+                choice.add(new Option((index + 1) + ' / ' + assertions.length + (address ? ' · ' + address : ''), index));
+            });
+            choice.addEventListener('change', () => renderAssertion(assertions[Number(choice.value)]));
+            label.append(choice);
+            host.append(label);
+        }
+        host.append(fields, sources, body);
+        renderAssertion(assertions[0]);
         title.focus();
     }
     async function download() {

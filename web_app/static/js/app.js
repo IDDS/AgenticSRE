@@ -4485,6 +4485,14 @@ const ONTOLOGY_GAP_LABELS = {
     independent_review_required: '需要独立审核',
     diagnosis_gate_not_allowed: '诊断执行门禁尚未通过',
     review_citation_unresolved: '部分审核引用尚未匹配原始观测',
+    conflicting_topology_observations: '同一资源 UID 的拓扑观测存在冲突，相关跨资源关系已略过',
+    topology_instance_ambiguous: '同名资源有多个 UID，相关跨资源关系已略过',
+    service_publish_policy_unresolved: 'Service 发布未就绪地址的策略值无法确认',
+    endpoint_slice_service_not_observed: '本次调查缺少可匹配的 Service 观测',
+    endpoint_slice_service_owner_mismatch: 'EndpointSlice 所有者与被引用的 Service 实例不匹配',
+    endpoint_target_unresolved: '端点目标缺少同一命名空间内匹配的 Pod UID',
+    topology_projection_incomplete: '部分资源的拓扑字段不完整',
+    topology_observation_limit_exceeded: '观测数量超过单次拓扑关联的上限',
 };
 
 const AUTO_RECOVERY_REASON_LABELS = {
