@@ -10,7 +10,7 @@ import heapq
 import json
 import hashlib
 import logging
-import time
+import math
 from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -44,6 +44,33 @@ class Alert:
             self.fingerprint = hashlib.md5(content.encode()).hexdigest()[:12]
         if not self.alert_id:
             self.alert_id = f"alert-{self.fingerprint}-{int(self.timestamp)}"
+
+    @classmethod
+    def from_prometheus_sample(cls, item, namespace, cluster_id):
+        metric = item.get("metric") if isinstance(item, dict) else None
+        if not isinstance(metric, dict) or not all(isinstance(v, str) for v in metric.values()):
+            raise ValueError("invalid Prometheus labels")
+        if (not metric.get("alertname", "").strip() or metric.get("alertstate") != "firing"
+                or metric.get("__name__", "ALERTS") != "ALERTS"):
+            raise ValueError("expected a named firing ALERTS series")
+        if namespace and metric.get("namespace") != namespace:
+            raise ValueError("alert is outside the requested namespace")
+        if cluster_id and metric.get("cluster_id") and metric["cluster_id"] != cluster_id:
+            raise ValueError("alert is outside the requested cluster")
+        value = item.get("value")
+        if not isinstance(value, list) or len(value) != 2:
+            raise ValueError("expected a Prometheus instant vector sample")
+        stamp, active = value
+        if type(active) not in (int, float, str) or float(active) != 1:
+            raise ValueError("invalid firing alert sample value")
+        if isinstance(stamp, float) and not math.isfinite(stamp):
+            raise ValueError("non-JSON Prometheus timestamp")
+        # A firing series with an unknown observation time stays visible as a singleton.
+        if type(stamp) not in (int, float) or not math.isfinite(stamp) or stamp <= 0:
+            stamp = 0
+        return cls(name=metric["alertname"], severity=metric.get("severity", "warning"),
+                   source="prometheus", timestamp=stamp, labels=metric,
+                   message=metric.get("description", metric.get("summary", "")), raw=item)
 
     @classmethod
     def from_kubernetes_event(cls, event, namespace=""):
@@ -167,6 +194,7 @@ Cluster Context:
         self.semantic_timeout_s = max(1, min(180, float(getattr(cfg.alert, "semantic_timeout_s", 60))))
         self.collection_timeout_s = 20
         self.collection_status = {}
+        self.prometheus_sample_counts = {}
         self.cluster_id = getattr(cfg.kubernetes, "cluster_id", "")
         self.time_window = cfg.alert.time_window
         self.similarity_threshold = cfg.alert.similarity_threshold
@@ -187,15 +215,56 @@ Cluster Context:
             await propose_relations(result, self.llm, timeout_s=self.semantic_timeout_s)
             build_scag(result)
         result["collection"] = dict(self.collection_status)
+        if self.prometheus_sample_counts:
+            result["collection_details"] = {"prometheus": dict(self.prometheus_sample_counts)}
         if "kubectl" in self.collection_status:
-            result["collection_version"] = 2
+            result["collection_version"] = 3
         incomplete = [name for name, status in self.collection_status.items() if status != "ok"]
         if incomplete:
             result.update(degraded=True, warning="部分来源采集未完成：" + ", ".join(incomplete) + "；当前仅展示成功采集的告警。")
+            if self.prometheus_sample_counts.get("rejected"):
+                result["warning"] += f" Prometheus 跳过了 {self.prometheus_sample_counts['rejected']} 条无效样本。"
+            if self.prometheus_sample_counts.get("unknown_time"):
+                result["warning"] += f" {self.prometheus_sample_counts['unknown_time']} 条告警缺少有效观测时间，已单独展示。"
         return result
+
+    def _prometheus_alerts(self, payload, namespace):
+        if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+            return [], "invalid_response"
+        if payload.get("stub"):
+            return [], "unavailable"
+        if payload.get("result_type", "vector") != "vector":
+            return [], "invalid_response"
+        rows = payload["results"]
+        count = payload.get("result_count", len(rows))
+        status = "ok"
+        if type(count) is not int or count < len(rows):
+            status = "invalid_response"
+        elif payload.get("truncated") or count > len(rows) or len(rows) > 5000:
+            status = "truncated"
+        elif payload.get("has_warnings"):
+            status = "partial"
+        alerts = []
+        examined = rows[:5000]
+        unknown_time = 0
+        for item in examined:
+            try:
+                alert = Alert.from_prometheus_sample(item, namespace, self.cluster_id)
+            except (TypeError, ValueError, OverflowError):
+                status = "invalid_response"
+                continue
+            if not alert.timestamp:
+                status = "invalid_response"
+                unknown_time += 1
+            alerts.append(alert)
+        self.prometheus_sample_counts = {"examined": len(examined), "retained": len(alerts),
+                                         "rejected": len(examined) - len(alerts), "unknown_time": unknown_time}
+        return alerts, status
 
     async def _collect_alerts(self, namespace: str = "") -> List[Alert]:
         """Collect sources concurrently; a failed source cannot hide a successful one."""
+        self.prometheus_sample_counts = {}
+
         async def collect(name, **kwargs):
             tool = self.registry.get(name)
             if tool is None:
@@ -223,20 +292,7 @@ Cluster Context:
             if payload is None and self.collection_status.get(source) == 'ok':
                 self.collection_status[source] = 'invalid_response'
         if prometheus is not None:
-            try:
-                if not isinstance(prometheus, dict) or not isinstance(prometheus.get('results'), list):
-                    raise ValueError('missing Prometheus result vector')
-                if prometheus.get('truncated') or prometheus.get('result_count', len(prometheus['results'])) > len(prometheus['results']) or len(prometheus['results']) > 5000:
-                    self.collection_status['prometheus'] = 'truncated'
-                for item in prometheus['results'][:5000]:
-                    metric = item.get("metric", {})
-                    if namespace and metric.get("namespace") != namespace:
-                        continue
-                    alerts.append(Alert(name=metric.get("alertname", "unknown"),
-                        severity=metric.get("severity", "warning"), source="prometheus", timestamp=time.time(),
-                        labels=metric, message=metric.get("description", metric.get("summary", "")), raw=item))
-            except (AttributeError, TypeError, ValueError):
-                self.collection_status["prometheus"] = "invalid_response"
+            alerts, self.collection_status["prometheus"] = self._prometheus_alerts(prometheus, namespace)
         if events is not None:
             try:
                 data = json.loads(events) if isinstance(events, str) else events

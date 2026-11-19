@@ -75,10 +75,17 @@ class PrometheusTool(SRETool):
             resp.raise_for_status()
             data = resp.json()
 
+            if not isinstance(data, dict):
+                return ToolResult(success=False, error="Invalid Prometheus response envelope")
             if data.get("status") == "success":
-                results = data.get("data", {}).get("result", [])
+                payload = data.get("data")
+                results = payload.get("result") if isinstance(payload, dict) else None
+                if not isinstance(results, list):
+                    return ToolResult(success=False, error="Missing or invalid Prometheus query result")
                 return ToolResult(success=True, data={
                     "query": query,
+                    "result_type": payload.get("resultType"),
+                    "has_warnings": bool(data.get("warnings")),
                     "result_count": len(results),
                     "results": results[:max_results],
                     "truncated": len(results) > max_results,
@@ -213,7 +220,7 @@ class PrometheusTool(SRETool):
     def _stub_execute(self, query: str) -> ToolResult:
         return ToolResult(
             success=True,
-            data={"query": query, "results": [], "note": "STUB - no Prometheus configured"},
+            data={"query": query, "results": [], "stub": True, "note": "STUB - no Prometheus configured"},
             source=self.name,
         )
 
