@@ -14,6 +14,7 @@ import statistics
 import time
 
 from agents.alert_embeddings import local_embeddings, embedding_metadata
+from agents.alert_log_fields import log_template
 
 
 async def enrich_retrieval(result, timeout_s=120):
@@ -33,9 +34,6 @@ async def enrich_retrieval(result, timeout_s=120):
 
 
 RELATION_TYPES = {"equivalent", "shared_root", "propagates_to", "shared_dependency", "change_trigger", "conflicts"}
-VOLATILE = re.compile(r"\b(request_id|trace_id|span_id|correlation_id|duration_ms|latency_ms)=([^\s,;]+)", re.I)
-REQUEST_ID = re.compile(r"\brequest\s+(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{24,64})\b", re.I)
-ELAPSED_MS = re.compile(r"\b(after|waiting)\s+\d+(?:\.\d+)?\s+(ms|milliseconds)\b", re.I)
 ONTOLOGY = {
     "image_pull": ("imagepull", "image pull", "pull image", "pulling image", "镜像拉取"),
     "memory": ("oom", "out of memory", "memory pressure", "内存不足", "内存溢出"),
@@ -66,16 +64,15 @@ def symbolic(row):
         identity = repr(sorted((str(k), str(v)) for k, v in labels.items()))
         return {"kind": "metric", "key": (str(metric), str(raw.get("unit", "")), identity),
                 "value": value, "template": str(metric)}
-    template = VOLATILE.sub(lambda m: m.group(1).lower()+"=<VAR>", row["message"])
-    template = REQUEST_ID.sub("request <VAR>", template)
-    template = ELAPSED_MS.sub(lambda m: m.group(1).lower()+" <VAR> "+m.group(2).lower(), template)
+    key, template = log_template(row["message"])
     return {"kind": "log" if template != row["message"] or "log" in row["source"] else "event",
-            "key": template, "template": template}
+            "key": key, "template": template}
 
 
 def annotate_groups(result, baseline=None):
     """Mine templates, summarize metric samples, and rank explicit baseline shifts."""
     result["signature_version"] = 2
+    result["template_version"] = 2
     from drain3 import TemplateMiner
     from drain3.template_miner_config import TemplateMinerConfig
     cfg = TemplateMinerConfig()
@@ -105,23 +102,26 @@ def annotate_groups(result, baseline=None):
     cluster_ids = {}
     for g in result["groups"]:
         members = [rows[i] for i in g["alert_indices"]]
-        symbol = symbolic(members[0])
+        symbols = [symbolic(row) for row in members]
+        symbol = symbols[0]
+        same_template = all(item["key"] == symbol["key"] for item in symbols)
         mined = miner.add_log_message(symbol["template"] or members[0]["name"])
         cluster_ids[g["group_id"]] = mined["cluster_id"]
         g["symbolic"] = {"kind": symbol["kind"], "template": symbol["template"],
             "drain_template": mined["template_mined"], "miner": "drain3",
             "merge_guard": "equal safe template; generalized Drain wildcards alone never merge"}
         # Use a scoped signature rather than an ephemeral Drain cluster number.
-        g["template_id"] = hashlib.sha256(repr(frequency_key(members[0])).encode()).hexdigest()[:24]
-        if symbol["kind"] == "metric" and all(symbolic(r)["kind"] == "metric" and symbolic(r)["key"] == symbol["key"] for r in members):
-            values = [symbolic(r)["value"] for r in members]
+        signature = frequency_key(members[0], symbol)
+        g["template_id"] = hashlib.sha256(repr(signature).encode()).hexdigest()[:24]
+        if symbol["kind"] == "metric" and same_template:
+            values = [item["value"] for item in symbols]
             g["metric_summary"] = {"min": min(values), "max": max(values), "mean": statistics.mean(values),
-                "samples": len(values), "unique_samples": len({(r["timestamp"], symbolic(r)["value"]) for r in members}),
+                "samples": len(values), "unique_samples": len({(r["timestamp"], v) for r, v in zip(members, values)}),
                 "min_alert_id": members[values.index(min(values))]["alert_id"],
                 "max_alert_id": members[values.index(max(values))]["alert_id"]}
-        if any(symbolic(r)["key"] != symbol["key"] for r in members):
+        if not same_template:
             g["symbolic"].update(kind="mixed", template="人工合并的多种模板；请查看原文", merge_guard="manual merge")
-        count = baseline_counts[frequency_key(members[0])]
+        count = baseline_counts[signature]
         expected = count * result["time_window"] / duration if baseline is not None else None
         # One-sided count deviation under a supplied Poisson baseline, not a p-value.
         score = max(0, (len(members)-expected)/math.sqrt(max(expected, 1))) if expected is not None else None
@@ -140,11 +140,12 @@ def annotate_groups(result, baseline=None):
     return result
 
 
-def frequency_key(row):
+def frequency_key(row, symbol=None):
     from agents.alert_compression import observation_dimensions
-    s = symbolic(row)
+    if symbol is None:
+        symbol = symbolic(row)
     key = (row["cluster_id"], row["namespace"], row["entity_kind"], row["entity"],
-            row["name"], row["source"], row["state"], observation_dimensions(row["labels"]), str(s["key"]))
+            row["name"], row["source"], row["state"], observation_dimensions(row["labels"]), symbol["key"])
     from agents.alert_identity import target_identity
     identity=target_identity(row)
     return key+(identity['entity_uid'],identity['identity_status']) if identity['identity_status']!='uid_not_reported' else key

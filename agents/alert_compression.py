@@ -14,6 +14,9 @@ import fcntl
 import os
 import tempfile
 
+from agents.alert_log_fields import ID_FIELDS, variable_id
+from agents.alert_numeric import milliseconds
+
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
@@ -21,8 +24,15 @@ def digest(value):
 
 def observation_dimensions(labels):
     """Keep fault dimensions; only severity transitions and explicit transient IDs vary."""
-    transient = {"severity", "request_id", "trace_id", "span_id", "correlation_id", "duration_ms", "latency_ms"}
-    return digest({k: v for k, v in labels.items() if str(k).lower() not in transient})
+    dimensions = {}
+    for key, value in labels.items():
+        field = str(key).lower()
+        if field == "severity" or (field in ID_FIELDS and variable_id(value)):
+            continue
+        if field in ("duration_ms", "latency_ms") and milliseconds(value) is not None:
+            continue
+        dimensions[key] = value
+    return digest(dimensions)
 
 
 def normalize_alerts(records, cluster_id="", namespace=""):

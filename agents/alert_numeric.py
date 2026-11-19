@@ -11,21 +11,28 @@ import re
 
 
 _NUMBER = r'[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?'
-_FIELD = re.compile(r'\b(duration_ms|latency_ms)=(' + _NUMBER + r')(?=$|[\s,;])', re.I)
-_ELAPSED = re.compile(r'\b(after|waiting)\s+(' + _NUMBER + r')\s+(?:ms|milliseconds)\b', re.I)
+FIELD_START = r'(?<![^\s,;?&])'
+FIELD_END = r'(?=$|[\s,;&])'
+MS_FIELD = re.compile(FIELD_START + r'(?P<ms_field>duration_ms|latency_ms)=(?P<ms_value>' + _NUMBER + ')' + FIELD_END, re.I)
+MS_WAIT = re.compile(r'\b(?P<wait>after|waiting)\s+(?P<elapsed>' + _NUMBER + r')\s+(?P<unit>ms|milliseconds)\b', re.I)
+
+
+def milliseconds(value):
+    if isinstance(value, bool):
+        return None
+    try:
+        value = float(value)
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return value if math.isfinite(value) and value >= 0 else None
 
 
 def observations(row):
     values = {}
 
     def add(channel, value):
-        if isinstance(value, bool):
-            return
-        try:
-            value = float(value)
-        except (ValueError, TypeError, OverflowError):
-            return
-        if not math.isfinite(value) or value < 0:
+        value = milliseconds(value)
+        if value is None:
             return
         current = values.setdefault(channel, {'min': value, 'max': value, 'observations': 0, 'unit': 'ms'})
         current['min'] = min(current['min'], value)
@@ -33,13 +40,13 @@ def observations(row):
         current['observations'] += 1
 
     message = str(row.get('message') or '')
-    for field, value in _FIELD.findall(message):
+    for field, value in MS_FIELD.findall(message):
         add('message.' + field.lower(), value)
-    for field, value in _ELAPSED.findall(message):
+    for field, value, _ in MS_WAIT.findall(message):
         add('message.' + field.lower() + '_ms', value)
-    for field in ('duration_ms', 'latency_ms'):
-        if field in (row.get('labels') or {}):
-            add('labels.' + field, row['labels'][field])
+    for field, value in (row.get('labels') or {}).items():
+        if str(field).lower() in ('duration_ms', 'latency_ms'):
+            add('labels.' + field.lower(), value)
     return values
 
 
