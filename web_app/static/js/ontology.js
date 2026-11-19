@@ -121,6 +121,20 @@ const ontologyExplorer = (() => {
     function render() {
         const m = model, o = m.focus;
         byId('counts').textContent = m.counts.objects + ' 个资源对象 · ' + m.counts.edges + ' 条结构关系 · ' + m.counts.observations + ' 条观测';
+        const coverage = byId('coverage');
+        coverage.replaceChildren();
+        if (!m.counts.observations) {
+            coverage.append(el('p', '这次调查未保留可构图的结构化观测。图谱可读取 ' + m.coverage.tool_executions +
+                ' 条工具执行记录，详情见「查看诊断过程」。'));
+        } else if (m.coverage.unbound_observations) {
+            const unbound = m.coverage.unbound_observations;
+            const list = el('details'), body = el('div');
+            list.append(el('summary', (m.counts.observations - unbound) + ' 条观测已关联资源 · 查看 ' + unbound + ' 条未绑定观测'), body);
+            list.addEventListener('toggle', () => {
+                if (list.open && !body.childNodes.length) loadObservations(body, 0, {unbound_only: true});
+            });
+            coverage.append(list);
+        }
         byId('scope').textContent = [m.engine + ' ' + m.engine_version, m.scope.cluster_id, m.scope.namespace, m.revision].filter(Boolean).join(' / ');
         byId('export').disabled = false;
         byId('export-status').replaceChildren();
@@ -191,11 +205,13 @@ const ontologyExplorer = (() => {
         const source = [o.source_agent, o.source, o.signal_type].filter(Boolean).join(' · ');
         item.append(el('strong', source || '来源未记录'), el('p', o.observation), el('small', [o.id,
             o.observed_at || o.event_time || o.sampled_at || o.timestamp || '时间未记录',
+            o.identity_basis === 'verified_legacy_metric_labels' ? '对象名称来自已核对样本的历史指标标签' : '',
             o.excerpted ? '记录为节选' : ''].filter(Boolean).join(' · ')));
         const raw = o.raw_ref || {}, meta = raw.metadata || {}, spec = raw.spec || {};
         const fields = Object.fromEntries(Object.entries({
             kind: raw.kind, name: meta.name || raw.name, namespace: meta.namespace || raw.namespace,
-            uid: meta.uid || raw.pod_uid || raw.uid, resourceVersion: meta.resourceVersion || raw.resource_version,
+            uid: meta.uid || raw.pod_uid || raw.uid, resourceVersion: o.resource_version,
+            eventResourceVersion: o.event_resource_version, referencedResourceVersion: o.referenced_resource_version,
             labels: meta.labels, ownerReferences: meta.ownerReferences, selector: spec.selector,
             templateLabels: spec.template?.metadata?.labels, nodeName: spec.nodeName || raw.node_name,
             endpointTargets: Array.isArray(raw.endpoints) ? raw.endpoints.map(e => e?.targetRef).filter(Boolean) : null
@@ -207,19 +223,27 @@ const ontologyExplorer = (() => {
         }
         return item;
     }
-    async function loadObservations(host, at) {
+    async function loadObservations(host, at, filter = {entity_id: focus}) {
         const version = graphVersion;
         host.textContent = '正在读取观测…';
         try {
-            const data = await collection({entity_id: focus, offset: at, limit: 8});
+            const data = await collection({...filter, offset: at, limit: 8});
             if (version !== graphVersion) return;
-            host.replaceChildren(...data.items.map(observation));
-            if (!data.total) host.append(el('p', '该对象只出现在关系端点，尚无直接观测。'));
+            const records = el('div');
+            if (filter.unbound_only) {
+                records.className = 'og-unbound-records';
+                records.tabIndex = 0;
+                records.setAttribute('role', 'region');
+                records.setAttribute('aria-label', '本页未绑定观测');
+            }
+            records.append(...data.items.map(observation));
+            host.replaceChildren(records);
+            if (!data.total) host.append(el('p', filter.unbound_only ? '当前没有未绑定的观测。' : '该对象只出现在关系端点，尚无直接观测。'));
             const nav = el('div', null, 'og-pager');
-            pages(nav, at, data.total, data.limit, n => loadObservations(host, n));
+            pages(nav, at, data.total, data.limit, n => loadObservations(host, n, filter));
             host.append(nav);
         } catch (err) {
-            if (version === graphVersion) errorView(host, err, () => loadObservations(host, at));
+            if (version === graphVersion) errorView(host, err, () => loadObservations(host, at, filter));
         }
     }
     function showEdge(edge) {

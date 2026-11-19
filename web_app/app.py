@@ -11892,7 +11892,7 @@ async def rca_diagnostic_strategy(run_id: str):
 @app.get("/api/rca/{run_id}/ontology/{collection}")
 async def rca_ontology_collection(run_id: str, collection: str, entity_id: str = "",
                                   revision: str = "", record_id: str = "", offset: int = Query(0, ge=0),
-                                  limit: int = Query(50, ge=1, le=100)):
+                                  limit: int = Query(50, ge=1, le=100), unbound_only: bool = False):
     run = _state["rca_runs"].get(run_id)
     if not run:
         raise HTTPException(404, "分析记录不存在")
@@ -11900,7 +11900,8 @@ async def rca_ontology_collection(run_id: str, collection: str, entity_id: str =
     if revision and revision != model["revision"]:
         raise HTTPException(409, "调查记录已更新，请刷新后读取同一版本。")
     try:
-        return query_investigation(model, collection, entity_id=entity_id, record_id=record_id, offset=offset, limit=limit)
+        return query_investigation(model, collection, entity_id=entity_id, record_id=record_id,
+                                   offset=offset, limit=limit, unbound_only=unbound_only)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
 

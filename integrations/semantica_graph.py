@@ -36,7 +36,8 @@ def export_investigation(model):
     graph = resource_graph(model)
     observations = model["observations"]
     fields = ("source", "source_agent", "signal_type", "observed_at", "event_time", "sampled_at",
-              "timestamp", "identity_status", "scope_status", "temporality", "origin", "excerpted")
+              "timestamp", "resource_version", "event_resource_version", "referenced_resource_version",
+              "identity_status", "identity_basis", "scope_status", "temporality", "origin", "excerpted")
     graph.add_nodes([{"id": o["id"], "type": "Observation", "content": o["observation"],
                       "properties": {k: o[k] for k in fields if o.get(k) is not None}}
                      for o in observations])
@@ -76,6 +77,8 @@ def investigation_neighborhood(model: dict, *, focus_id: str, query: str, offset
         rows.sort(key=lambda e: (e["type"], e["neighbor"]["name"], e["source_id"], e["target_id"]))
     return {"engine": "Semantica", "engine_version": version("semantica"),
             "run_id": model["run_id"], "revision": model["revision"], "scope": model["scope"],
+            "coverage": {"unbound_observations": sum(o["entity_id"] is None for o in model["observations"]),
+                         "tool_executions": len(model["tool_executions"])},
             "counts": {"objects": len(objects), "edges": len(edges), "observations": len(model["observations"])},
             "objects": page, "total_objects": len(matches), "offset": offset, "limit": limit,
             "focus": focus, "edges": rows[edge_offset:edge_offset + limit],

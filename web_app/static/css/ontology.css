@@ -63,6 +63,9 @@
 #og-evidence select { margin: .5rem 0; }
 .og-record { border-top: 1px solid #cfdee7; padding: .5rem 0; }
 .og-record p { white-space: pre-wrap; max-height: 16rem; overflow: auto; }
+.og-unbound-records { max-height: 22rem; overflow-y: auto; }
+#og-coverage details[open] { padding: .6rem .8rem; background: white; border-left: 3px solid var(--og-line); }
+#og-coverage .og-pager:not(:empty) { margin-top: .4rem; }
 #og-object-pages:not(:empty), #og-edge-pages:not(:empty) { margin-top: .6rem; }
 @media (max-width: 850px) {
     .og-layout { grid-template-columns: 1fr; }

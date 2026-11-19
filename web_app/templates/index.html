@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AgenticSRE Console</title>
     <link rel="stylesheet" href="/static/css/style.css?v=107">
-    <link rel="stylesheet" href="/static/css/ontology.css?v=1">
+    <link rel="stylesheet" href="/static/css/ontology.css?v=2">
     <script defer src="/static/vendor/chart.umd.js"></script>
     <script defer src="/static/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script defer src="/static/vendor/chartjs-plugin-annotation.min.js"></script>
@@ -516,6 +516,7 @@
                     <button type="button" class="btn btn-sm" id="og-export">导出 Semantica 图谱</button>
                     <small id="og-scope"></small></header>
                 <div id="og-export-status" role="status"></div>
+                <div id="og-coverage"></div>
                 <div class="og-layout">
                     <aside class="og-catalog"><h3>对象目录</h3>
                         <form id="og-find"><label for="og-query">搜索名称、类型或 UID</label>
@@ -2218,7 +2219,7 @@
         </div>
     </div>
 
-    <script src="/static/js/ontology.js?v=1"></script>
+    <script src="/static/js/ontology.js?v=2"></script>
     <script src="/static/js/app.js?v=146"></script>
 </body>
 </html>

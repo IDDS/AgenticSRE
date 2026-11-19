@@ -20,6 +20,27 @@ from skill_runtime.service_topology import MAX_RESOURCES, project_resource
 logger = logging.getLogger(__name__)
 
 
+def _read_topology_list(kubectl, command, namespace, **options):
+    """Read one inventory; a failed or invalid list is never an observed empty list."""
+    unavailable = {"status": "failed", "error_code": "topology_collection_unavailable"}
+    if kubectl is None:
+        return [], unavailable
+    try:
+        result = kubectl.execute(command=command, namespace=namespace, **options)
+        if not result.success:
+            return [], unavailable
+        payload = json.loads(result.data) if isinstance(result.data, str) else result.data
+    except (ValueError, TypeError):
+        payload = None
+    except Exception:
+        return [], unavailable
+    if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+        return [], {"status": "failed", "error_code": "topology_collection_invalid"}
+    metadata = payload.get("metadata", {})
+    partial = not isinstance(metadata, dict) or bool(metadata.get("continue"))
+    return payload["items"], {"status": "partial" if partial else "complete"}
+
+
 class EventAgent:
     """
     K8s event analysis agent: fetches Warning events, resource status,
@@ -291,41 +312,16 @@ evidence explicitly; the complete observations remain available separately."""
     def _fetch_workload_state(self, namespace: str = "") -> Dict[str, Any]:
         """Collect compact live Deployment, Service and Endpoint state."""
         kubectl = self.registry.get("kubectl")
-        if kubectl is None:
-            return {"deployments": [], "services": [], "endpoints": [], "summary": ""}
-        result = kubectl.execute(
-            command="get deployment,service,endpoints -o json",
-            namespace=namespace or "",
-        )
-        if not result.success:
-            return {
-                "deployments": [],
-                "services": [],
-                "endpoints": [],
-                "summary": f"workload state collection failed: {result.error}",
-            }
-        try:
-            data = json.loads(result.data) if isinstance(result.data, str) else result.data
-        except (json.JSONDecodeError, TypeError):
-            return {
-                "deployments": [],
-                "services": [],
-                "endpoints": [],
-                "summary": str(result.data or "")[:3000],
-            }
-
-        if not isinstance(data, dict) or not isinstance(data.get('items'), list):
-            return {'deployments': [], 'services': [], 'endpoints': [],
-                    'summary': 'workload state collection returned no valid resource list',
-                    'topology_collection': {'workload_resources': {
-                        'status': 'failed', 'error_code': 'topology_collection_invalid'}}}
+        items, workload_status = _read_topology_list(
+            kubectl, 'get deployment,service,endpoints -o json', namespace or '')
+        if len(items) > MAX_RESOURCES:
+            workload_status['status'] = 'partial'
         state: Dict[str, Any] = {"deployments": [], "services": [], "endpoints": [],
-                                "topology_resources": [], "topology_collection": {}}
-        metadata = data.get('metadata') if isinstance(data.get('metadata'), dict) else {}
-        state['topology_collection']['workload_resources'] = {'status': 'partial' if
-            metadata.get('continue') or len(data.get('items') or []) > MAX_RESOURCES else 'complete'}
+                                "topology_resources": [], "topology_collection": {"workload_resources": workload_status}}
         lines: List[str] = []
-        for item in (data or {}).get("items", []):
+        if workload_status['status'] == 'failed':
+            lines.append('Deployment, Service and Endpoints inventory unavailable.')
+        for item in items:
             if not isinstance(item, dict):
                 state['topology_collection']['workload_resources']['status'] = 'partial'
                 continue
@@ -389,34 +385,32 @@ evidence explicitly; the complete observations remain available separately."""
                 }
                 state["endpoints"].append(record)
                 lines.append(f"Endpoints/{name} ready_addresses={ready} not_ready_addresses={not_ready}")
-        # Preserve the old collector when legacy responses have no identities.
-        # Healthy Pods and ReplicaSets are required to verify a Service binding;
-        # problem-Pod summaries alone cannot represent a healthy control.
-        if any(r['kind'] == 'Service' and r['metadata'].get('uid') for r in state['topology_resources']):
-            for source, command in (
-                    ('pods_and_controllers', 'get pods,replicasets -o json'),
-                    ('endpoint_slices', 'get endpointslices.discovery.k8s.io -o json')):
-                try:
-                    result = kubectl.execute(command=command, namespace=namespace or '', timeout=10)
-                    payload = json.loads(result.data) if result.success and isinstance(result.data, str) else result.data
-                    if not result.success or not isinstance(payload, dict) or not isinstance(payload.get('items'), list):
-                        state['topology_collection'][source] = {'status': 'failed', 'error_code': 'topology_collection_unavailable'}
-                        continue
-                    remaining = max(0, MAX_RESOURCES - len(state['topology_resources']))
-                    partial = bool((payload.get('metadata') or {}).get('continue')) or len(payload['items']) > remaining
-                    for row in payload['items'][:remaining]:
-                        projected = project_resource(row)
-                        if projected is None:
-                            partial = True
-                            continue
-                        if not projected['topology_fields_complete']:
-                            partial = True
-                        projected['observed_at'] = datetime.now(timezone.utc).isoformat()
-                        projected['topology_source'] = 'kubectl ' + command
-                        state['topology_resources'].append(projected)
-                    state['topology_collection'][source] = {'status': 'partial' if partial else 'complete'}
-                except Exception:
-                    state['topology_collection'][source] = {'status': 'failed', 'error_code': 'topology_collection_invalid'}
+        has_service = any(r['kind'] == 'Service' and r['metadata'].get('uid')
+                          for r in state['topology_resources'])
+        sources = []
+        if kubectl is not None and (namespace or has_service):
+            sources.append(('pods_and_controllers', 'get pods,replicasets -o json', {'Pod', 'ReplicaSet'}))
+            if has_service or workload_status['status'] != 'complete':
+                sources.append(('endpoint_slices', 'get endpointslices.discovery.k8s.io -o json', {'EndpointSlice'}))
+        for source, command, kinds in sources:
+            remaining = MAX_RESOURCES - len(state['topology_resources'])
+            if remaining <= 0:
+                state['topology_collection'][source] = {'status': 'partial', 'error_code': 'topology_resource_limit'}
+                continue
+            rows, status = _read_topology_list(kubectl, command, namespace or '', timeout=10)
+            state['topology_collection'][source] = status
+            if len(rows) > remaining:
+                status['status'] = 'partial'
+            for row in rows[:remaining]:
+                projected = project_resource(row)
+                if projected is None or projected['kind'] not in kinds:
+                    status['status'] = 'partial'
+                    continue
+                if not projected['topology_fields_complete']:
+                    status['status'] = 'partial'
+                projected['observed_at'] = datetime.now(timezone.utc).isoformat()
+                projected['topology_source'] = 'kubectl ' + command
+                state['topology_resources'].append(projected)
         state["summary"] = "\n".join(lines)
         return state
 

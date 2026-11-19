@@ -122,14 +122,62 @@ def observation_entity(item: dict, *, cluster_id: str = "", namespace: str = "")
             else "name_bound" if cluster and (ns or kind in CLUSTER_SCOPED) else "scope_incomplete"}
 
 
-def observation_semantics(item: dict, *, cluster_id: str = "", namespace: str = "") -> dict:
+def _legacy_metric_entity(item: dict, *, cluster_id: str, namespace: str) -> dict | None:
+    """Recover name labels only from the metric agent's verifiable legacy JSON record."""
+    raw = _dict(item.get("raw_ref"))
+    samples, text = raw.get("samples"), item.get("observation")
+    if (item.get("source_agent") != "metric_agent" or item.get("source") != "prometheus"
+            or item.get("signal_type") != "metric_series_observed" or item.get("observation_truncated")
+            or raw.keys() - {"query", "namespace", "samples", "truncated", "cluster_id"}
+            or raw.get("truncated") is not False or not _text(raw.get("query"))
+            or not isinstance(samples, list) or not 1 <= len(samples) <= 4096
+            or not isinstance(text, str) or len(text) > 8192):
+        return None
+    try:
+        summary = json.loads(text)
+    except (ValueError, RecursionError):
+        return None
+    if (not isinstance(summary, dict) or summary.keys() != {"metric", "labels", "latest", "min", "max", "sample_count"}
+            or not _text(summary.get("metric"))
+            or type(summary.get("sample_count")) is not int or summary["sample_count"] != len(samples)):
+        return None
+    def finite(value):
+        return type(value) in (int, float) and -float("inf") < value < float("inf")
+    if any(not isinstance(row, list) or len(row) != 2 or not all(map(finite, row)) for row in samples):
+        return None
+    values = [row[1] for row in samples]
+    if (str(item.get("timestamp")) != str(samples[-1][0])
+            or any(not finite(summary.get(k)) or summary[k] != value for k, value in
+                   (("latest", values[-1]), ("min", min(values)), ("max", max(values))))):
+        return None
+    labels = _dict(summary.get("labels"))
+    if (not _text(raw.get("namespace")) or labels.get("namespace") != raw["namespace"]
+            or any(labels.get(k) and labels[k] != (_text(raw.get("cluster_id")) or cluster_id)
+                   for k in ("cluster_id", "cluster"))):
+        return None
+    names = {k: labels[k] for k in ("namespace", "pod", "service", "node") if _text(labels.get(k))}
+    return observation_entity({"signal_type": "metric_series_observed", "raw_ref": {"labels": names}},
+                              cluster_id=_text(raw.get("cluster_id")) or cluster_id, namespace=namespace)
+
+
+def observation_semantics(item: dict, *, cluster_id: str = "", namespace: str = "", origin: str = "") -> dict:
     raw = _dict(item.get("raw_ref"))
     signal = _text(item.get("signal_type"))
-    return {"entity": observation_entity(item, cluster_id=cluster_id, namespace=namespace),
+    reference = _dict(raw.get("involvedObject")) or _dict(raw.get("regarding"))
+    version = raw.get("resource_version") or _dict(raw.get("metadata")).get("resourceVersion") or None
+    entity = observation_entity(item, cluster_id=cluster_id, namespace=namespace)
+    basis = {}
+    if entity is None and origin == "legacy_event_excerpt":
+        entity = _legacy_metric_entity(item, cluster_id=cluster_id, namespace=namespace)
+        if entity:
+            basis["identity_basis"] = "verified_legacy_metric_labels"
+    return {"entity": entity, **basis,
             "observed_at": raw.get("observed_at") or item.get("collected_at") or None,
             "event_time": item.get("timestamp") if signal.endswith("warning_event") else None,
             "sampled_at": item.get("timestamp") if signal == "metric_series_observed" else None,
-            "resource_version": raw.get("resource_version") or _dict(raw.get("metadata")).get("resourceVersion") or None,
+            "resource_version": None if reference else version,
+            **({"event_resource_version": version, "referenced_resource_version": reference.get("resourceVersion")}
+               if reference else {}),
             "temporality": "historical" if raw.get("previous") or raw.get("stale")
             or item.get("signal_type") == "container_previous_termination" else "observed",
             "unit": raw.get("unit"), "value_type": raw.get("value_type"),
@@ -269,7 +317,7 @@ def build_investigation(run: dict) -> dict:
         if eid in seen:
             continue
         seen.add(eid)
-        semantics = observation_semantics(item, **scope)
+        semantics = observation_semantics(item, origin=origin, **scope)
         entity = semantics.pop("entity")
         if entity:
             objects[entity["id"]] = entity
@@ -554,10 +602,14 @@ def preconditioned_action(command: str, target: dict, resource: dict, *, restart
 
 
 def query_investigation(model: dict, collection: str, *, entity_id: str = "", record_id: str = "", offset: int = 0,
-                        limit: int = 50) -> dict:
+                        limit: int = 50, unbound_only: bool = False) -> dict:
     if collection not in {"objects", "observations", "relations", "tool_executions"}:
         raise ValueError("Unknown ontology collection")
     rows = model[collection]
+    if unbound_only:
+        if collection != "observations":
+            raise ValueError("Object binding applies only to observations")
+        rows = [r for r in rows if r.get("entity_id") is None]
     if record_id:
         rows = [r for r in rows if r.get("id") == record_id]
     if entity_id:

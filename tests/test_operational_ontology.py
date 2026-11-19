@@ -424,3 +424,47 @@ def test_current_pod_collection_preserves_node_membership_as_observation():
     assert rows[0]["node_name"] == "node-a" and rows[0]["pod_uid"] == "uid-a"
     model = build_investigation(run(fact(**rows[0])))
     assert model["relations"][0]["target_label"] == "Node/node-a"
+
+
+@pytest.mark.parametrize("reference_key", ["regarding", "involvedObject"])
+def test_event_version_never_satisfies_target_version_precondition(reference_key):
+    event = fact()
+    event['raw_ref'] = {'kind': 'Event', 'metadata': {'name': 'event', 'uid': 'event-uid', 'resourceVersion': '77'},
+                        reference_key: {'kind': 'Pod', 'name': 'worker', 'namespace': 'shop',
+                                        'uid': 'uid-a', 'resourceVersion': '41'}}
+    model = build_investigation(run(event))
+    observed = model['observations'][0]
+    assert observed['entity_id'] == model['objects'][0]['id']
+    assert observed['resource_version'] is None
+    assert observed['event_resource_version'] == '77' and observed['referenced_resource_version'] == '41'
+    assert 'target_resource_version_missing' in action_context(model)['blockers']
+    direct = build_investigation(run(fact(), event))
+    assert 'target_resource_version_missing' not in action_context(direct)['blockers']
+
+
+def test_verified_legacy_metric_summary_binds_name_without_changing_evidence_id_or_creating_edges():
+    from operational_ontology import observation_id
+    summary = {'metric': 'cpu', 'labels': {'namespace': 'shop', 'pod': 'api', 'uid': 'untrusted-uid'},
+               'min': 1, 'latest': 3, 'max': 3, 'sample_count': 2}
+    item = {'source': 'prometheus', 'source_agent': 'metric_agent', 'signal_type': 'metric_series_observed',
+            'observation': json.dumps(summary), 'timestamp': '2.0',
+            'raw_ref': {'query': 'cpu', 'samples': [[1.0, 1], [2.0, 3]], 'namespace': 'shop', 'truncated': False}}
+    def build(event):
+        return build_investigation({'id':'legacy', 'cluster_id':'east', 'namespace':'shop',
+            'events':[{'event':'structured_evidence', 'items':[event]}]})
+    m = build(item)
+    assert [(o['kind'], o['name'], o['uid'], o['identity_status']) for o in m['objects']] == [
+        ('Pod', 'api', '', 'name_bound')]
+    obs = m['observations'][0]
+    assert obs['identity_basis'] == 'verified_legacy_metric_labels' and obs['id'] == observation_id(item)
+    assert obs['excerpted'] and not m['relations']
+    for change in [{'latest': False}, {'max': 9}, {'sample_count': 1},
+                   {'labels': {'namespace': 'other', 'pod': 'api'}},
+                   {'labels': {'namespace': 'shop', 'cluster_id': 'other', 'pod': 'api'}}]:
+        assert not build({**item, 'observation': json.dumps({**summary, **change})})['objects']
+    for change in [{'source_agent': 'other_agent'}, {'observation': 'Pod/api is down'},
+                   {'raw_ref': {**item['raw_ref'], 'truncated': True}}, {'timestamp': '1.0'},
+                   {'raw_ref': {**item['raw_ref'], 'samples': [[1.0, '1'], [2.0, 3]]}},
+                   {'raw_ref': {**item['raw_ref'], 'labels': {}}}]:
+        assert not build({**item, **change})['objects']
+    assert not build_investigation(run(item))['objects']

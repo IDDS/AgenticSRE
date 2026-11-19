@@ -16,6 +16,10 @@ semantica-explorer --graph "semantica-rev-xxxx.json" --host 127.0.0.1
 
 服务端使用 `GET /api/rca/{run_id}/ontology-graph` 浏览邻域，使用 `GET /api/rca/{run_id}/semantica-export?revision=...` 导出原生图。两个接口均从已记录的调查构建图谱，运行时无需访问第三方图服务。[Semantica 官方仓库](https://github.com/semantica-agi/semantica) · [MIT 许可证](https://github.com/semantica-agi/semantica/blob/main/LICENSE)
 
+对已经保存的调查，「本体图谱」显示结构化观测总数和未绑定对象的数量。展开「未绑定观测」可以按原记录顺序分页核对来源与时间；没有资源节点时仍可使用。观测接口支持 `unbound_only=true` 与调查版本联用。对于旧版指标智能体保存的 Prometheus JSON 摘要，系统核对完整样本的数量、末次时间与数值、最小值、最大值以及命名空间后，可按标签恢复资源名称。界面会注明标签来源，保留原观测 ID 和节选标记，UID 仍为空。
+
+对指定命名空间的新调查，事件智能体单独读取 Pod 和 ReplicaSet。没有 Service 时仍可通过 Pod 的 nodeName 和 ownerReferences 构建调度与归属关系。任一资源列表读取失败会留下采集缺口，其他成功读取的来源仍可查询。Kubernetes Event 自身的版本和它提到的对象版本分别保留；自愈版本前置条件要求目标资源的直接观测。
+
 ## 当前实现
 
 ```mermaid

@@ -395,3 +395,41 @@ def test_shared_projection_module_is_included_by_the_application_docker_copy_rul
                if line.startswith('COPY ') for source in shlex.split(line)[1:-1]]
     assert any(relative == source or source.endswith('/') and relative.startswith(source)
                for source in sources), 'Shared runtime projection is absent from application image COPY rules'
+
+
+@pytest.mark.parametrize('base, expected', [
+    (ToolResult(True, {'items': []}), 'complete'),
+    (ToolResult(False, error='private backend error'), 'failed'),
+    (ToolResult(True, 'invalid JSON'), 'failed'),
+])
+def test_named_namespace_keeps_pod_topology_independent_of_service_inventory(base, expected):
+    rows = resources()
+    calls = []
+    def execute(command, namespace, **kwargs):
+        calls.append((command, namespace))
+        if command.startswith('get deployment'):
+            return base
+        if command.startswith('get pods,'):
+            return ToolResult(True, {'items': [r for r in rows if r['kind'] in {'Pod', 'ReplicaSet'}]})
+        return ToolResult(True, {'items': []})
+    agent = EventAgent(None, SimpleNamespace(get=lambda _: SimpleNamespace(execute=execute)))
+    state = agent._fetch_workload_state('shop')
+    assert state['topology_collection']['workload_resources']['status'] == expected
+    assert state['topology_collection']['pods_and_controllers']['status'] == 'complete'
+    assert all(ns == 'shop' for _, ns in calls)
+    assert ('endpoint_slices' in state['topology_collection']) == (expected == 'failed')
+    assert 'private backend error' not in json.dumps(state)
+    model = build_investigation({'id': 'ns-topology', 'namespace': 'shop', 'cluster_id': 'east',
+                                'result': {'observations': agent._build_current_state_evidence_items(state, [])}})
+    assert edges(model, 'controlled_by')
+    assert not edges(model, 'has_endpoint_slice')
+
+
+def test_empty_unscoped_inventory_does_not_trigger_wider_second_read():
+    calls = []
+    def execute(command, **kwargs):
+        calls.append(command)
+        return ToolResult(True, {'items': []})
+    agent = EventAgent(None, SimpleNamespace(get=lambda _: SimpleNamespace(execute=execute)))
+    assert agent._fetch_workload_state('')['topology_collection'] == {'workload_resources': {'status': 'complete'}}
+    assert calls == ['get deployment,service,endpoints -o json']

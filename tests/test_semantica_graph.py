@@ -86,3 +86,27 @@ def test_routes_pin_revision_and_handle_empty_or_unknown_objects(monkeypatch):
         with pytest.raises(HTTPException) as exc:
             fetch()
         assert exc.value.status_code == 409
+
+
+def test_unbound_observations_remain_reachable_with_no_resource_and_pin_revision(monkeypatch):
+    import asyncio
+    record = investigation()
+    source = record['result']['observations']
+    source.extend([{**source[-1], 'observation': f'unassigned-{i}'} for i in range(12)])
+    monkeypatch.setitem(dashboard._state['rca_runs'], record['id'], record)
+    model = build_investigation(record)
+    assert browse(model)['coverage'] == {'unbound_observations': 13, 'tool_executions': 0}
+    def page(offset, revision):
+        return asyncio.run(dashboard.rca_ontology_collection(record['id'], 'observations', revision=revision,
+                           unbound_only=True, offset=offset, limit=8))
+    first, second = page(0, model['revision']), page(8, model['revision'])
+    assert first['total'] == second['total'] == 13
+    expected = {o['id'] for o in model['observations'] if o['entity_id'] is None}
+    assert [len(first['items']), len(second['items'])] == [8, 5]
+    assert {o['id'] for o in first['items'] + second['items']} == expected
+    source[:] = [source[-1]]
+    with pytest.raises(HTTPException) as exc:
+        page(0, model['revision'])
+    assert exc.value.status_code == 409
+    empty = build_investigation(record)
+    assert browse(empty)['focus'] is None and page(0, empty['revision'])['total'] == 1
