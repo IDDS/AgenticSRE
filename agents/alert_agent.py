@@ -6,6 +6,7 @@ Legacy private LLM grouping helpers remain for compatibility and are not called.
 """
 
 import asyncio
+import heapq
 import json
 import hashlib
 import logging
@@ -43,6 +44,35 @@ class Alert:
             self.fingerprint = hashlib.md5(content.encode()).hexdigest()[:12]
         if not self.alert_id:
             self.alert_id = f"alert-{self.fingerprint}-{int(self.timestamp)}"
+
+    @classmethod
+    def from_kubernetes_event(cls, event, namespace=""):
+        obj = event.get("involvedObject") or event.get("regarding") or {}
+        labels = {"kind": obj.get("kind", ""), "name": obj.get("name", ""),
+                  "namespace": obj.get("namespace", namespace)}
+        if namespace and labels["namespace"] and labels["namespace"] != namespace:
+            raise ValueError("event object is outside the requested namespace")
+        if obj.get("fieldPath"):
+            labels["fieldPath"] = obj["fieldPath"]
+
+        series = event.get("series")
+        if series is not None:
+            # eventTime is the first observation and cannot date a repeated series.
+            stamp = series.get("lastObservedTime")
+        else:
+            stamp = (event.get("lastTimestamp") or event.get("deprecatedLastTimestamp")
+                     or event.get("eventTime") or (event.get("metadata") or {}).get("creationTimestamp"))
+        event_time = 0
+        if isinstance(stamp, str):
+            try:
+                observed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+                if observed.tzinfo is not None:
+                    event_time = observed.timestamp()
+            except (ValueError, OverflowError, OSError):
+                pass  # The compressor isolates records with unknown timestamps.
+        return cls(name=event.get("reason") or "K8sWarning", severity="warning", source="k8s_event",
+                   timestamp=event_time, labels=labels, message=event.get("message") or event.get("note") or "",
+                   raw=event)
 
 
 @dataclass
@@ -157,6 +187,8 @@ Cluster Context:
             await propose_relations(result, self.llm, timeout_s=self.semantic_timeout_s)
             build_scag(result)
         result["collection"] = dict(self.collection_status)
+        if "kubectl" in self.collection_status:
+            result["collection_version"] = 2
         incomplete = [name for name, status in self.collection_status.items() if status != "ok"]
         if incomplete:
             result.update(degraded=True, warning="部分来源采集未完成：" + ", ".join(incomplete) + "；当前仅展示成功采集的告警。")
@@ -178,10 +210,13 @@ Cluster Context:
                 self.collection_status[name] = type(exc).__name__
                 return None
 
+        event_command = "get events --field-selector type=Warning -o json"
+        if not namespace:
+            event_command += " --all-namespaces"
         prometheus, events = await asyncio.gather(
             collect("prometheus", query='ALERTS{alertstate="firing"' +
                     (',namespace='+json.dumps(namespace) if namespace else '') + '}', max_results=5000),
-            collect("kubectl", command="get events --field-selector type=Warning --sort-by='.lastTimestamp' -o json", namespace=namespace),
+            collect("kubectl", command=event_command, namespace=namespace),
         )
         alerts = []
         for source, payload in (('prometheus', prometheus), ('kubectl', events)):
@@ -209,16 +244,17 @@ Cluster Context:
                     raise ValueError('missing Kubernetes event list')
                 if len(data['items']) > 5000 or (data.get('metadata') or {}).get('continue'):
                     self.collection_status['kubectl'] = 'truncated'
-                for event in data['items'][:5000]:
-                    obj = event.get("involvedObject", {})
-                    stamp = event.get("lastTimestamp") or event.get("eventTime") or event.get("metadata", {}).get("creationTimestamp")
-                    try:
-                        event_time = datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp()
-                    except ValueError:
-                        event_time = 0
-                    alerts.append(Alert(name=event.get("reason", "K8sWarning"), severity="warning", source="k8s_event",
-                        timestamp=event_time, labels={"kind": obj.get("kind", ""), "name": obj.get("name", ""),
-                        "namespace": obj.get("namespace", namespace)}, message=event.get("message", ""), raw=event))
+                def warnings():
+                    for event in data['items']:
+                        try:
+                            yield Alert.from_kubernetes_event(event, namespace)
+                        except (AttributeError, TypeError, ValueError):
+                            self.collection_status["kubectl"] = "invalid_response"
+
+                if len(data['items']) > 5000:
+                    alerts.extend(heapq.nlargest(5000, warnings(), key=lambda alert: alert.timestamp))
+                else:
+                    alerts.extend(warnings())
             except (AttributeError, TypeError, ValueError):
                 self.collection_status["kubectl"] = "invalid_response"
         return alerts

@@ -33,14 +33,19 @@ class AlertHistory:
             rows = conn.execute("SELECT scan,counts FROM snapshots WHERE cluster=? AND scope=? AND bucket<? AND at>=? ORDER BY bucket DESC LIMIT 288",
                                 (scan["cluster_id"], scope, int(now//300), now-86400)).fetchall()
         version = scan.get("signature_version", 1)
-        rows = [r for r in rows if json.loads(r[1]).get("__signature_version__", 1) == version]
-        scan["automatic_baseline"] = {"status": "ready" if len(rows) >= 3 else "warming_up",
-            "signature_version": version,
-            "snapshots": len(rows), "minimum_snapshots": 3, "bucket_s": 300, "lookback_s": 86400,
-            "scope": scope, "measure": "records_per_complete_scan_not_arrival_rate", "scan_ids": [r[0] for r in rows]}
-        if len(rows) < 3:
+        collection_version = scan.get("collection_version", 1)
+        snapshots = [(scan_id, json.loads(counts)) for scan_id, counts in rows]
+        # Older cluster-wide scans could contain only the default namespace's Events.
+        snapshots = [(scan_id, counts) for scan_id, counts in snapshots
+                     if counts.get("__signature_version__", 1) == version
+                     and counts.get("__collection_version__", 1) == collection_version]
+        scan["automatic_baseline"] = {"status": "ready" if len(snapshots) >= 3 else "warming_up",
+            "signature_version": version, "collection_version": collection_version,
+            "snapshots": len(snapshots), "minimum_snapshots": 3, "bucket_s": 300, "lookback_s": 86400,
+            "scope": scope, "measure": "records_per_complete_scan_not_arrival_rate", "scan_ids": [r[0] for r in snapshots]}
+        if len(snapshots) < 3:
             return scan
-        histories = [json.loads(r[1]) for r in rows]
+        histories = [counts for _, counts in snapshots]
         current = Counter()
         for group in scan["groups"]:
             current[group["template_id"]] += group["alert_count"]
@@ -87,6 +92,7 @@ class AlertHistory:
         for group in scan["groups"]:
             counts[group["template_id"]] += group["alert_count"]
         counts["__signature_version__"] = scan.get("signature_version", 1)
+        counts["__collection_version__"] = scan.get("collection_version", 1)
         with self._connect() as conn:
             conn.execute("INSERT OR REPLACE INTO snapshots VALUES (?,?,?,?,?,?)",
                          (scan["cluster_id"], scope, int(now//300), now, scan["scan_id"], json.dumps(counts)))
