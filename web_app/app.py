@@ -10953,6 +10953,26 @@ async def alert_list(namespace: str = "", duration: str = "current", cluster_id:
         return cached or _empty_alert_payload(namespace, cluster_id=resolved_cluster_id, error=f"告警采集失败：{exc}")
 
 
+@app.get("/api/alerts/compression-window")
+def alert_compression_window(cluster_id: str = ""):
+    from requests import RequestException
+    from agents.alert_sample_window import read_matrix, summarize_window, WindowUnavailable
+    selected = _resolve_general_cluster_id(cluster_id)
+    profile = _find_k8s_cluster(selected) if selected else None
+    cluster = selected or _get_config().kubernetes.cluster_id
+    if not cluster:
+        raise HTTPException(409, "请先配置集群标识")
+    url = (profile or {}).get("prometheus_url") if profile else _get_config().observability.prometheus_url
+    end = int(time.time())
+    try:
+        matrix = read_matrix(url, lambda cmd, timeout: _shell_sync(cmd, timeout, selected), end)
+        return summarize_window(matrix, cluster, end)
+    except WindowUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except (RequestException, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(503, "Prometheus 五分钟窗口读取失败") from exc
+
+
 @app.get("/api/alerts/scan")
 async def alert_scan(namespace: str = "", cluster_id: str = ""):
     """Run alert compression scan (SOW core)."""

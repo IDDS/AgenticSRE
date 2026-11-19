@@ -423,7 +423,7 @@
                 </div>
                 <div class="filter-row" id="alert-source-filters">
                     <span class="text-muted" style="font-size:12px">集群：</span>
-                    <select id="alert-cluster-filter" class="select-sm" onchange="loadAlertList()"></select>
+                    <select id="alert-cluster-filter" class="select-sm" onchange="resetAlertCompressionWindow(); loadAlertList()"></select>
                     <span class="text-muted" style="font-size:12px">来源：</span>
                     <button class="btn btn-sm alert-source-btn active" data-source="all" onclick="filterAlerts('all')">全部</button>
                     <button class="btn btn-sm alert-source-btn" data-source="k8s_event" onclick="filterAlerts('k8s_event')">
@@ -475,8 +475,10 @@
             <div class="card">
                 <div class="card-header">
                     <h3>告警压缩</h3>
+                    <button class="btn btn-sm" onclick="loadAlertCompressionWindow()">近五分钟 Prometheus 压缩率</button>
                     <button class="btn btn-sm btn-primary" onclick="runAlertScan()">智能压缩</button>
                 </div>
+                <div id="alert-compression-window" aria-live="polite"></div>
                 <div id="alert-scan-result">
                     <p class="text-muted">点击"智能压缩"运行 LLM 告警压缩与根因推荐...</p>
                 </div>
@@ -2181,6 +2183,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=143"></script>
+    <script src="/static/js/app.js?v=144"></script>
 </body>
 </html>

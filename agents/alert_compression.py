@@ -35,6 +35,32 @@ def observation_dimensions(labels):
     return digest(dimensions)
 
 
+def unbound_firing_series(row):
+    """Identify a targetless Prometheus series from its original sample and exact labels."""
+    if row["entity"] or row["source"] != "prometheus" or row["state"] != "firing" or not row["cluster_id"]:
+        return None
+    labels = row["labels"]
+    sample = row["raw"].get("raw")
+    if (labels.get("__name__") != "ALERTS" or labels.get("alertstate") != "firing"
+            or not isinstance(labels.get("alertname"), str) or not labels["alertname"].strip()
+            or labels["alertname"] != row["name"]
+            or labels.get("cluster_id", row["cluster_id"]) != row["cluster_id"]
+            or labels.get("namespace", row["namespace"]) != row["namespace"]
+            or not all(isinstance(v, str) for v in labels.values())
+            or not isinstance(sample, dict) or sample.get("metric") != labels):
+        return None
+    pair = sample.get("value")
+    if (not isinstance(pair, list) or len(pair) != 2 or type(pair[0]) not in (int, float)
+            or pair[0] != row["timestamp"] or type(pair[1]) not in (str, int, float)):
+        return None
+    try:
+        if float(pair[1]) != 1:
+            return None
+    except (ValueError, OverflowError):
+        return None
+    return digest(labels)
+
+
 def normalize_alerts(records, cluster_id="", namespace=""):
     if not isinstance(records, list) or len(records) > 10000:
         raise ValueError("alerts must be a list with at most 10000 records")
@@ -88,6 +114,8 @@ def normalize_alerts(records, cluster_id="", namespace=""):
 def make_group(rows, indices, reason="same_object_type_message_window"):
     indices = sorted(indices, key=lambda i: (rows[i]["timestamp"] or 0, i))
     members = [rows[i] for i in indices]
+    if reason == "same_object_type_message_window" and len(members) > 1 and not members[0]["entity"]:
+        reason = "same_prometheus_series_window"
     from agents.alert_identity import compatible_members, group_identity
     if len(members)>1 and not compatible_members(members):
         raise ValueError('cannot merge conflicting or different object incarnations')
@@ -135,7 +163,10 @@ def compress_alerts(records, *, cluster_id="", namespace="", time_window=300, ba
         key = (a["cluster_id"], a["namespace"], a["entity_kind"], a["entity"],
                a['entity_uid'],a["name"], a["source"], a["state"], observation_dimensions(a["labels"]), symbolic(a)["key"])
         missing_namespace = a["entity_kind"] in {"pod", "deployment", "service", "job"} and not a["namespace"]
-        if not a["cluster_id"] or not a["entity"] or a["timestamp"] is None or missing_namespace or a['identity_status']=='conflicting':
+        series = unbound_firing_series(a)
+        if series is not None:
+            key += ("prometheus_series", series, a["severity"])
+        if not a["cluster_id"] or (not a["entity"] and series is None) or a["timestamp"] is None or missing_namespace or a['identity_status']=='conflicting':
             key += (a["alert_id"],)
         segments = buckets.setdefault(key, [])
         if not segments or (a["timestamp"] or 0)-(rows[segments[-1][0]]["timestamp"] or 0) > window:

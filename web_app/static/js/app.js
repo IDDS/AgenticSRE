@@ -3535,6 +3535,45 @@ async function pollAlertScan(job, generation) {
     _alertScanTimer = setTimeout(() => pollAlertScan(job, generation), 2000);
 }
 
+let alertWindowRequest = 0;
+
+function resetAlertCompressionWindow() {
+    alertWindowRequest++;
+    document.getElementById('alert-compression-window').textContent = '';
+}
+
+async function loadAlertCompressionWindow() {
+    const panel = document.getElementById('alert-compression-window');
+    const select = document.getElementById('alert-cluster-filter');
+    const cluster = select.value;
+    const request = ++alertWindowRequest;
+    panel.textContent = '正在读取近五分钟的 Prometheus 原始采样…';
+    try {
+        const data = await api('/api/alerts/compression-window?' + new URLSearchParams({cluster_id:cluster}),
+            {throwOnError:true, timeoutMs:35000});
+        if (request !== alertWindowRequest) return;
+        if (select.value !== cluster && select.value !== data.cluster_id) {
+            resetAlertCompressionWindow();
+            return;
+        }
+        const stamp = seconds => new Date(seconds * 1000).toLocaleTimeString();
+        const period = escapeHtml(stamp(data.start) + ' – ' + stamp(data.end));
+        if (!data.samples) {
+            panel.textContent = '近五分钟未查询到触发中的 Prometheus 样本，无可计算的压缩率。';
+            return;
+        }
+        panel.innerHTML = `<p><strong>五分钟采样压缩率 ${(data.compression_ratio * 100).toFixed(2)}%</strong>
+            · ${Number(data.samples)} 个触发样本 → ${Number(data.groups)} 个事件组</p>
+            <details><summary>${period} · ${Number(data.series)} 条时间序列 · 按规则查看</summary>
+            <table class="data-table"><thead><tr><th scope="col">规则</th><th scope="col">采样数</th><th scope="col">事件组</th></tr></thead><tbody>
+            ${data.rules.map(r => `<tr><td>${escapeHtml(r.name)}</td><td>${Number(r.samples)}</td><td>${Number(r.groups)}</td></tr>`).join('')}
+            </tbody></table></details>`;
+    } catch (err) {
+        if (request === alertWindowRequest)
+            panel.textContent = select.value === cluster ? '窗口压缩率暂不可用。' + (err.message || '') : '';
+    }
+}
+
 async function runAlertScan() {
     const cluster = document.getElementById('alert-cluster-filter')?.value || '';
     restoreAlertScan(cluster);
@@ -3633,7 +3672,7 @@ function renderAlertCompression(data) {
     let html = `<div style="margin-bottom:12px">
         <span class="badge badge-info">原始告警: ${data.total_alerts || 0}</span>
         <span class="badge badge-success">事件组: ${data.compressed_groups || 0}</span>
-        <span class="badge badge-warning">条数压缩率: ${((data.compression_ratio || 0) * 100).toFixed(0)}%</span>
+        <span class="badge badge-warning">本次事件组压缩率: ${((data.compression_ratio || 0) * 100).toFixed(2)}%</span>
         <p>原始告警完整保留；分组与待验证关联不代表已确认根因。</p>
         ${data.integrity?.status === 'passed' ? `<p class="alert-partition-integrity">本版本结构校验：${Number(data.integrity.partition_members)} 条成员完整覆盖原文，遗漏 ${Number(data.integrity.omitted_alerts)} 条。结构校验不代表语义合并或根因正确。</p>` : '<p class="text-muted">此记录未保存完整分区校验凭据，不能倒推已经通过。</p>'}
         ${data.semantic?.status === 'invalidated_by_edit' ? '<p class="text-warning alert-review-invalidated">分组已编辑，旧关系审核已失效；需要重新扫描和审核，原始告警仍可回查。</p>' : ''}
@@ -3695,6 +3734,7 @@ function renderAlertCompression(data) {
             <div class="group-meta">${g.alert_count} 条 | ${escapeHtml(g.severity)} | ${escapeHtml(g.namespace)} | ${escapeHtml((g.affected_entities || []).join(', '))}</div>
             ${(g.lifecycle || []).map(s => `<p>${escapeHtml(alertLifecycleStatus(s.status))} · 第 ${Number(s.episode)} 次 · 首次观测 ${escapeHtml(new Date(s.first_observed_at * 1000).toLocaleString())} · 已检出 ${Number(s.observations)} 次</p>`).join('')}
             <p>模板：${escapeHtml(g.symbolic?.template || g.representative || '')}</p>
+            ${g.grouping_reason === 'same_prometheus_series_window' ? '<p>归并依据为同一集群、同一窗口内标签完全相同的 Prometheus 触发序列。</p>' : ''}
             ${g.metric_summary ? `<p>指标范围：${escapeHtml(String(g.metric_summary.min))} ～ ${escapeHtml(String(g.metric_summary.max))}，${g.metric_summary.samples} 个样本（峰值保留）</p>` : ''}
             ${g.threshold_merge ? `<p>已归并 ${Number(g.threshold_merge.original_groups)} 组同指标嵌套阈值，最高严重度与全部原文保留。</p><details><summary>查看归并规则依据</summary>${g.threshold_merge.rules.map(r => `<p>${escapeHtml(r.rule.name)}：<code class="metric-code">${escapeHtml(r.rule.expression)}</code></p>`).join('')}</details>` : ''}
             ${g.event_merge?.window ? `<details><summary>请求窗口的跨指标归并依据</summary><p>已用真实 Trace 重算窗口测量值，验证 ${Number(g.event_merge.window.request_count)} 个请求均为慢且失败。表示同一批请求的观测，不是根因确认。</p><p>窗口：${escapeHtml(new Date(g.event_merge.window.start * 1000).toISOString())} — ${escapeHtml(new Date(g.event_merge.window.end * 1000).toISOString())}</p><p>保留 ${Number(g.event_merge.original_groups.length)} 个原分组及全部原文。</p></details>` : g.event_merge?.span ? `<details><summary>同一失败请求的跨指标归并依据</summary><p>指标值与同一真实失败 Span 一致；表示同一请求的观测，不是根因确认。</p><p class="metric-code">Trace：${escapeHtml(g.event_merge.span.trace_id)}<br>Span：${escapeHtml(g.event_merge.span.span_id)}</p><p>保留 ${Number(g.event_merge.original_groups.length)} 个原分组及全部原文。</p></details>` : ''}

@@ -141,11 +141,14 @@ def annotate_groups(result, baseline=None):
 
 
 def frequency_key(row, symbol=None):
-    from agents.alert_compression import observation_dimensions
+    from agents.alert_compression import observation_dimensions, unbound_firing_series
     if symbol is None:
         symbol = symbolic(row)
     key = (row["cluster_id"], row["namespace"], row["entity_kind"], row["entity"],
             row["name"], row["source"], row["state"], observation_dimensions(row["labels"]), symbol["key"])
+    series = unbound_firing_series(row)
+    if series is not None:
+        key += ("prometheus_series", series, row["severity"])
     from agents.alert_identity import target_identity
     identity=target_identity(row)
     return key+(identity['entity_uid'],identity['identity_status']) if identity['identity_status']!='uid_not_reported' else key
