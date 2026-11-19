@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AgenticSRE Console</title>
     <link rel="stylesheet" href="/static/css/style.css?v=107">
+    <link rel="stylesheet" href="/static/css/ontology.css?v=1">
     <script defer src="/static/vendor/chart.umd.js"></script>
     <script defer src="/static/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script defer src="/static/vendor/chartjs-plugin-annotation.min.js"></script>
@@ -32,6 +33,7 @@
             <li class="nav-item nav-primary" data-view="llmfaultlab"><span class="nav-icon">LX</span><span class="nav-text">智算故障实验</span></li>
             <li class="nav-item nav-primary" data-view="faultlab"><span class="nav-icon">KX</span><span class="nav-text">通算故障实验</span></li>
             <li class="nav-item" data-view="reports"><span class="nav-icon">RP</span><span class="nav-text">故障报告</span></li>
+            <li class="nav-item" data-view="ontology"><span class="nav-icon">OG</span><span class="nav-text">本体图谱</span></li>
 
             <li class="nav-advanced-group nav-capability-group">
                 <details>
@@ -498,6 +500,39 @@
         </section>
 
         <!-- ═══ RCA Section ═══ -->
+        <section id="view-ontology" class="view" aria-label="本体图谱">
+            <div class="og-toolbar">
+                <label for="og-run">诊断调查</label>
+                <select id="og-run"></select>
+                <button type="button" id="og-more-runs" class="btn btn-sm" hidden>更多调查</button>
+                <button type="button" id="og-refresh" class="btn btn-sm">刷新</button>
+                <button type="button" id="og-rca" class="btn btn-sm" disabled>查看诊断过程</button>
+            </div>
+            <p id="og-history-status" role="status"></p>
+            <details id="og-schema"><summary>本体模式定义</summary><div id="og-schema-body"></div></details>
+            <div id="og-status" role="status"></div>
+            <section id="og-model" hidden>
+                <header class="og-summary"><h2>调查图谱</h2><p id="og-counts"></p>
+                    <button type="button" class="btn btn-sm" id="og-export">导出 Semantica 图谱</button>
+                    <small id="og-scope"></small></header>
+                <div id="og-export-status" role="status"></div>
+                <div class="og-layout">
+                    <aside class="og-catalog"><h3>对象目录</h3>
+                        <form id="og-find"><label for="og-query">搜索名称、类型或 UID</label>
+                            <div><input id="og-query" type="search" maxlength="200" autocomplete="off"><button class="btn btn-sm">搜索</button></div>
+                        </form>
+                        <div id="og-objects"></div><div id="og-object-pages"></div>
+                    </aside>
+                    <section class="og-workbench" aria-label="对象关系与观测">
+                        <div id="og-map"></div><div id="og-edge-pages"></div>
+                        <section id="og-evidence" aria-label="关系依据" aria-live="polite"></section>
+                        <div id="og-observations"></div>
+                    </section>
+                </div>
+                <details id="og-hypotheses"><summary>本次调查的诊断假设</summary><div></div></details>
+                <details id="og-gaps"><summary>数据完整性</summary><div></div></details>
+            </section>
+        </section>
         <section id="view-rca" class="view">
             <div class="card">
                 <h3>启动根因分析</h3>
@@ -2183,6 +2218,7 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=145"></script>
+    <script src="/static/js/ontology.js?v=1"></script>
+    <script src="/static/js/app.js?v=146"></script>
 </body>
 </html>

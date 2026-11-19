@@ -2,6 +2,20 @@
 
 本模块借鉴 Palantir Operational Ontology 的对象、逻辑、动作和约束组织方式，结合 UModel 的运维实体与观测关联。它是项目内部的数据契约，没有连接或依赖 Palantir、STAROps 的商业服务。来源、竞争方案与后续阶段见[调研记录](research/agentic-sre-ontology-20261020.md)。
 
+## 在前端浏览 Semantica 调查图谱
+
+打开侧栏的「本体图谱」并选择一条诊断调查，或在根因分析结果的「运维对象与证据」中点击「打开本次调查图谱」。页面使用 Semantica 0.7.0 的 `ContextGraph` 构建资源图。对象目录支持按名称、类型、范围和 UID 搜索。点击邻居切换中心对象，点击「查看依据」逐条核对支撑关系的观测、来源和时间。「本体模式定义」列出支持的类型和规则，「本次调查的诊断假设」读取该调查单独保存的初始候选。
+
+一条结构关系由起点、谓词和终点共同确定，多个观测支持同一关系时合并显示，保留全部依据 ID。相同端点的不同谓词分别计数。页面顶部的观测数包括尚未解析出对象身份的观测。对象翻页、关系翻页、证据查询及导出均校验调查版本，版本变化时可刷新图谱重新读取。
+
+点击「导出 Semantica 图谱」下载该调查的完整 ContextGraph JSON。文件包含资源节点、Observation 节点、带证据引用的结构边，以及从观测指向资源的 `observed_on` 边。文件中的 `investigation` 字段给出调查 ID、版本、范围和数据缺口。原生节点总数包含观测节点，原生边总数包含 `observed_on` 边。可在安装了官方 Explorer 的环境中打开文件。
+
+```sh
+semantica-explorer --graph "semantica-rev-xxxx.json" --host 127.0.0.1
+```
+
+服务端使用 `GET /api/rca/{run_id}/ontology-graph` 浏览邻域，使用 `GET /api/rca/{run_id}/semantica-export?revision=...` 导出原生图。两个接口均从已记录的调查构建图谱，运行时无需访问第三方图服务。[Semantica 官方仓库](https://github.com/semantica-agi/semantica) · [MIT 许可证](https://github.com/semantica-agi/semantica/blob/main/LICENSE)
+
 ## 当前实现
 
 ```mermaid

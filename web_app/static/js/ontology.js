@@ -1,0 +1,340 @@
+// All identities and relation directions come from the selected investigation revision.
+const ontologyExplorer = (() => {
+    const byId = id => document.getElementById('og-' + id);
+    const read = url => api(url, {cache: 'no-store', throwOnError: true, suppressErrorLog: true});
+    const relations = {
+        owned_by: '归属于', scheduled_on: '调度至', controlled_by: '受控于',
+        selects_pod: '选择 Pod', matches_workload_template: '匹配工作负载模板',
+        has_endpoint_slice: '拥有 EndpointSlice', endpoint_slice_label_association: '通过标签关联 EndpointSlice',
+        endpoint_targets_pod: '端点指向 Pod'
+    };
+    const identities = {uid_bound: '已绑定 UID', name_bound: '按名称识别', scope_incomplete: '范围信息不全'};
+    let run = '', revision = '', cursor = '', historyVersion = 0, graphVersion = 0, evidenceVersion = 0;
+    let initialized = false, model = null, query = '', offset = 0, focus = '', edgeOffset = 0;
+
+    function el(tag, value, className) {
+        const node = document.createElement(tag);
+        if (value != null) node.textContent = value;
+        if (className) node.className = className;
+        return node;
+    }
+    function button(text, click, cls = 'btn btn-sm') {
+        const b = el('button', text, cls);
+        b.type = 'button';
+        b.addEventListener('click', click);
+        return b;
+    }
+    function pages(host, at, total, size, move) {
+        host.replaceChildren();
+        if (total <= size) return;
+        const prev = button('上页', () => move(at - size));
+        const next = button('下页', () => move(at + size));
+        prev.disabled = at <= 0;
+        next.disabled = at + size >= total;
+        host.append(prev, el('small', (at + 1) + '–' + Math.min(at + size, total) + ' / ' + total), next);
+    }
+    function failure(host, error, retry) {
+        host.replaceChildren(el('p', error.message || '请求失败'), button('重新读取', retry));
+    }
+    function errorView(host, error, retry) {
+        if (error.status === 409) {
+            ++graphVersion;
+            model = null;
+            byId('model').hidden = true;
+            failure(byId('status'), error, () => selectRun(run));
+        } else failure(host, error, retry);
+    }
+    function selectRun(id) {
+        run = id;
+        revision = query = focus = '';
+        offset = edgeOffset = 0;
+        byId('query').value = '';
+        byId('rca').disabled = !id;
+        if (id && !Array.from(byId('run').options).some(o => o.value === id)) {
+            byId('run').add(new Option(id, id));
+        }
+        byId('run').value = id;
+        return loadGraph();
+    }
+    async function history(append = false) {
+        const version = ++historyVersion;
+        byId('more-runs').disabled = true;
+        byId('history-status').textContent = '';
+        const params = new URLSearchParams({limit: '25'});
+        if (append) params.set('cursor', cursor);
+        try {
+            const data = await read('/api/rca/history?' + params);
+            if (version !== historyVersion) return;
+            const menu = byId('run');
+            if (!append) menu.replaceChildren();
+            for (const row of data.runs) {
+                if (Array.from(menu.options).some(o => o.value === row.id)) continue;
+                const scope = [row.namespace, row.id].filter(Boolean).join(' · ');
+                menu.add(new Option(scope, row.id));
+            }
+            cursor = data.next_cursor || '';
+            byId('more-runs').hidden = !cursor;
+            if (run) {
+                if (!Array.from(menu.options).some(o => o.value === run)) menu.add(new Option(run, run));
+                menu.value = run;
+            } else if (menu.value) selectRun(menu.value);
+            else byId('status').textContent = '当前没有已保存的诊断调查。';
+        } catch (err) {
+            if (version === historyVersion) failure(byId('history-status'), err, () => history(append));
+        } finally {
+            if (version === historyVersion) byId('more-runs').disabled = false;
+        }
+    }
+    async function loadGraph(focusHeading = false) {
+        const version = ++graphVersion;
+        ++evidenceVersion;
+        byId('model').hidden = true;
+        byId('status').textContent = run ? '正在读取调查图谱…' : '';
+        model = null;
+        if (!run) return;
+        const params = new URLSearchParams({revision, q: query, offset, focus_id: focus, edge_offset: edgeOffset});
+        try {
+            const data = await read('/api/rca/' + encodeURIComponent(run) + '/ontology-graph?' + params);
+            if (version !== graphVersion) return;
+            model = data;
+            revision = data.revision;
+            focus = data.focus?.id || '';
+            render();
+            byId('status').textContent = '';
+            byId('model').hidden = false;
+            if (focusHeading) (byId('map').querySelector('h3') || byId('query')).focus();
+        } catch (err) {
+            if (version === graphVersion) errorView(byId('status'), err, () => loadGraph());
+        }
+    }
+    function pick(id) {
+        focus = id;
+        edgeOffset = 0;
+        loadGraph(true);
+    }
+    function resourceButton(o, cls) {
+        const b = button('', () => pick(o.id), cls);
+        b.append(el('small', o.kind), el('strong', o.name));
+        b.title = [o.cluster_id, o.namespace, o.uid || o.id].filter(Boolean).join(' / ');
+        return b;
+    }
+    function render() {
+        const m = model, o = m.focus;
+        byId('counts').textContent = m.counts.objects + ' 个资源对象 · ' + m.counts.edges + ' 条结构关系 · ' + m.counts.observations + ' 条观测';
+        byId('scope').textContent = [m.engine + ' ' + m.engine_version, m.scope.cluster_id, m.scope.namespace, m.revision].filter(Boolean).join(' / ');
+        byId('export').disabled = false;
+        byId('export-status').replaceChildren();
+        byId('hypotheses').open = false;
+        byId('hypotheses').querySelector('div').replaceChildren();
+        const catalog = byId('objects');
+        catalog.replaceChildren();
+        for (const item of m.objects) {
+            const b = resourceButton(item, 'og-resource');
+            b.append(el('small', [item.namespace || item.cluster_id, item.uid || identities[item.identity_status]].filter(Boolean).join(' · ')));
+            b.setAttribute('aria-pressed', String(item.id === o?.id));
+            catalog.append(b);
+        }
+        if (!m.objects.length) catalog.append(el('p', query ? '没有匹配的对象。' : '尚无已识别的对象。'));
+        pages(byId('object-pages'), offset, m.total_objects, m.limit, at => {
+            offset = at; pick('');
+        });
+        byId('gaps').querySelector('div').replaceChildren(...(m.gaps.length ? m.gaps.map(g =>
+            el('p', ONTOLOGY_GAP_LABELS[g] || g)) : [el('p', '构建过程未记录数据缺口。')]));
+        const map = byId('map');
+        map.replaceChildren();
+        byId('evidence').replaceChildren();
+        byId('observations').replaceChildren();
+        byId('edge-pages').replaceChildren();
+        if (!o) {
+            map.append(el('p', query ? '可修改搜索条件重新查看。' : '这次调查尚无可绘制的资源对象。'));
+            return;
+        }
+        const center = el('header', null, 'og-center');
+        const title = el('h3', o.name);
+        title.tabIndex = -1;
+        center.append(el('small', o.kind), title, el('p', [o.cluster_id, o.namespace, identities[o.identity_status]].filter(Boolean).join(' / ')));
+        if (o.uid) center.append(el('code', o.uid));
+        map.append(center);
+        const branches = el('div', null, 'og-branches');
+        for (const edge of m.edges) {
+            const same = edge.source_id === edge.target_id;
+            const outgoing = edge.source_id === o.id;
+            const row = el('div', null, 'og-branch');
+            const direction = same ? '↺ 自关联' : outgoing ? '→ 出向' : '← 入向';
+            const label = relations[edge.type] || edge.type;
+            const line = el('span', direction + ' · ' + label, 'og-predicate');
+            line.title = edge.type;
+            const node = resourceButton(edge.neighbor, 'og-neighbor');
+            node.setAttribute('aria-label', '查看 ' + edge.neighbor.kind + ' / ' + edge.neighbor.name);
+            row.append(line, node, button('查看依据（' + edge.evidence_ids.length + '）', () => showEdge(edge), 'og-link'));
+            branches.append(row);
+        }
+        if (m.edges.length) map.append(branches);
+        else map.append(el('p', '该对象暂无已记录的结构关系。', 'og-empty'));
+        pages(byId('edge-pages'), edgeOffset, m.total_edges, m.limit, at => {
+            edgeOffset = at; loadGraph(true);
+        });
+        const details = el('details');
+        details.append(el('summary', '查看该对象的观测'), el('div'));
+        details.addEventListener('toggle', () => {
+            if (details.open && !details.lastChild.childNodes.length) loadObservations(details.lastChild, 0);
+        });
+        byId('observations').append(details);
+        details.open = m.total_edges === 0;
+    }
+    function collection(params) {
+        return read('/api/rca/' + encodeURIComponent(run) + '/ontology/observations?' +
+            new URLSearchParams({revision, ...params}));
+    }
+    function observation(o) {
+        const item = el('article', null, 'og-record');
+        const source = [o.source_agent, o.source, o.signal_type].filter(Boolean).join(' · ');
+        item.append(el('strong', source || '来源未记录'), el('p', o.observation), el('small', [o.id,
+            o.observed_at || o.event_time || o.sampled_at || o.timestamp || '时间未记录',
+            o.excerpted ? '记录为节选' : ''].filter(Boolean).join(' · ')));
+        const raw = o.raw_ref || {}, meta = raw.metadata || {}, spec = raw.spec || {};
+        const fields = Object.fromEntries(Object.entries({
+            kind: raw.kind, name: meta.name || raw.name, namespace: meta.namespace || raw.namespace,
+            uid: meta.uid || raw.pod_uid || raw.uid, resourceVersion: meta.resourceVersion || raw.resource_version,
+            labels: meta.labels, ownerReferences: meta.ownerReferences, selector: spec.selector,
+            templateLabels: spec.template?.metadata?.labels, nodeName: spec.nodeName || raw.node_name,
+            endpointTargets: Array.isArray(raw.endpoints) ? raw.endpoints.map(e => e?.targetRef).filter(Boolean) : null
+        }).filter(([, value]) => value != null));
+        if (Object.keys(fields).length) {
+            const details = el('details');
+            details.append(el('summary', '查看采集的资源字段'), el('pre', JSON.stringify(fields, null, 2)));
+            item.append(details);
+        }
+        return item;
+    }
+    async function loadObservations(host, at) {
+        const version = graphVersion;
+        host.textContent = '正在读取观测…';
+        try {
+            const data = await collection({entity_id: focus, offset: at, limit: 8});
+            if (version !== graphVersion) return;
+            host.replaceChildren(...data.items.map(observation));
+            if (!data.total) host.append(el('p', '该对象只出现在关系端点，尚无直接观测。'));
+            const nav = el('div', null, 'og-pager');
+            pages(nav, at, data.total, data.limit, n => loadObservations(host, n));
+            host.append(nav);
+        } catch (err) {
+            if (version === graphVersion) errorView(host, err, () => loadObservations(host, at));
+        }
+    }
+    function showEdge(edge) {
+        const version = graphVersion, host = byId('evidence');
+        ++evidenceVersion;
+        const outgoing = model.focus.id === edge.source_id;
+        const a = outgoing ? model.focus : edge.neighbor, b = outgoing ? edge.neighbor : model.focus;
+        const title = el('h4', '关系依据');
+        title.tabIndex = -1;
+        host.replaceChildren(title, el('p', a.kind + '/' + a.name + ' → ' + (relations[edge.type] || edge.type) + ' → ' + b.kind + '/' + b.name));
+        const body = el('div');
+        const show = async id => {
+            const ticket = ++evidenceVersion;
+            body.textContent = '正在读取来源记录…';
+            try {
+                const data = await collection({record_id: id, limit: 1});
+                if (version !== graphVersion || ticket !== evidenceVersion) return;
+                body.replaceChildren(data.items.length ? observation(data.items[0]) : el('p', '该引用未匹配到观测。'));
+            } catch (err) {
+                if (version === graphVersion && ticket === evidenceVersion) errorView(body, err, () => show(id));
+            }
+        };
+        if (edge.evidence_ids.length) {
+            const menu = el('select');
+            menu.setAttribute('aria-label', '关系引用的观测');
+            edge.evidence_ids.forEach(id => menu.add(new Option(id, id)));
+            menu.addEventListener('change', () => show(menu.value));
+            host.append(menu, body);
+            show(menu.value);
+        } else host.append(el('p', '这条关系未记录观测引用。'));
+        title.focus();
+    }
+    async function download() {
+        const ticket = graphVersion;
+        const host = byId('export-status');
+        byId('export').disabled = true;
+        host.textContent = '正在生成 Semantica 图文件…';
+        try {
+            const res = await fetch('/api/rca/' + encodeURIComponent(run) + '/semantica-export?' +
+                new URLSearchParams({revision}), {cache: 'no-store'});
+            if (!res.ok) {
+                const detail = await res.json().catch(() => ({}));
+                const err = new Error(detail.detail || '导出失败（HTTP ' + res.status + '）');
+                err.status = res.status;
+                throw err;
+            }
+            const blob = await res.blob();
+            if (ticket !== graphVersion) return;
+            const url = URL.createObjectURL(blob);
+            const link = el('a');
+            link.href = url;
+            link.download = 'semantica-' + revision + '.json';
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            host.textContent = '图文件已生成，可在 Semantica Knowledge Explorer 中打开。';
+        } catch (err) {
+            if (ticket === graphVersion) errorView(host, err, download);
+        } finally {
+            if (ticket === graphVersion) byId('export').disabled = false;
+        }
+    }
+    async function hypotheses() {
+        const ticket = graphVersion, host = byId('hypotheses').querySelector('div');
+        host.textContent = '正在读取诊断策略…';
+        try {
+            const data = await read('/api/rca/' + encodeURIComponent(run) + '/strategy');
+            if (ticket !== graphVersion) return;
+            const items = data.generation?.items || [];
+            host.replaceChildren(el('small', data.revision));
+            if (!items.length) host.append(el('p', '这份策略记录中没有初始候选假设。'));
+            for (const item of items) host.append(el('p', [item.id, item.description].filter(Boolean).join(' · ')));
+        } catch (err) {
+            if (ticket === graphVersion) failure(host, err, hypotheses);
+        }
+    }
+    async function schema() {
+        const host = byId('schema-body');
+        host.textContent = '正在读取模式…';
+        try {
+            const data = await read('/api/ontology/schema');
+            host.replaceChildren(el('h4', '支持的对象类型'), el('p', data.object_types.join(' · ')),
+                el('h4', '关系与构建依据'));
+            const list = el('dl');
+            for (const [type, spec] of Object.entries(data.relation_types)) {
+                list.append(el('dt', relations[type] || type), el('dd', type + ' · ' + spec.source));
+            }
+            host.append(list, el('h4', '对象动作'), el('p', data.action_types.map(a =>
+                a.object_types.join('/') + ' · ' + a.id).join('，')));
+        } catch (err) { failure(host, err, schema); }
+    }
+    function open() {
+        if (!initialized) {
+            initialized = true;
+            byId('run').addEventListener('change', e => selectRun(e.target.value));
+            byId('more-runs').addEventListener('click', () => history(true));
+            byId('refresh').addEventListener('click', open);
+            byId('export').addEventListener('click', download);
+            byId('hypotheses').addEventListener('toggle', () => {
+                if (byId('hypotheses').open && !byId('hypotheses').querySelector('div').childNodes.length) hypotheses();
+            });
+            byId('rca').addEventListener('click', () => openRCAHistoryRun(run));
+            byId('find').addEventListener('submit', e => {
+                e.preventDefault();
+                query = byId('query').value.trim(); offset = 0; pick('');
+            });
+            byId('schema').addEventListener('toggle', () => {
+                if (byId('schema').open && !byId('schema-body').childNodes.length) schema();
+            });
+        }
+        selectRun(run);
+        history();
+    }
+    function fromRun(id) {
+        run = id || '';
+        switchView('ontology');
+    }
+    return {open, fromRun};
+})();

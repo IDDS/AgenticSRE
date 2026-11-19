@@ -48,6 +48,7 @@ from operational_lineage import collect_lineage, traceable_object
 from skill_runtime.ontology_history import (build_object_history, eligible_object_ids, check_source_budget,
                                             HistoryBindingError, HistoryUnavailable)
 from operational_provenance import compare_snapshots, latest_comparisons
+from integrations.semantica_graph import (investigation_neighborhood, export_investigation, UnknownFocus, SemanticaUnavailable)
 from diagnostic_strategy import strategy_view
 from integrations.aishperf import AISHPerfCatalog, build_aiops_eval_summary
 from integrations.hermes_skill_runtime import HERMES_SKILL_TOOL_NAMES, HERMES_SKILL_TOOLSET, skill_tool_name
@@ -11795,6 +11796,42 @@ async def rca_ontology(run_id: str):
 
 
 _ONTOLOGY_HISTORY_READERS = threading.BoundedSemaphore(2)
+
+
+@app.get("/api/rca/{run_id}/ontology-graph")
+def rca_ontology_graph(run_id: str, response: Response, focus_id: str = "", revision: str = "",
+                       q: str = Query("", max_length=200), offset: int = Query(0, ge=0),
+                       edge_offset: int = Query(0, ge=0), limit: int = Query(12, ge=1, le=50)):
+    run = _state["rca_runs"].get(run_id)
+    if not run:
+        raise HTTPException(404, "分析记录不存在")
+    model = build_investigation(_json_safe_snapshot(run))
+    if revision and revision != model["revision"]:
+        raise HTTPException(409, "调查记录已更新，请刷新图谱。")
+    response.headers["Cache-Control"] = "private, no-store"
+    try:
+        return investigation_neighborhood(model, focus_id=focus_id, query=q, offset=offset,
+                                          edge_offset=edge_offset, limit=limit)
+    except UnknownFocus as exc:
+        raise HTTPException(404, "调查中找不到该对象") from exc
+    except SemanticaUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@app.get("/api/rca/{run_id}/semantica-export")
+def rca_semantica_export(run_id: str, revision: str = Query(..., min_length=1, max_length=128)):
+    run = _state["rca_runs"].get(run_id)
+    if not run:
+        raise HTTPException(404, "分析记录不存在")
+    model = build_investigation(_json_safe_snapshot(run))
+    if revision != model["revision"]:
+        raise HTTPException(409, "调查记录已更新，请刷新图谱。")
+    try:
+        payload = export_investigation(model)
+    except SemanticaUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return JSONResponse(payload, headers={"Cache-Control": "private, no-store",
+        "Content-Disposition": f'attachment; filename="semantica-{model["revision"]}.json"'})
 
 
 @app.get("/api/rca/{run_id}/objects/{entity_id}/history")

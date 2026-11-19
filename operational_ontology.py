@@ -282,6 +282,10 @@ def build_investigation(run: dict) -> dict:
                    scope["namespace"] and entity["namespace"] and entity["namespace"] != scope["namespace"])
                else "unresolved" if not entity else "in_run"}
         observations.append(obs)
+        # The envelope's owner and scheduling fields describe the Event itself.
+        # The observation remains attached to its referenced resource.
+        if raw.get("involvedObject") or raw.get("regarding"):
+            continue
         if entity and entity["kind"] == "Pod":
             spec = _dict(raw.get("spec"))
             node = _text(spec.get("nodeName")) or _text(raw.get("node_name"))

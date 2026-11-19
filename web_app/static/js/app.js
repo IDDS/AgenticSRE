@@ -540,7 +540,7 @@ function switchView(viewId) {
     document.getElementById(`view-${viewId}`)?.classList.add('active');
 
     const titles = {
-        overview: '运维概览', metrics: '通算指标', logs: '日志查询',
+        overview: '运维概览', metrics: '通算指标', logs: '日志查询', ontology: '本体图谱',
         alerts: '通算告警', rca: '根因分析', traces: '链路追踪',
         daemon: '守护进程', knowledge: '故障知识库', evolution: '演化闭环',
         configcenter: '配置中心', healcenter: '自愈中心', skillops: 'Skill 调试',
@@ -549,6 +549,7 @@ function switchView(viewId) {
     };
     const subtitles = {
         overview: '集群健康、工作负载拓扑和近期运维信号',
+        ontology: '浏览诊断调查中的资源对象、结构关系及其原始观测',
         metrics: '通算集群 Prometheus 基础设施、网络、容器和业务指标',
         logs: '按命名空间检索日志，为诊断采集证据',
         alerts: '告警聚合、诊断和自愈处置',
@@ -588,6 +589,7 @@ function refreshCurrentView(options = {}) {
     }
     const loaders = {
         overview: loadOverview,
+        ontology: () => ontologyExplorer.open(),
         metrics: loadMetrics,
         logs: () => loadNamespaces('log-ns'),
         alerts: () => { loadAlertList(); loadDetectionConfig(); },
@@ -4547,6 +4549,7 @@ async function loadRCAOntology(runId) {
     const counts = model.counts || {};
     const action = model.action_context || {};
     panel.innerHTML = `<strong>运维对象与证据</strong>
+        <button type="button" class="btn btn-sm" onclick="ontologyExplorer.fromRun(state.rcaRunId)">打开本次调查图谱</button>
         <p class="text-muted">本次调查记录 · 关系表示观测关联，不能单独证明因果；历史记录不代表当前集群状态。</p>
         <p>${Number(counts.objects || 0)} 个对象 · ${Number(counts.observations || 0)} 项观测 · ${Number(counts.relations || 0)} 条关系 · ${Number(counts.tool_executions || 0)} 次工具执行</p>
         ${(model.gaps || []).length ? `<p class="text-warning">数据缺口：${model.gaps.map(g => escapeHtml(ONTOLOGY_GAP_LABELS[g] || g)).join('；')}</p>` : ''}
