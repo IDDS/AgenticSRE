@@ -4597,7 +4597,7 @@ async function loadRCAStrategy(runId) {
 }
 
 function renderStrategyAudit(data) {
-    if (data.recording_status!=='recorded') return '<strong>假设产生与调查调整</strong><p>此旧记录未保存新格式的假设演变过程，不能从最终结论倒推。</p>';
+    if (data.recording_status!=='recorded') return '<strong>假设产生与调查调整</strong><p>本次调查暂未保存逐假设的生成、更新或复核记录。</p>';
     const source={deterministic_seed:'症状规则产生的候选',llm:'模型生成',llm_with_history:'模型结合历史生成',
         evidence_grounded_branch:'新观测触发的分支',generation_failed:'生成失败后的待调查占位',unspecified:'来源未记录'};
     const generation=data.generation||{};
@@ -4663,8 +4663,8 @@ function renderStrategyAudit(data) {
                 ${h.rationale_limits?.length?`<p class="text-warning">复核模型原判断为 ${escapeHtml(assessments[h.reviewer_status]||h.reviewer_status)}；宿主保留不确定状态：${h.rationale_limits.map(code=>escapeHtml(limits[code]||code)).join('；')}。</p>`:''}
                 <p>${escapeHtml(h.reason||'未返回有效说明')}<br>支持引用：${refs(h.supporting_evidence_ids)}<br>反驳引用：${refs(h.contradicting_evidence_ids)}</p>
                 <p>待补观测：${(h.missing_evidence||[]).map(q=>escapeHtml(q)).join('；')||'无已记录项'}</p>
-                ${h.validation_errors?.length?`<p class="text-warning">复核缺口：${h.validation_errors.map(q=>escapeHtml(q)).join('；')}</p>`:''}</div>`).join('')}</details>`).join(''):'<p>这条记录未保存逐假设独立复核。Agent+Skill 尚未接入等价独立 Judge；不能据此把模型自评当作独立审核。</p>'}
-        <p>停止原因：${escapeHtml(STRATEGY_REASONS[data.stop_reason]||data.stop_reason||'仍在进行')}。本次调整不是已验证的跨事故策略学习或准确率提升。</p>`;
+                ${h.validation_errors?.length?`<p class="text-warning">复核缺口：${h.validation_errors.map(q=>escapeHtml(q)).join('；')}</p>`:''}</div>`).join('')}</details>`).join(''):'<p>本次调查未保存逐假设的独立角色复核记录。</p>'}
+        <p>停止原因：${escapeHtml(STRATEGY_REASONS[data.stop_reason]||data.stop_reason||(data.status==='running'?'运行中，尚未记录':'未记录'))}。本次调整不是已验证的跨事故策略学习或准确率提升。</p>`;
 }
 
 async function openStrategyEvidence(id) {

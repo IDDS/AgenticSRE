@@ -45,4 +45,7 @@ assert(output.includes('&lt;script&gt;') && !output.includes('<script>'));
 const old = context.renderStrategyAudit({recording_status:'recorded', generation:{items:[]}, rounds:[],
   independent_reviews:[{stage:'agent_skill_final_review',items:[]}]});
 assert(old.includes('最终质量复核') && !old.includes('补证后复核'));
+const partial = {recording_status:'recorded', rounds:[], independent_reviews:[], stop_reason:null};
+assert(context.renderStrategyAudit({...partial, status:'failed'}).includes('停止原因：未记录'));
+assert(context.renderStrategyAudit({...partial, status:'running'}).includes('停止原因：运行中，尚未记录'));
 console.log('Skill follow-up rendering checks passed');

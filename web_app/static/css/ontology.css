@@ -20,6 +20,10 @@
 .og-toolbar select { flex: 1 1 16rem; }
 #view-ontology details { margin: 1rem 0; }
 #view-ontology summary { color: var(--og-blue); cursor: pointer; font-weight: 600; }
+#og-hypotheses > div > details { padding-left: .8rem; border-left: 2px solid var(--og-line); }
+.og-hyp-stage { padding: .65rem 0; border-bottom: 1px solid var(--og-line); }
+.og-hyp-stage p { margin: .35rem 0; }
+.og-hyp-stage label { display: block; margin-top: .45rem; }
 #og-history-status:empty, #og-status:empty { display: none; }
 #og-schema-body { margin-top: .7rem; padding: 1rem; background: white; border-left: 3px solid var(--og-line); }
 #og-schema-body h4:not(:first-child) { margin-top: .8rem; }

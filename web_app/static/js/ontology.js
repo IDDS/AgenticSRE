@@ -278,6 +278,23 @@ const ontologyExplorer = (() => {
             edge.assertions?.length ? edge.assertions : [{attributes: {}, evidence_ids: edge.evidence_ids}],
             '记录的条件组合');
     }
+    async function readCitation(host, id, current) {
+        host.textContent = '正在读取来源记录…';
+        try {
+            const data = await collection({record_id: id, limit: 1});
+            if (!current()) return;
+            const row = data.items.find(item => item.id === id);
+            if (!row) {
+                host.textContent = '该引用未匹配到本次调查版本中的原始观测。';
+                return;
+            }
+            host.replaceChildren(observation(row));
+            if (row.entity_id) host.append(button('在图谱中定位观测对象', () => pick(row.entity_id)));
+            else host.append(el('small', '这条观测未绑定资源对象。'));
+        } catch (err) {
+            if (current()) errorView(host, err, () => readCitation(host, id, current));
+        }
+    }
     function inspectAssertions(heading, description, assertions, choiceLabel) {
         const version = graphVersion, host = byId('evidence');
         ++evidenceVersion;
@@ -285,16 +302,9 @@ const ontologyExplorer = (() => {
         title.tabIndex = -1;
         host.replaceChildren(title, el('p', description));
         const body = el('div');
-        const show = async id => {
+        const show = id => {
             const ticket = ++evidenceVersion;
-            body.textContent = '正在读取来源记录…';
-            try {
-                const data = await collection({record_id: id, limit: 1});
-                if (version !== graphVersion || ticket !== evidenceVersion) return;
-                body.replaceChildren(data.items.length ? observation(data.items[0]) : el('p', '该引用未匹配到观测。'));
-            } catch (err) {
-                if (version === graphVersion && ticket === evidenceVersion) errorView(body, err, () => show(id));
-            }
+            return readCitation(body, id, () => version === graphVersion && ticket === evidenceVersion);
         };
         const fields = el('div', null, 'og-assertion');
         const sources = el('div');
@@ -375,18 +385,100 @@ const ontologyExplorer = (() => {
             if (ticket === graphVersion) byId('export').disabled = false;
         }
     }
+    function hypothesisHistories(data) {
+        const groups = new Map();
+        function add(items, stage, review = false) {
+            if (!Array.isArray(items)) return;
+            for (const item of items) {
+                if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+                const key = item.id || Symbol();
+                if (!groups.has(key)) groups.set(key, {id: item.id, description: '', entries: []});
+                const group = groups.get(key);
+                group.description ||= item.description || '';
+                group.entries.push({stage, review, item});
+            }
+        }
+        add(data.generation?.items, '初始候选');
+        for (const r of Array.isArray(data.rounds) ? data.rounds : []) {
+            if (!r) continue;
+            const round = r.iteration == null ? '轮次未记录' : '第 ' + r.iteration + ' 轮';
+            if (Array.isArray(r.before)) add(r.before.filter(h => h && !groups.has(h.id)), round + ' · 更新前');
+            add(r.after, round);
+        }
+        const reviews = Array.isArray(data.independent_reviews) ? data.independent_reviews : [];
+        reviews.forEach((r, i) => add(r?.items, '独立角色复核 ' + (i + 1), true));
+        return [...groups.values()];
+    }
+    function hypothesisStage({stage, review, item}, version, description) {
+        const block = el('section', null, 'og-hyp-stage');
+        const states = {active: '待核查', confirmed: '提出方标记为确认', rejected: '提出方标记为排除',
+            supported: '复核认为有支持证据', contradicted: '复核认为有反证', uncertain: '复核仍不确定',
+            invalid_or_missing: '复核缺失或未通过校验'};
+        const sources = {deterministic_seed: '症状规则', llm: '模型生成', llm_with_history: '模型结合历史记录',
+            evidence_grounded_branch: '新观测触发', generation_failed: '生成失败后的占位记录', unspecified: '未注明'};
+        block.append(el('h4', [stage, states[item.status] || item.status].filter(Boolean).join(' · ')));
+        if (item.description && item.description !== description) block.append(el('p', item.description));
+        if (item.source) block.append(el('p', '候选来源 · ' + (sources[item.source] || item.source)));
+        if (item.supports_if) block.append(el('p', '预期支持条件 · ' + item.supports_if));
+        if (item.refutes_if) block.append(el('p', '预期反驳条件 · ' + item.refutes_if));
+        const reason = review ? item.reason : item.update_reason;
+        if (reason) block.append(el('p', reason));
+        if (review && item.assertion_requires_review) block.append(el('p', item.assertion_verified === true
+            ? '提出方的确认或排除判断已通过本次复核。' : '提出方的确认或排除判断仍待核实。'));
+        for (const field of ['unresolved_questions', 'missing_evidence', 'validation_errors']) {
+            if (Array.isArray(item[field]) && item[field].length) {
+                const label = {unresolved_questions: '待判别问题', missing_evidence: '待补证据', validation_errors: '引用与校验缺口'}[field];
+                block.append(el('p', label + ' · ' + item[field].join('；')));
+            }
+        }
+        const menu = el('select'), output = el('div');
+        output.setAttribute('aria-live', 'polite');
+        menu.add(new Option('选择一条原始观测', ''));
+        for (const [field, role] of [['supporting_evidence_ids', '支持'], ['contradicting_evidence_ids', '反驳'],
+            ['verified_test_evidence_ids', '复核检查'], ['host_test_evidence_ids', '系统检查']]) {
+            if (!Array.isArray(item[field])) continue;
+            for (const id of new Set(item[field].filter(id => typeof id === 'string' && id))) {
+                menu.add(new Option(role + ' · ' + id, id));
+            }
+        }
+        if (menu.options.length === 1) {
+            block.append(el('small', '此阶段没有记录原始观测引用。'));
+        } else {
+            const label = el('label', '核对依据 ');
+            label.append(menu);
+            block.append(label, output);
+            let selection = 0;
+            menu.addEventListener('change', () => {
+                const ticket = ++selection;
+                if (!menu.value) output.replaceChildren();
+                else readCitation(output, menu.value, () => version === graphVersion && ticket === selection);
+            });
+        }
+        return block;
+    }
     async function hypotheses() {
         const ticket = graphVersion, host = byId('hypotheses').querySelector('div');
         host.textContent = '正在读取诊断策略…';
         try {
-            const data = await read('/api/rca/' + encodeURIComponent(run) + '/strategy');
+            const data = await read('/api/rca/' + encodeURIComponent(run) + '/strategy?' +
+                new URLSearchParams({ontology_revision: revision}));
             if (ticket !== graphVersion) return;
-            const items = data.generation?.items || [];
-            host.replaceChildren(el('small', data.revision));
-            if (!items.length) host.append(el('p', '这份策略记录中没有初始候选假设。'));
-            for (const item of items) host.append(el('p', [item.id, item.description].filter(Boolean).join(' · ')));
+            if (data.run_id !== run || data.ontology_revision !== revision) throw new Error('策略与当前调查版本未能核对。');
+            const groups = hypothesisHistories(data);
+            host.replaceChildren(el('small', '策略版本 · ' + data.revision));
+            if (!groups.length) host.append(el('p', '这次调查未保存可展示的逐假设记录。'));
+            for (const group of groups) {
+                const details = el('details');
+                details.append(el('summary', [group.id, group.description].filter(Boolean).join(' · ') || '未标识的候选'));
+                details.addEventListener('toggle', () => {
+                    if (details.open && details.children.length === 1) {
+                        details.append(...group.entries.map(entry => hypothesisStage(entry, ticket, group.description)));
+                    }
+                });
+                host.append(details);
+            }
         } catch (err) {
-            if (ticket === graphVersion) failure(host, err, hypotheses);
+            if (ticket === graphVersion) errorView(host, err, hypotheses);
         }
     }
     async function schema() {

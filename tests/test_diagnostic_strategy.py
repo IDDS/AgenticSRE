@@ -268,6 +268,35 @@ def test_legacy_and_partial_history_are_explicit_and_get_does_not_start_diagnosi
     assert [old,partial]==original
 
 
+@pytest.mark.parametrize("decision", [{}, {"decision": None}, {"decision": {}}])
+def test_partial_round_keeps_evidence_without_inventing_a_stop_reason(decision):
+    row = {"event": "diagnostic_strategy", "iteration": 2, "after": [assessed()], **decision}
+    event = {"event": "hypothesis_independent_review", "items": [{"id": "H1"}]}
+    for saved in ({}, {"rounds": [], "independent_reviews": [], "generation": {"items": [assessed()]}}):
+        run = {"id": "partial", "events": [row, event], "result": {"diagnostic_strategy": saved}}
+        before = copy.deepcopy(run)
+        view = strategy_view(run)
+        assert view["rounds"] == [row] and view["independent_reviews"] == [event]
+        assert view["recording_status"] == "recorded" and view["stop_reason"] is None
+        assert run == before
+
+
+def test_strategy_reader_checks_the_version_of_its_observations(monkeypatch):
+    from fastapi import HTTPException
+    from web_app import app
+    run = {"id": "bound-strategy", "result": {"observations": [fact()]}}
+    monkeypatch.setitem(app._state["rca_runs"], run["id"], run)
+    revision = build_investigation(run)["revision"]
+    result = asyncio.run(app.rca_diagnostic_strategy(run["id"], revision))
+    assert result["ontology_revision"] == revision
+    assert result["revision"] == strategy_view(run)["revision"]
+    run["result"]["observations"].append(fact("Running", uid="new-instance"))
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(app.rca_diagnostic_strategy(run["id"], revision))
+    assert exc.value.status_code == 409
+    assert "ontology_revision" not in asyncio.run(app.rca_diagnostic_strategy(run["id"]))
+
+
 def test_skill_assessment_reuses_actual_committed_tool_ids_without_extra_calls():
     from tests.test_skill_owned_diagnosis import Model as OriginalModel, Registry, request, SKILLS, waiting_status
     from orchestrator.skill_agent import SkillAgent

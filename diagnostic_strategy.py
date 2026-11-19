@@ -126,18 +126,16 @@ def tool_evidence_catalog(commands, *, limit=12):
 def strategy_view(run):
     layers=result_envelopes(run)
     recorded=next((r["diagnostic_strategy"] for r in layers if isinstance(r.get("diagnostic_strategy"),dict) and r["diagnostic_strategy"]),None)
-    if recorded is None:
-        events=[e for e in _rows(run.get("events")) if isinstance(e,dict)]
-        rounds=[e for e in events if e.get("event")=="diagnostic_strategy"]
-        generation=next((e for e in events if e.get("event")=="hypothesis_generation_record"),None)
-        recorded={"generation":generation,"rounds":rounds,"stop_reason":
-                  rounds[-1]["decision"]["reason"] if rounds else "record_not_available"}
-    if not recorded.get("generation"):
-        recorded={**recorded,"generation":next((e for e in _rows(run.get("events")) if isinstance(e,dict)
-            and e.get("event")=="hypothesis_generation_record"),None)}
-    if "independent_reviews" not in recorded:
-        recorded={**recorded,"independent_reviews":[e for e in _rows(run.get("events"))
-            if isinstance(e,dict) and e.get("event")=="hypothesis_independent_review"]}
+    events=[e for e in _rows(run.get("events")) if isinstance(e,dict)]
+    recorded=dict(recorded or {})
+    if not _dict(recorded.get("generation")):
+        recorded["generation"]=next((e for e in events if e.get("event")=="hypothesis_generation_record"),None)
+    for field, event in (("rounds","diagnostic_strategy"), ("independent_reviews","hypothesis_independent_review")):
+        if not _rows(recorded.get(field)):
+            recorded[field]=[e for e in events if e.get("event")==event]
+    if not recorded.get("stop_reason"):
+        rounds=recorded["rounds"]
+        recorded["stop_reason"]=_dict(_dict(rounds[-1]).get("decision")).get("reason") if rounds else "record_not_available"
     result={"run_id":run.get("id"),"status":run.get("status"),"recording_status":
         "recorded" if recorded.get("generation") or recorded.get("rounds") or recorded.get("independent_reviews") else "legacy_or_not_yet_recorded",
         **copy.deepcopy(recorded),"semantics":{"historical_read_starts_new_diagnosis":False,

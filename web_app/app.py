@@ -11882,11 +11882,19 @@ def rca_object_history(run_id: str, entity_id: str,
 
 
 @app.get("/api/rca/{run_id}/strategy")
-async def rca_diagnostic_strategy(run_id: str):
+async def rca_diagnostic_strategy(run_id: str, ontology_revision: str = ""):
     run = _state["rca_runs"].get(run_id)
     if not run:
         raise HTTPException(404, "分析记录不存在")
-    return strategy_view(_json_safe_snapshot(run))
+    snapshot = _json_safe_snapshot(run)
+    if ontology_revision:
+        investigation = await asyncio.to_thread(build_investigation, snapshot)
+        if investigation["revision"] != ontology_revision:
+            raise HTTPException(409, "调查观测已更新，请刷新图谱后再核对假设。")
+    data = strategy_view(snapshot)
+    if ontology_revision:
+        data["ontology_revision"] = ontology_revision
+    return data
 
 
 @app.get("/api/rca/{run_id}/ontology/{collection}")
