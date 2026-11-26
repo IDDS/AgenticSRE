@@ -9090,8 +9090,11 @@ def _kubectl_heal_check(
     }
     if parse_json and check["ok"]:
         try:
-            check["json"] = json.loads(check["stdout"] or "{}")
-        except Exception as e:
+            obj = json.loads(check["stdout"])
+            if not isinstance(obj, dict) or not obj:
+                raise ValueError("Expected a Kubernetes resource or list object")
+            check["json"] = obj
+        except (ValueError, TypeError) as e:
             check["ok"] = False
             check["parse_error"] = str(e)
     return check
@@ -9100,7 +9103,9 @@ def _kubectl_heal_check(
 def _deployment_available(obj: Dict[str, Any]) -> bool:
     spec = obj.get("spec") if isinstance(obj, dict) else {}
     status = obj.get("status") if isinstance(obj, dict) else {}
-    desired = int(spec.get("replicas") or 1)
+    desired = spec.get("replicas", 1)
+    if type(desired) is not int or desired <= 0 or (obj.get("metadata") or {}).get("deletionTimestamp"):
+        return False
     available = int(status.get("availableReplicas") or 0)
     ready = int(status.get("readyReplicas") or 0)
     unavailable = int(status.get("unavailableReplicas") or 0)
@@ -9179,13 +9184,18 @@ def _verify_heal_recovery(
     commands_text = "\n".join(commands)
     checks: List[Dict[str, Any]] = []
 
+    def unavailable(reason: str = "cluster_evidence_unavailable") -> Dict[str, Any]:
+        return {"status": "unknown", "reason": reason, "recovered": None, "checks": checks}
+
     if network_chaos and any(" delete networkchaos " in f" {cmd} " for cmd in commands):
         chaos = _kubectl_heal_check(
             f"get networkchaos {shlex.quote(network_chaos)} -n {shlex.quote(namespace)} --ignore-not-found -o name",
             cluster_id=cluster_id,
         )
         checks.append({"type": "networkchaos_removed", **chaos})
-        recovered = bool(chaos.get("ok")) and not str(chaos.get("stdout") or "").strip()
+        if not chaos.get("ok"):
+            return unavailable()
+        recovered = not str(chaos.get("stdout") or "").strip()
         return {"status": "unknown" if recovered else "failed", "reason": "business_probe_required" if recovered else "cleanup_failed", "target": {"network_chaos": network_chaos, "namespace": namespace}, "recovered": None if recovered else False, "action_completed": recovered, "checks": checks}
 
     if network_policy and any(" delete networkpolicy " in f" {cmd} " for cmd in commands):
@@ -9194,7 +9204,9 @@ def _verify_heal_recovery(
             cluster_id=cluster_id,
         )
         checks.append({"type": "networkpolicy_removed", **policy})
-        recovered = bool(policy.get("ok")) and not str(policy.get("stdout") or "").strip()
+        if not policy.get("ok"):
+            return unavailable()
+        recovered = not str(policy.get("stdout") or "").strip()
         return {"status": "unknown" if recovered else "failed", "reason": "business_probe_required" if recovered else "cleanup_failed", "target": {"network_policy": network_policy, "namespace": namespace}, "recovered": None if recovered else False, "action_completed": recovered, "checks": checks}
 
     if pod and any(" delete pod " in f" {cmd} " for cmd in commands):
@@ -9203,7 +9215,9 @@ def _verify_heal_recovery(
             cluster_id=cluster_id,
         )
         checks.append({"type": "pod_removed", **pod_after_delete})
-        removed = bool(pod_after_delete.get("ok")) and not str(pod_after_delete.get("stdout") or "").strip()
+        if not pod_after_delete.get("ok"):
+            return unavailable()
+        removed = not str(pod_after_delete.get("stdout") or "").strip()
         if not removed:
             return {"status": "failed", "recovered": False, "checks": checks}
         if not deployment:
@@ -9229,7 +9243,15 @@ def _verify_heal_recovery(
                 parse_json=True,
             )
             checks.append({"type": "deployment_status", **dep})
-            recovered = bool(rollout.get("ok")) and bool(dep.get("ok")) and _deployment_available(dep.get("json") or {})
+            obj = dep.get("json") or {}
+            if not dep.get("ok") or not isinstance(obj.get("spec"), dict) or not isinstance(obj.get("status"), dict):
+                return unavailable()
+            generation = (obj.get("metadata") or {}).get("generation")
+            if generation is not None and obj["status"].get("observedGeneration") != generation:
+                return unavailable("deployment_generation_pending")
+            recovered = _deployment_available(obj)
+            if recovered and not rollout.get("ok"):
+                return unavailable()
             return {"status": "verified", "target": {"deployment": deployment, "namespace": namespace}, "recovered": recovered, "checks": checks}
 
     if pod:
@@ -9239,23 +9261,10 @@ def _verify_heal_recovery(
             parse_json=True,
         )
         checks.append({"type": "pod_status", **pod_check})
-        if pod_check.get("ok"):
-            recovered = _pod_ready(pod_check.get("json") or {})
-            return {"status": "verified", "target": {"pod": pod, "namespace": namespace}, "recovered": recovered, "checks": checks}
-        if any(" delete pod " in f" {cmd} " for cmd in commands):
-            pods = _kubectl_heal_check(
-                f"get pods -n {shlex.quote(namespace)} --no-headers",
-                cluster_id=cluster_id,
-            )
-            checks.append({"type": "namespace_pods_after_delete", **pods})
-            health = _namespace_health_from_pods(pods.get("stdout", ""))
-            return {
-                "status": "verified" if pods.get("ok") else "unknown",
-                "target": {"pod": pod, "namespace": namespace},
-                "recovered": health["healthy"] if pods.get("ok") else None,
-                "checks": checks,
-                "summary": health,
-            }
+        if not pod_check.get("ok"):
+            return unavailable()
+        recovered = _pod_ready(pod_check.get("json") or {})
+        return {"status": "verified", "target": {"pod": pod, "namespace": namespace}, "recovered": recovered, "checks": checks}
 
     if service:
         endpoints = _kubectl_heal_check(
@@ -9264,7 +9273,9 @@ def _verify_heal_recovery(
             parse_json=True,
         )
         checks.append({"type": "service_endpoints", **endpoints})
-        recovered = bool(endpoints.get("ok")) and _endpoints_ready(endpoints.get("json") or {})
+        if not endpoints.get("ok"):
+            return unavailable()
+        recovered = _endpoints_ready(endpoints.get("json") or {})
         return {"status": "verified", "target": {"service": service, "namespace": namespace}, "recovered": recovered, "checks": checks}
 
     if node:
@@ -9274,7 +9285,9 @@ def _verify_heal_recovery(
             parse_json=True,
         )
         checks.append({"type": "node_status", **node_check})
-        recovered = bool(node_check.get("ok")) and _node_ready(node_check.get("json") or {})
+        if not node_check.get("ok"):
+            return unavailable()
+        recovered = _node_ready(node_check.get("json") or {})
         return {"status": "verified", "target": {"node": node}, "recovered": recovered, "checks": checks}
 
     pods = _kubectl_heal_check(
@@ -9282,11 +9295,13 @@ def _verify_heal_recovery(
         cluster_id=cluster_id,
     )
     checks.append({"type": "namespace_pods", **pods})
+    if not pods.get("ok"):
+        return unavailable()
     health = _namespace_health_from_pods(pods.get("stdout", ""))
     return {
-        "status": "verified" if pods.get("ok") else "unknown",
+        "status": "verified",
         "target": {"namespace": namespace},
-        "recovered": health["healthy"] if pods.get("ok") else None,
+        "recovered": health["healthy"],
         "checks": checks,
         "summary": health,
     }

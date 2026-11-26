@@ -7214,6 +7214,12 @@ function healVerificationBadge(verification) {
     if (verification.status === 'skipped') {
         return '<span class="badge badge-info">验证跳过</span>';
     }
+    if (verification.reason === 'cluster_evidence_unavailable') {
+        return '<span class="badge badge-warning">集群状态读取未完成，可重新验证</span>';
+    }
+    if (verification.reason === 'deployment_generation_pending') {
+        return '<span class="badge badge-warning">等待 Deployment 控制器观测当前版本</span>';
+    }
     if (verification.recovered === true) {
         if (verification.verification_scope === 'infrastructure') {
             return '<span class="badge badge-warning">基础设施就绪，业务未验证</span>';
