@@ -176,6 +176,7 @@ def _skill_summary(item: Dict[str, Any]) -> Dict[str, Any]:
 def _build_payload(
     query: str,
     *,
+    source: str = "hermes_agent",
     namespace: str = "",
     domain: str = "",
     fault_type: str = "",
@@ -183,8 +184,8 @@ def _build_payload(
 ) -> Dict[str, Any]:
     payload = dict(context or {})
     payload.update({
-        "source": "hermes_agent",
-        "invocation_mode": "hermes_skill_tool",
+        "source": source,
+        "invocation_mode": "workswarm_skill_tool" if source == "workswarm" else "hermes_skill_tool",
         "message": str(query or "").strip(),
     })
     if namespace:
@@ -259,6 +260,7 @@ class HermesSkillRuntimeClient:
         *,
         timeout_s: int = 30,
         transport: Optional[Transport] = None,
+        source: str = "hermes_agent",
     ) -> None:
         self.base_url = (
             base_url
@@ -267,6 +269,7 @@ class HermesSkillRuntimeClient:
         ).rstrip("/")
         self.timeout_s = max(1, int(timeout_s))
         self.transport = transport
+        self.source = source
 
     def _request(
         self,
@@ -370,6 +373,7 @@ class HermesSkillRuntimeClient:
                 domain=domain,
                 fault_type=fault_type,
                 context=context,
+                source=self.source,
             ),
             "stages": _normalize_stages(stages),
             "dry_run": True,
@@ -393,6 +397,7 @@ class HermesSkillRuntimeClient:
     ) -> Dict[str, Any]:
         payload = _build_payload(
             query,
+            source=self.source,
             namespace=namespace,
             domain=domain,
             fault_type=fault_type,

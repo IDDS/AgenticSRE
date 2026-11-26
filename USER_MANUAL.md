@@ -421,3 +421,11 @@ rm -rf data/cluster_profiles.json data/memory data/evolution
 
 > 反馈 / 问题：联系研发团队，或在 `data/expert_feedback/` 留底，
 > 演化闭环页可见。
+
+### WorkSwarm 服务端点诊断
+
+从主导航进入 **WorkSwarm 诊断**，检查 openJiuwen 运行时和配置中心所选模型，填写目标命名空间、Service 名称和问题。Agent 可读取该 Service、EndpointSlice 和匹配 Pod，也可检索 Skill 或以 dry-run 调用 detect、diagnose 阶段。展开每次工具调用可以核对观测值。三个集群工具均成功返回时，完整诊断显示“已完成”，缺少部分观测时显示“证据不全”。
+
+同一会话可继续追问同一服务。切换目标时选择“新建会话”。最近会话保存在当前浏览器标签页，服务端重启后应新建会话。Hermes 位于“高级工具”中的“智能助手”。
+
+标准镜像和离线镜像在联网构建阶段通过 `scripts/install_workswarm.sh` 安装 WorkSwarm 0.2.8 及对应的官方进程 SDK。源码运行时，在远程服务器的 Dashboard Python 环境执行该脚本。系统默认使用 `/opt/workswarm/bin/jiuwenswarm-process` 和 `/opt/workswarm/.jiuwenswarm`，可通过 `WORKSWARM_BIN` 和 `WORKSWARM_DATA_DIR` 指定已初始化的替代路径。运行用户需要能够写入 WorkSwarm 会话目录。模型连接参数来自配置中心。

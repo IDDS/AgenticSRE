@@ -1,0 +1,34 @@
+<section id="view-workswarm" class="view">
+    <div class="assistant-workspace">
+        <aside class="assistant-sidebar">
+            <h3>诊断会话</h3>
+            <button type="button" class="btn btn-primary" id="ws-new">新建会话</button>
+            <label class="assistant-side-label" for="ws-history">当前浏览器的最近会话</label>
+            <select class="select-sm" id="ws-history"><option value="">新会话</option></select>
+            <div class="assistant-side-section">
+                <strong>openJiuwen / WorkSwarm</strong>
+                <p id="ws-runtime" role="status">正在检查运行时</p>
+                <div id="ws-model"></div>
+                <details><summary>可用工具</summary><p id="ws-tools"></p></details>
+            </div>
+        </aside>
+        <div class="hermes-shell">
+            <div class="hermes-chat-header">
+                <h3>服务端点诊断</h3>
+                <span class="badge badge-info" id="ws-status" aria-live="polite">待开始</span>
+            </div>
+            <div id="ws-turns" class="hermes-message-list"></div>
+            <form id="ws-form">
+                <div class="ws-target">
+                    <label>命名空间<input class="input-sm" name="namespace" required maxlength="63" value="default"></label>
+                    <label>Service 名称<input class="input-sm" name="service" required maxlength="63" placeholder="例如 frontend"></label>
+                </div>
+                <label class="assistant-side-label" for="ws-question">诊断问题</label>
+                <div class="hermes-input-row">
+                    <textarea class="input" name="question" id="ws-question" required maxlength="4000" rows="2">请检查服务端点是否就绪，并引用观测到的证据。</textarea>
+                    <button class="btn btn-primary" id="ws-send" disabled>发送</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>

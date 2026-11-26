@@ -9,6 +9,7 @@
     <script defer src="/static/vendor/chart.umd.js"></script>
     <script defer src="/static/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script defer src="/static/vendor/chartjs-plugin-annotation.min.js"></script>
+    <link rel="stylesheet" href="/static/css/workswarm.css?v=1">
 </head>
 <body class="hold-transition layout-fixed sidebar-mini">
     <!-- Sidebar -->
@@ -33,6 +34,7 @@
             <li class="nav-item nav-primary" data-view="llmfaultlab"><span class="nav-icon">LX</span><span class="nav-text">智算故障实验</span></li>
             <li class="nav-item nav-primary" data-view="faultlab"><span class="nav-icon">KX</span><span class="nav-text">通算故障实验</span></li>
             <li class="nav-item" data-view="reports"><span class="nav-icon">RP</span><span class="nav-text">故障报告</span></li>
+            <li class="nav-item" data-view="workswarm"><span class="nav-icon">W</span><span class="nav-text">WorkSwarm 诊断</span></li>
             <li class="nav-item" data-view="ontology"><span class="nav-icon">OG</span><span class="nav-text">本体图谱</span></li>
 
             <li class="nav-advanced-group nav-capability-group">
@@ -542,6 +544,7 @@
                     <div class="filter-row">
                         <input id="rca-ns" class="input-sm" placeholder="命名空间 (可选)">
                         <button class="btn btn-primary" onclick="startRCA()">开始分析</button>
+                        <button class="btn btn-sm" type="button" onclick="switchView('workswarm')">WorkSwarm 服务诊断</button>
                     </div>
                 </div>
             </div>
@@ -2021,6 +2024,7 @@
             </div>
         </section>
 
+        {% include "workswarm.html" %}
         <!-- ═══ Intelligent Assistant Section ═══ -->
         <section id="view-hermes" class="view">
             <div class="assistant-workspace">
@@ -2090,7 +2094,8 @@
                             <h3>运维对话</h3>
                             <span class="hermes-chat-subtitle">分析问题、调用 Skill，并保留完整工具记录</span>
                         </div>
-                        <span class="assistant-chat-mode">Agent + Skill</span>
+                        <span class="assistant-chat-mode">Hermes · Agent + Skill</span>
+                        <button class="btn btn-sm" type="button" onclick="switchView('workswarm')">切换到 WorkSwarm</button>
                     </div>
                     <div id="hermes-messages" class="hermes-message-list">
                         <div class="hermes-welcome">
@@ -2220,6 +2225,7 @@
     </div>
 
     <script src="/static/js/ontology.js?v=6"></script>
-    <script src="/static/js/app.js?v=150"></script>
+    <script src="/static/js/workswarm.js?v=1"></script>
+    <script src="/static/js/app.js?v=151"></script>
 </body>
 </html>

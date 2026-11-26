@@ -30,6 +30,9 @@ RUN pip install --no-cache-dir --timeout 120 --retries 5 \
     ./hermes-agent
 RUN cd /app/hermes-agent && python -c "from run_agent import AIAgent"
 
+COPY scripts/install_workswarm.sh /tmp/install_workswarm.sh
+RUN sh /tmp/install_workswarm.sh
+
 COPY agents/ ./agents/
 COPY configs/ ./configs/
 COPY eval/ ./eval/

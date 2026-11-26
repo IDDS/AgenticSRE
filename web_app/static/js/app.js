@@ -545,7 +545,7 @@ function switchView(viewId, options = {}) {
         daemon: '守护进程', knowledge: '故障知识库', evolution: '演化闭环',
         configcenter: '配置中心', healcenter: '自愈中心', skillops: 'Skill 调试',
         faultlab: '通算故障实验', llmfaultlab: '智算故障实验', loadgen: '负载生成', aidashboard: '智算观测', aievents: '智算事件', reports: '故障报告',
-        events: '事件追踪', hermes: '智能助手'
+        events: '事件追踪', hermes: '智能助手', workswarm: 'WorkSwarm 诊断'
     };
     const subtitles = {
         overview: '集群健康、工作负载拓扑和近期运维信号',
@@ -568,6 +568,7 @@ function switchView(viewId, options = {}) {
         loadgen: '独立启动、观测和停止通算或智算负载任务',
         reports: '历史 RCA 报告和可导出诊断摘要',
         events: 'Kubernetes 事件流和集群状态变化',
+        workswarm: '基于 openJiuwen 的只读 Kubernetes Service 诊断',
         hermes: '面向排障和命令执行的交互式运维助手'
     };
     document.getElementById('view-title').textContent = titles[viewId] || viewId;
@@ -608,6 +609,7 @@ function refreshCurrentView(options = {}) {
         loadgen: loadLoadGenerator,
         reports: loadReportList,
         events: () => { Promise.all([loadNamespaces('event-ns'), loadEvents()]); },
+        workswarm: () => workSwarm.open(),
         hermes: loadHermesView,
     };
     (loaders[state.currentView] || (() => {}))();

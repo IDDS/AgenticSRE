@@ -53,6 +53,7 @@ from diagnostic_strategy import strategy_view
 from integrations.aishperf import AISHPerfCatalog, build_aiops_eval_summary
 from integrations.hermes_skill_runtime import HERMES_SKILL_TOOL_NAMES, HERMES_SKILL_TOOLSET, skill_tool_name
 from skill_runtime.detail import skill_catalog_item_from_definition, skill_detail_from_definition
+from web_app.workswarm import build_router as build_workswarm_router
 from skill_runtime.kubectl_safety import readonly_kubectl_args
 from skill_runtime.runtime_evidence import cuda_runtime_evidence, has_abnormal_container_termination
 from vllm_fault_injector.k8s_utils import build_label_selector
@@ -21017,6 +21018,9 @@ async def on_startup():
         )
     else:
         logger.info(f"LLM configured: model={cfg.llm.model}, base_url={cfg.llm.base_url}")
+
+
+app.include_router(build_workswarm_router(_get_config, _llm_configured, _kubectl_json))
 
 
 if __name__ == "__main__":
