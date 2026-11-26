@@ -32,7 +32,7 @@ Engine 与 Compose、加载应用镜像、创建持久化目录并启动服务�
 sudo ./agenticsre-offline-20260827-r3-linux-amd64.run --config ./customer.env
 ```
 
-不传 `--config` 时，安装器会生成随机 Web 管理密码并打印一次；LLM 保持关闭，系统
+不传 `--config` 时，安装器会生成随机 Web 管理密码，管理员可在 `/var/lib/agenticsre/config/agenticsre.env` 中查看；LLM 保持关闭，系统
 仍然可以启动和使用本地故障注入、观测、数据管理等功能。
 
 ## 2. 客户主机最低条件
@@ -159,7 +159,7 @@ sudo agenticsrectl --restore /secure-backup/agenticsre.tar.gz
 ## 7. 严格离线保证
 
 该交付包包含应用镜像、Docker Engine 静态二进制、Docker Compose 插件、Python 依赖、
-kubectl、Hermes Agent、Skill Runtime 和嵌入式数据库运行库。现场安装流程：
+kubectl、Hermes Agent、openJiuwen WorkSwarm、Skill Runtime 和嵌入式数据库运行库。现场安装流程：
 
 - 不执行 `apt`、`yum`、`dnf` 或 `pip`；
 - 不执行 `docker pull`、镜像构建或 Compose 拉取；

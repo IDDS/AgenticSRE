@@ -737,7 +737,7 @@ AGENTICSRE_NO_PROXY=localhost,127.0.0.1,::1,.svc,.cluster.local
 EOF
     chmod 0600 "${RUNTIME_ENV}"
     warn "未提供 --config，已生成安全默认配置；LLM 暂未启用"
-    warn "首次登录：admin / ${generated_password}"
+    warn "首次登录使用 admin；管理员可在 ${RUNTIME_ENV} 中查看自动生成的 AGENTICSRE_AUTH_PASSWORD。"
 else
     info "保留现有持久化配置：${RUNTIME_ENV}"
 fi

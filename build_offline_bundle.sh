@@ -131,6 +131,8 @@ docker run --rm --platform "linux/${TARGET_ARCH}" --entrypoint python "${IMAGE_R
 docker run --rm --platform "linux/${TARGET_ARCH}" --entrypoint bash "${IMAGE_REF}" -ec \
     'for tool in curl dig ip jq mysql nc openssl pgrep ping psql redis-cli ssh kubectl; do command -v "$tool" >/dev/null || { echo "missing runtime tool: $tool" >&2; exit 1; }; done'
 
+docker run --rm --network none --platform "linux/${TARGET_ARCH}" --entrypoint python "${IMAGE_REF}" /app/scripts/verify_workswarm_runtime.py
+
 info "Generating auditable software dependency manifests"
 git_commit="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 if [ -n "$(git status --porcelain --untracked-files=all 2>/dev/null)" ]; then
@@ -141,6 +143,8 @@ else
 fi
 docker run --rm --platform "linux/${TARGET_ARCH}" --entrypoint python "${IMAGE_REF}" -m pip freeze \
     > "${STAGING_DIR}/docs/python-packages.lock"
+docker run --rm --network none --platform "linux/${TARGET_ARCH}" --entrypoint /opt/workswarm/bin/python "${IMAGE_REF}" -m pip freeze \
+    > "${STAGING_DIR}/docs/workswarm-packages.lock"
 docker run --rm --platform "linux/${TARGET_ARCH}" --entrypoint dpkg-query "${IMAGE_REF}" \
     -W '-f=${Package}\t${Version}\n' > "${STAGING_DIR}/docs/os-packages.tsv"
 docker image inspect "${IMAGE_REF}" > "${STAGING_DIR}/images/agenticsre-image-metadata.json"
@@ -158,7 +162,7 @@ cat > "${STAGING_DIR}/docs/SOFTWARE_MANIFEST.md" <<EOF
 - Source state: ${source_state}
 - Built at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-Exact Python versions are in \`python-packages.lock\`; exact Debian packages are in
+Dashboard and WorkSwarm Python versions are in \`python-packages.lock\` and \`workswarm-packages.lock\`; exact Debian packages are in
 \`os-packages.tsv\`. The image metadata and complete bundle are covered by
 \`SHA256SUMS\`.
 EOF
@@ -170,7 +174,7 @@ cp "${COMPOSE_BIN}" "${STAGING_DIR}/runtime/docker-compose-linux-${TARGET_ARCH}"
 chmod 0755 "${STAGING_DIR}/runtime/docker-compose-linux-${TARGET_ARCH}"
 
 cp install-offline.sh docker-compose.offline.yaml "${STAGING_DIR}/"
-cp docs/OFFLINE_DEPLOYMENT.md "${STAGING_DIR}/docs/"
+cp docs/OFFLINE_DEPLOYMENT.md USER_MANUAL.md "${STAGING_DIR}/docs/"
 [ ! -f docs/OFFLINE_DEPLOYMENT_GUIDE.md ] || cp docs/OFFLINE_DEPLOYMENT_GUIDE.md "${STAGING_DIR}/docs/"
 [ ! -f docs/OFFLINE_E2E_ACCEPTANCE.md ] || cp docs/OFFLINE_E2E_ACCEPTANCE.md "${STAGING_DIR}/docs/"
 cp .env.offline.example "${STAGING_DIR}/config/customer.env.example"

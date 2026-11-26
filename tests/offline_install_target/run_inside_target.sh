@@ -88,6 +88,7 @@ printf '[E2E] Checking installed runtime, services, and persistent database\n'
 if [ "${NO_SYSTEMD}" != "1" ]; then systemctl is-enabled docker; fi
 docker info >/dev/null
 docker compose version
+docker exec agenticsre python /app/scripts/verify_workswarm_runtime.py
 agenticsrectl --status
 agenticsrectl --data-check
 [ -f "${OFFLINE_AUDIT_FILE}" ] || fail "offline installation audit file is missing"

@@ -7,7 +7,7 @@
 2. 将一个可执行 `.run` 文件和客户配置送入现场，只运行一条安装命令。
 
 客户现场脚本不会调用 `apt`、`yum`、`dnf`、`pip`，不会拉取镜像，也不会
-访问互联网。应用源码、Python 依赖、kubectl、Hermes Agent 和 Skill Runtime
+访问互联网。应用源码、Python 依赖、kubectl、Hermes Agent、openJiuwen WorkSwarm 和 Skill Runtime
 均已包含在镜像中。数据库运行库也随镜像提供：当前版本使用 ChromaDB（本地 SQLite 元数据）和 JSON 状态文件，不要求现场另行安装 PostgreSQL/MySQL。
 
 ## 一、支持范围与现场前置条件
@@ -131,7 +131,7 @@ sudo ./agenticsre-offline-20260827-linux-amd64.run
 sudo ./agenticsre-offline-20260827-linux-amd64.run --config ./customer.env
 ```
 
-若不提供 `--config`，安装器会生成随机 Web 管理密码并打印一次，但 LLM 功能
+若不提供 `--config`，安装器会生成随机 Web 管理密码，管理员可在 `/var/lib/agenticsre/config/agenticsre.env` 中查看，但 LLM 功能
 保持未启用。建议交付前准备客户配置，避免现场手工录入。
 
 安装器执行以下步骤：
