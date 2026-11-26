@@ -2,9 +2,29 @@
 
 本包用于 Linux x86_64 主机，包含 Dashboard、Skill Runtime、Hermes、openJiuwen WorkSwarm、ChromaDB 嵌入模型、Docker Engine 及 Compose。现场可断开互联网完成安装。使用 WorkSwarm 诊断时，Dashboard 需要能够访问现场 Kubernetes API 及 OpenAI 兼容模型服务。
 
+## 接收交付包
+
+交付文件为 `AgenticSRE-20261126.2-linux-amd64.zip`，附同名 `.zip.sha256`。在有 `unzip` 和 `sha256sum` 的接收机上，将两者放在同一目录，执行以下命令。也可以在接收机解压、校验后，把完整目录转移到断网目标机。
+
+```bash
+sha256sum -c AgenticSRE-20261126.2-linux-amd64.zip.sha256
+unzip -q AgenticSRE-20261126.2-linux-amd64.zip
+cd AgenticSRE-20261126.2-linux-amd64
+sha256sum -c SHA256SUMS
+```
+
+`README.md` 是本说明，`customer.env.example` 是可选配置模板，`evidence/` 提供离线安装、回归、页面与真实诊断的验收记录。安装器与模板均可直接从解压目录使用。
+
 ## 安装与验收
 
-将同名 `.run` 和 `.run.sha256` 复制到同一目录。主机需提供 root 权限、cgroup、namespace 及可用的 8080、8090 端口。已有安装的现场先运行 `sudo agenticsrectl --backup <受控目录>/pre-upgrade.tar.gz`，保留备份、侧车摘要和原版安装器。
+在目标机的解压目录执行安装。主机需提供 root 权限、cgroup、namespace 及可用的 8080、8090 端口。已有安装的现场先执行以下备份命令，保留生成的数据备份、侧车摘要及原版安装器。
+
+```bash
+sudo install -d -m 0700 /var/backups/agenticsre
+sudo agenticsrectl --backup "/var/backups/agenticsre/pre-upgrade-$(date +%Y%m%d-%H%M%S).tar.gz"
+```
+
+首次安装可直接执行以下命令。
 
 ```bash
 sha256sum -c agenticsre-offline-20261126.2-linux-amd64.run.sha256
@@ -16,10 +36,10 @@ sudo agenticsrectl --data-check
 
 初装的管理员账号为 `admin`。管理员在 `/var/lib/agenticsre/config/agenticsre.env` 中查看随机生成的初始密码。使用随附的 `customer.env.example` 时，请先复制为 `customer.env`，设置现场账号和模型参数并将权限设为 `0600`。预先准备现场配置时，安装命令可加 `--config ./customer.env`。配置文件按现场要求单独保管。
 
-1. 登录 Dashboard，确认首页可打开。没有集群配置时应提示资源读取失败。将现场提供的 kubeconfig 安装到 `/var/lib/agenticsre/kube/config`，在配置中心设置现场模型服务，运行 `sudo agenticsrectl --restart` 后重新登录。
+1. 在管理网络通过 Dashboard 主机的 8080 端口登录，确认首页可打开。没有集群配置时应提示资源读取失败。将现场提供的 kubeconfig 安装到 `/var/lib/agenticsre/kube/config`，在配置中心设置现场模型服务，运行 `sudo agenticsrectl --restart` 后重新登录。
 2. 打开“WorkSwarm 诊断”，输入有读取权限的命名空间和 Service 名。展开诊断证据，与该 Service 的 selector、EndpointSlice 就绪数和匹配 Pod 数核对。
 3. 输入一个不存在的 Service，确认页面说明缺失证据。刷新页面后可重新打开当前服务进程内的会话；Dashboard 重启后应新建 WorkSwarm 会话。
-4. 运维数据备份使用 `sudo agenticsrectl --backup <文件>`。还原数据使用 `sudo agenticsrectl --restore <文件>`，保留对应的 `.sha256`。升级期间新版本启动失败时，安装器执行旧版本和升级前数据恢复。主动回到旧版前，请确认维护窗口并备份当前数据。
+4. 运维数据可按上面的备份命令保存。还原时，将备份的实际路径作为 `sudo agenticsrectl --restore` 的参数，并将配套的 `.sha256` 放在备份旁边。升级期间新版本启动失败时，安装器执行旧版本和升级前数据恢复。主动回到旧版前，请确认维护窗口并备份当前数据。
 
 ## 交付物识别
 
