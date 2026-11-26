@@ -9517,6 +9517,13 @@ async def auth_me(request: Request):
 # Cluster Info APIs
 # ─────────────────────────────────────────
 
+def _cluster_list_items(payload, resource):
+    """An empty Kubernetes List is valid. A missing List is an upstream failure."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+        raise HTTPException(status_code=503, detail=f"无法读取集群资源 {resource}")
+    return payload["items"]
+
+
 @app.get("/api/cluster/overview")
 async def cluster_overview():
     """Cluster health summary."""
@@ -9525,8 +9532,8 @@ async def cluster_overview():
         _kubectl_json("get pods --all-namespaces"),
     )
     
-    nodes = nodes_raw.get("items", [])
-    pods = pods_raw.get("items", [])
+    nodes = _cluster_list_items(nodes_raw, "nodes")
+    pods = _cluster_list_items(pods_raw, "pods")
     
     # Count pod phases
     phases = {}
@@ -9551,7 +9558,7 @@ async def cluster_nodes():
     """Detailed node info."""
     data = await _kubectl_json("get nodes")
     nodes = []
-    for n in data.get("items", []):
+    for n in _cluster_list_items(data, "nodes"):
         meta = n.get("metadata", {})
         status = n.get("status", {})
         conditions = {c["type"]: c["status"] for c in status.get("conditions", [])}
@@ -9607,7 +9614,7 @@ async def cluster_events(namespace: str = "", limit: int = 50):
     else:
         data = await _kubectl_json("get events --sort-by=.lastTimestamp --all-namespaces")
     events = []
-    for e in data.get("items", [])[-limit:]:
+    for e in _cluster_list_items(data, "events")[-limit:]:
         events.append({
             "type": e.get("type", ""),
             "reason": e.get("reason", ""),
@@ -9656,7 +9663,7 @@ async def cluster_topology(cluster_id: str = ""):
     )
 
     nodes = []
-    for n in nodes_raw.get("items", []):
+    for n in _cluster_list_items(nodes_raw, "nodes"):
         meta = n.get("metadata", {})
         status = n.get("status", {})
         conditions = {c["type"]: c["status"] for c in status.get("conditions", [])}
@@ -9673,7 +9680,7 @@ async def cluster_topology(cluster_id: str = ""):
         })
 
     pods = []
-    for p in pods_raw.get("items", []):
+    for p in _cluster_list_items(pods_raw, "pods"):
         meta = p.get("metadata", {})
         pstatus = p.get("status", {})
         containers = pstatus.get("containerStatuses", [])
@@ -9729,7 +9736,7 @@ async def cluster_topology(cluster_id: str = ""):
 
     # Deployments
     deployments = []
-    for d in deploy_raw.get("items", []):
+    for d in _cluster_list_items(deploy_raw, "deployments"):
         meta = d.get("metadata", {})
         spec = d.get("spec", {})
         status = d.get("status", {})
@@ -9750,7 +9757,7 @@ async def cluster_topology(cluster_id: str = ""):
 
     # Services
     services = []
-    for s in svc_raw.get("items", []):
+    for s in _cluster_list_items(svc_raw, "services"):
         meta = s.get("metadata", {})
         spec = s.get("spec", {})
         selector = spec.get("selector", {})

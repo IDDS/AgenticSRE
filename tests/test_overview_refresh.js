@@ -4,7 +4,7 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync('web_app/static/js/app.js', 'utf8');
 const calls = [];
-const elements = {'node-grid': {}, 'alert-preview': {}};
+const elements = {'node-grid': {}, 'alert-preview': {}, 'overview-snapshot-status': {}, 'overview-events-status': {}};
 const charts = [];
 const totals = {};
 const context = vm.createContext({
@@ -18,6 +18,7 @@ const context = vm.createContext({
     renderPodChart: phases => charts.push({...phases}),
 });
 vm.runInContext(source.slice(source.indexOf('let overviewSnapshotRequest'), source.indexOf('function animateValue(')), context);
+const snapshot = {summary: {}, deployments: [], services: [], namespaces: []};
 const topology = '/api/cluster/topology';
 const events = '/api/cluster/events?limit=5';
 const node = {name: 'n1', ready: true, roles: ['worker'], version: 'v1', cpu: '4', memory: '8Gi'};
@@ -27,7 +28,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
     const first = context.loadOverview();
     const overlap = context.loadOverview();
     assert.deepEqual(calls.map(c => c.path), [topology, events]);
-    calls[0].resolve({nodes: [node], pods: [{phase: 'Running'}, {phase: 'Running'}, {}]});
+    calls[0].resolve({...snapshot, nodes: [node], pods: [{phase: 'Running'}, {phase: 'Running'}, {}]});
     await tick();
     assert.deepEqual(charts, [{Running: 2, Unknown: 1}]);
     assert.match(elements['node-grid'].innerHTML, /badge-success/);
@@ -49,7 +50,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(charts.at(-1), {});
 
     const recovered = context.loadOverview();
-    calls[5].resolve({nodes: [], pods: []});
+    calls[5].resolve({...snapshot, nodes: [], pods: []});
     calls[6].resolve({events: []});
     await recovered;
     assert.equal(elements['node-grid'].innerHTML, '');

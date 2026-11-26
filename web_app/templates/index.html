@@ -149,6 +149,7 @@
                         <button class="btn btn-sm" onclick="loadOverview()">刷新</button>
                     </div>
                 </div>
+                <div id="overview-snapshot-status" role="status" class="text-muted"></div>
                 <div class="topo-summary" id="topo-health-strip" hidden></div>
                 <div class="topo-layout">
                     <div class="topo-main">
@@ -184,6 +185,7 @@
 
                     <div class="card">
                         <h3>最近告警</h3>
+                        <div id="overview-events-status" role="status" class="text-muted"></div>
                         <div id="alert-preview"></div>
                     </div>
                 </div>
@@ -2226,6 +2228,6 @@
 
     <script src="/static/js/ontology.js?v=6"></script>
     <script src="/static/js/workswarm.js?v=2"></script>
-    <script src="/static/js/app.js?v=152"></script>
+    <script src="/static/js/app.js?v=153"></script>
 </body>
 </html>

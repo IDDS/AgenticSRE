@@ -748,7 +748,9 @@ function loadOverview() {
 
 async function loadOverviewSnapshot() {
     const topology = await api('/api/cluster/topology');
-    if (topology) {
+    const status = document.getElementById('overview-snapshot-status');
+    if (topology?.summary && ['nodes', 'pods', 'deployments', 'services', 'namespaces'].every(key => Array.isArray(topology[key]))) {
+        status.textContent = '';
         renderOverviewTopology(topology);
         renderOverviewNodes(topology.nodes);
         const phases = {};
@@ -760,6 +762,7 @@ async function loadOverviewSnapshot() {
         return;
     }
 
+    status.textContent = '拓扑更新失败，请检查集群连接或读取权限。';
     // Keep the summary and node cards available if only the topology endpoint fails.
     await Promise.all([
         api('/api/cluster/overview').then(data => {
@@ -793,7 +796,12 @@ function renderOverviewNodes(nodes) {
 
 async function loadOverviewEvents() {
     const data = await api('/api/cluster/events?limit=5');
-    if (!data?.events) return;
+    const status = document.getElementById('overview-events-status');
+    if (!Array.isArray(data?.events)) {
+        status.textContent = '告警更新失败，请检查集群连接或读取权限。';
+        return;
+    }
+    status.textContent = '';
     const warnings = data.events.filter(e => e.type === 'Warning');
     document.getElementById('alert-preview').innerHTML = warnings.length
         ? warnings.map(e => `
@@ -805,9 +813,12 @@ async function loadOverviewEvents() {
         : '<p class="text-muted" style="padding:12px">暂无告警</p>';
 }
 
+const overviewValueTimers = new WeakMap();
+
 function animateValue(elemId, target) {
     const el = document.getElementById(elemId);
     if (!el) return;
+    clearInterval(overviewValueTimers.get(el));
     const current = parseInt(el.textContent) || 0;
     if (current === target) { el.textContent = target; return; }
     const diff = target - current;
@@ -819,6 +830,7 @@ function animateValue(elemId, target) {
         if (i >= steps) { el.textContent = target; clearInterval(timer); }
         else { el.textContent = Math.round(current + stepVal * i); }
     }, 30);
+    overviewValueTimers.set(el, timer);
 }
 
 function renderPodChart(phases) {
@@ -882,7 +894,8 @@ function renderOverviewTopology(data) {
 
     const sel = document.getElementById('topo-ns-filter');
     if (sel && data.namespaces) {
-        const cur = sel.value;
+        const cur = data.namespaces.includes(sel.value) ? sel.value : '';
+        _topo.nsFilter = cur;
         sel.innerHTML = '<option value="">所有命名空间</option>' +
             data.namespaces.map(ns => `<option value="${ns}" ${ns===cur?'selected':''}>${ns}</option>`).join('');
     }
