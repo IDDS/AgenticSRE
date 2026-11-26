@@ -49,11 +49,17 @@ def process_client(llm):
         raise RuntimeError("WorkSwarm 运行时未安装")
     workspace = Path(os.getenv("WORKSWARM_WORKSPACE", "/tmp/agenticsre-workswarm-workspace"))
     workspace.mkdir(mode=0o700, parents=True, exist_ok=True)
-    return Client([binary], cwd=str(workspace), env={
+    client = Client([binary], cwd=str(workspace), env={
         "JIUWENSWARM_DATA_DIR": os.getenv("WORKSWARM_DATA_DIR", "/opt/workswarm/.jiuwenswarm"),
         "API_KEY": llm.api_key or "", "API_BASE": llm.base_url or "",
         "MODEL_NAME": llm.model or "", "MODEL_PROVIDER": "OpenAI",
     })
+    # The SDK merges env with the host environment. Its model transport treats
+    # a present but empty proxy as a URL, so omit it only in the child.
+    proxy_keys = {"http_proxy", "https_proxy", "all_proxy", "ftp_proxy"}
+    client.env = {key: value for key, value in client.env.items()
+                  if key.lower() not in proxy_keys or value.strip()}
+    return client
 
 
 class EvidenceUnavailable(ValueError):

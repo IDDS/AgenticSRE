@@ -129,3 +129,25 @@ def test_latest_failed_endpoint_read_marks_turn_partial(monkeypatch):
         turn = state["turns"][-1]
         assert turn["missing_tools"] == ["read_endpoints"]
         assert turn["evidence"][-1]["observation"] == {"error": "集群拒绝读取权限"}
+
+
+def test_process_omits_empty_proxy_overrides_only_in_child(monkeypatch, tmp_path):
+    import os
+    import sys
+
+    class SDKClient:
+        def __init__(self, command, *, cwd, env):
+            self.env = {**os.environ, **env}
+
+    monkeypatch.setitem(sys.modules, "jiuwenswarm_sdk", SimpleNamespace(Client=SDKClient))
+    monkeypatch.setenv("WORKSWARM_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("WORKSWARM_BIN", sys.executable)
+    monkeypatch.setenv("HTTPS_PROXY", " ")
+    monkeypatch.setenv("all_proxy", "")
+    monkeypatch.setenv("http_proxy", "http://proxy.example:8080")
+    monkeypatch.setenv("NO_PROXY", "localhost")
+    client = workswarm.process_client(SimpleNamespace(model="test", base_url="", api_key=""))
+    assert "HTTPS_PROXY" not in client.env and "all_proxy" not in client.env
+    assert client.env["http_proxy"] == "http://proxy.example:8080"
+    assert client.env["NO_PROXY"] == "localhost"
+    assert os.environ["HTTPS_PROXY"] == " "

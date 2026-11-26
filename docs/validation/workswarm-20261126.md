@@ -30,3 +30,11 @@ node --check web_app/static/js/app.js
 远程 Chromium 向真实模型发起诊断，集群中的临时 Service 关联一个手工创建的 EndpointSlice，共 32 条端点记录。对照 Kubernetes API 的独立读取，页面正确显示 29 条显式就绪、3 条显式未就绪以及展示明细的 30/32 上限。端点计数按 EndpointSlice 记录计算，可能包含同一 Pod 的多条记录。查询不存在的 Service 时，界面显示“证据不全”并标出 Service 和 Pod 两项读取的缺失原因。测试结束后删除了该命名空间。
 
 自动化测试还覆盖了跨切片汇总、缺少 ready 字段、同一轮先读成功后读失败时的最终状态。界面按本轮每类工具的最后一次结果显示缺失证据。
+
+## 正式 Dashboard 部署
+
+`snail:8080` 已切换到 `agenticsre:workswarm-evidence-20261126-r3`，镜像 ID 为 `sha256:dab13ca498477af325398bc0c12f8103eb6afecf6cacff68a4c2310d8a4fe9fa`。首轮上线时，正式容器继承的空代理环境变量导致模型客户端报错。修复仅在启动 WorkSwarm 子进程时过滤空代理地址；已配置的代理、NO_PROXY 与 Dashboard 本身的环境保持原值。
+
+正式端口通过 Chromium 实际提交诊断。酒店测试应用的 `frontend` 返回 1 条显式就绪端点记录和 1 个匹配 Pod，已用独立的 Kubernetes API 读取核对。对不存在的 Service 发起只读查询时，页面提示缺少 Service 与 Pod 证据，会话状态为“证据不全”。刷新后恢复诊断记录，浏览器未报告脚本异常。
+
+切换前后，保留的 RCA 历史为 200 条，处置历史为 125 条。Dashboard 健康及持久化检查通过，Hermes 能力状态为 ready，Skill Runtime 容器 ID 保持一致且健康。远程定向回归 252 项通过，5 条依赖弃用提示。
