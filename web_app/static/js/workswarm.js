@@ -50,8 +50,21 @@ const workSwarm = (() => {
                 const status = {reading: '读取中', ok: '已读取', error: '读取失败'};
                 row.append(node('summary', (labels[item.tool] || item.tool) + ' · ' + status[item.status]));
                 row.append(node('small', item.tool + (item.skill_id ? ' · ' + item.skill_id : '')));
+                const obs = item.observation;
+                if (item.tool === 'read_endpoints' && obs?.readiness) {
+                    const counts = obs.readiness;
+                    section.append(node('p', `端点记录 ${obs.endpoint_count} 条 · ready=true ${counts.true} · ready=false ${counts.false} · 未声明 ${counts.unspecified}`));
+                    if (obs.truncated) section.append(node('p', `明细展示 ${obs.slices.length}/${obs.count} 个 EndpointSlice、${obs.shown_endpoint_count}/${obs.endpoint_count} 条端点记录。计数包含全部记录。`));
+                }
+                if (item.tool === 'read_pods' && obs?.truncated) {
+                    section.append(node('p', `Pod 明细展示 ${obs.pods.length}/${obs.count} 个匹配对象。`));
+                }
+                if (item.status === 'error' && obs?.error) section.append(node('p', obs.error));
                 if (item.observation) row.append(node('pre', JSON.stringify(item.observation, null, 2)));
                 section.append(row);
+            }
+            if (turn.missing_tools?.length) {
+                section.append(node('p', '本轮缺少证据 · ' + turn.missing_tools.map(name => labels[name] || name).join('、')));
             }
             if (turn.answer) {
                 const answer = node('div', '');

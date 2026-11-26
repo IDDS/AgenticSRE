@@ -29,7 +29,8 @@ async def test_empty_endpoints_and_failed_reads_are_distinct():
         return {"items": []}
 
     result = await workswarm.read_evidence("read_endpoints", "demo", "frontend", read)
-    assert result == {"count": 0, "slices": []}
+    assert result["count"] == result["endpoint_count"] == 0
+    assert not result["truncated"]
 
     async def empty_slice(*args):
         return {"items": [{"metadata": {"name": "frontend-1"}, "endpoints": None}]}
@@ -39,7 +40,7 @@ async def test_empty_endpoints_and_failed_reads_are_distinct():
 
     async def denied(*args):
         return {"error": "Forbidden"}
-    with pytest.raises(ValueError):
+    with pytest.raises(workswarm.EvidenceUnavailable, match="拒绝读取权限"):
         await workswarm.read_evidence("read_endpoints", "demo", "frontend", denied)
 
 
@@ -85,3 +86,46 @@ def test_session_rejects_overlapping_turn_and_target_change(monkeypatch):
         assert "未取得" in data["turns"][0]["error"]
         assert client.post("/api/workswarm/turn", json={**body, "service": "other"}).status_code == 409
         assert client.post("/api/workswarm/turn", json={**body, "namespace": "invalid namespace"}).status_code == 422
+
+
+def test_endpoint_totals_cover_unshown_slices_and_rows():
+    slices = [{"metadata": {"name": str(i)}, "endpoints": []} for i in range(21)]
+    slices[0]["endpoints"] = [{"conditions": {"ready": True}} for _ in range(30)] + [{}]
+    slices[-1]["endpoints"] = [{"conditions": {"ready": False}}]
+    result = workswarm.endpoint_observation(slices)
+    assert result["readiness"] == {"true": 30, "false": 1, "unspecified": 1}
+    assert result["endpoint_count"] == 32
+    assert result["shown_endpoint_count"] == 30
+    assert result["truncated"]
+    assert len(result["slices"]) == 20
+
+
+def test_latest_failed_endpoint_read_marks_turn_partial(monkeypatch):
+    reads = 0
+
+    async def read(command, namespace):
+        nonlocal reads
+        if command.startswith("get endpointslices"):
+            reads += 1
+            return {"items": []} if reads == 1 else {"error": "Forbidden"}
+        return {"metadata": {"name": "frontend"}, "spec": {}}
+
+    class Client:
+        async def run(self, request, on_tool_call, deadline_seconds):
+            for idx, tool in enumerate(("read_service", "read_endpoints", "read_pods", "read_endpoints")):
+                await on_tool_call({"payload": {"name": tool, "call_id": str(idx), "arguments": {}}})
+            return {"status": "completed", "session_id": "runtime-id", "output": "读取受限"}
+
+    monkeypatch.setattr(workswarm, "process_client", lambda llm: Client())
+    app = FastAPI()
+    app.include_router(workswarm.build_router(lambda: SimpleNamespace(llm=None), lambda llm: True, read))
+    with TestClient(app) as client:
+        response = client.post("/api/workswarm/turn", json={
+            "namespace": "default", "service": "frontend", "question": "复核",
+        })
+        sid = response.json()["session_id"]
+        state = client.get(f"/api/workswarm/sessions/{sid}").json()
+        assert state["status"] == "partial"
+        turn = state["turns"][-1]
+        assert turn["missing_tools"] == ["read_endpoints"]
+        assert turn["evidence"][-1]["observation"] == {"error": "集群拒绝读取权限"}

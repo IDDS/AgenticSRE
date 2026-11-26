@@ -56,22 +56,53 @@ def process_client(llm):
     })
 
 
+class EvidenceUnavailable(ValueError):
+    """Safe diagnostic for display to users and the Agent."""
+
+
+def endpoint_observation(slices):
+    readiness = {"true": 0, "false": 0, "unspecified": 0}
+    sample = []
+    shown = 0
+    for item in slices:
+        endpoints = item.get("endpoints") or []
+        rows = []
+        include_slice = len(sample) < 20
+        for endpoint in endpoints:
+            ready = (endpoint.get("conditions") or {}).get("ready")
+            state = "true" if ready is True else "false" if ready is False else "unspecified"
+            readiness[state] += 1
+            if include_slice and len(rows) < 30:
+                ref = endpoint.get("targetRef") or {}
+                rows.append({"target": ref.get("name"), "target_kind": ref.get("kind"), "ready": ready})
+        if include_slice:
+            shown += len(rows)
+            sample.append({"name": item["metadata"]["name"], "count": len(endpoints), "endpoints": rows})
+    total = sum(readiness.values())
+    return {"count": len(slices), "slices": sample, "readiness": readiness,
+            "endpoint_count": total, "shown_endpoint_count": shown,
+            "truncated": shown < total or len(sample) < len(slices)}
+
+
 async def read_evidence(name, namespace, service, read_json):
     async def read(command):
         result = await read_json(command, namespace)
-        if not isinstance(result, dict) or "error" in result or result.get("status") == "Failure":
-            raise ValueError("集群读取失败")
+        if not isinstance(result, dict):
+            raise EvidenceUnavailable("集群返回了无法解析的数据")
+        if "error" in result or result.get("status") == "Failure":
+            detail = str(result.get("reason") or result.get("error") or "").lower()
+            if "forbidden" in detail:
+                raise EvidenceUnavailable("集群拒绝读取权限")
+            if "notfound" in detail or "not found" in detail:
+                raise EvidenceUnavailable("集群中未找到目标对象")
+            if "timeout" in detail or "timed out" in detail:
+                raise EvidenceUnavailable("集群读取超时")
+            raise EvidenceUnavailable("集群读取失败")
         return result
 
     if name == "read_endpoints":
         result = await read(f"get endpointslices -l kubernetes.io/service-name={service}")
-        slices = result["items"]
-        return {"count": len(slices), "slices": [
-            {"name": item["metadata"]["name"], "count": len(item.get("endpoints") or []),
-             "endpoints": [{"target": (ep.get("targetRef") or {}).get("name"),
-                            "ready": (ep.get("conditions") or {}).get("ready")}
-                           for ep in (item.get("endpoints") or [])[:30]]}
-            for item in slices[:20]]}
+        return endpoint_observation(result["items"])
     resource = await read(f"get service {service}")
     spec = resource["spec"]
     selector = spec.get("selector") or {}
@@ -87,7 +118,7 @@ async def read_evidence(name, namespace, service, read_json):
         raise ValueError("无效的 Service 选择器")
     labels = ",".join(f"{key}={value}" for key, value in sorted(selector.items()))
     pods = (await read(f"get pods -l {labels}"))["items"]
-    return {"selector": selector, "count": len(pods), "pods": [
+    return {"selector": selector, "count": len(pods), "truncated": len(pods) > 30, "pods": [
         {"name": pod["metadata"]["name"], "phase": pod.get("status", {}).get("phase"),
          "ready": next((c.get("status") for c in pod.get("status", {}).get("conditions", [])
                         if c.get("type") == "Ready"), None)} for pod in pods[:30]]}
@@ -145,9 +176,10 @@ def build_router(get_config, configured, read_json):
                         return observation
                 else:
                     observation = await read_evidence(name, session["namespace"], session["service"], read_json)
-            except Exception:
-                record["status"] = "error"
-                return {"error": "读取失败，证据不足"}
+            except Exception as exc:
+                message = str(exc) if isinstance(exc, EvidenceUnavailable) else "工具读取失败，证据不足"
+                record.update(status="error", observation={"error": message})
+                return record["observation"]
             record.update(status="ok", observation=observation)
             return observation
 
@@ -164,18 +196,20 @@ def build_router(get_config, configured, read_json):
             if session["runtime_session"]:
                 request["session_id"] = session["runtime_session"]
             result = await client.run(request, on_tool_call=tool, deadline_seconds=210)
+            latest = {item["tool"]: item["status"] for item in turn["evidence"]}
+            observed = {name for name in CLUSTER_TOOLS if latest.get(name) == "ok"}
+            turn["missing_tools"] = sorted(CLUSTER_TOOLS - observed)
             if result.get("status") != "completed":
                 code = (result.get("error") or {}).get("code", "RUNTIME_ERROR")
                 turn["error"] = f"WorkSwarm 运行失败（{code}）"
-            elif not any(item["status"] == "ok" and item["tool"] in CLUSTER_TOOLS for item in turn["evidence"]):
+            elif not observed:
                 turn["error"] = "本轮未取得集群证据"
             elif not result.get("output"):
                 turn["error"] = "WorkSwarm 未返回诊断结论"
             else:
                 session["runtime_session"] = result["session_id"]
                 turn["answer"] = result["output"]
-                observed = {item["tool"] for item in turn["evidence"] if item["status"] == "ok"}
-                turn["partial"] = not CLUSTER_TOOLS.issubset(observed)
+                turn["partial"] = bool(turn["missing_tools"]) or "error" in latest.values()
         except Exception as exc:
             turn["error"] = f"WorkSwarm 调用失败（{type(exc).__name__}）"
         finally:

@@ -22,3 +22,11 @@ node --check web_app/static/js/app.js
 ```
 
 浏览器复测需要可用的模型配置及只读集群连接。在“WorkSwarm 诊断”填写命名空间与 Service 名称，提交后展开工具记录。用独立的 `kubectl get service`、`kubectl get endpointslices -l kubernetes.io/service-name=<service>` 和按同一选择器筛选 Pod 的读数逐项核对。会话列表中的“已完成”表示本轮诊断结束，目标服务是否健康需查看诊断结论及证据。
+
+## 第二轮部署和证据核对
+
+在远程服务器上，基于现网 Dashboard 的运行版本生成镜像 `agenticsre:workswarm-evidence-20261126-r2`。镜像沿用已验证的 WorkSwarm 运行环境，并保留现网 Dashboard 原有的应用和界面差异。隔离实例使用独立的数据目录和回环地址，启动后通过健康检查。
+
+远程 Chromium 向真实模型发起诊断，集群中的临时 Service 关联一个手工创建的 EndpointSlice，共 32 条端点记录。对照 Kubernetes API 的独立读取，页面正确显示 29 条显式就绪、3 条显式未就绪以及展示明细的 30/32 上限。端点计数按 EndpointSlice 记录计算，可能包含同一 Pod 的多条记录。查询不存在的 Service 时，界面显示“证据不全”并标出 Service 和 Pod 两项读取的缺失原因。测试结束后删除了该命名空间。
+
+自动化测试还覆盖了跨切片汇总、缺少 ready 字段、同一轮先读成功后读失败时的最终状态。界面按本轮每类工具的最后一次结果显示缺失证据。
