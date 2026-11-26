@@ -191,3 +191,81 @@ def test_preview_does_not_block_recheck_or_erase_unknown_rollback(setup, monkeyp
     assert client.post('/api/heal/runs/heal-recheck/rollback',json={'dry_run':True}).status_code==200
     assert appmod._load_heal_runs()[0]['rollback']['status']=='outcome_unknown'
     assert client.post('/api/heal/runs/heal-recheck/verify').status_code==409
+
+
+@pytest.mark.parametrize('change', [
+    {'dry_run': True}, {'status': 'outcome_unknown', 'action_success': None},
+    {'action_success': False}, {'results': []},
+    {'results': [{'ok': True, 'dry_run': True}]},
+    {'results': [{'ok': True, 'outcome_unknown': True}]},
+    {'results': [{'ok': True, 'executed': False}]},
+    {'commands': ['one', 'two']},
+])
+def test_real_rollback_requires_confirmed_forward_execution(setup, monkeypatch, change):
+    client, run = setup
+    undo = 'kubectl scale deployment/api --replicas=0'
+    appmod._save_heal_run({**run, 'rollback_commands': [undo], **change})
+    calls = []
+    monkeypatch.setattr(appmod, '_shell_sync', lambda *args: calls.append(args) or {'ok': True})
+    response = client.post('/api/heal/runs/heal-recheck/rollback', json={'dry_run': False, 'approved': True})
+    assert response.status_code == 409
+    assert calls == []
+
+
+def test_completed_real_rollback_is_idempotent_after_preview(setup, monkeypatch):
+    client, run = setup
+    undo = ['kubectl scale deployment/api --replicas=0', 'kubectl scale deployment/worker --replicas=0']
+    run.update(rollback_commands=undo, commands=['scale api', 'scale worker'], results=[{'ok': True}, {'ok': True}])
+    appmod._save_heal_run(run)
+    calls = []
+    monkeypatch.setattr(appmod, '_shell_sync', lambda command, *args: calls.append(command) or {'ok': True})
+    url = '/api/heal/runs/heal-recheck/rollback'
+    first = client.post(url, json={'dry_run': False, 'approved': True})
+    assert first.status_code == 200 and first.json()['status'] == 'completed'
+    assert client.post(url, json={'dry_run': True}).status_code == 200
+    assert client.post(url, json={'dry_run': False, 'approved': True}).json() == first.json()
+    assert calls == list(reversed(undo))
+
+
+@pytest.mark.parametrize('field,value', [('approved', 'false'), ('dry_run', None), ('dry_run', 0)])
+def test_invalid_rollback_flags_do_not_dispatch(setup, monkeypatch, field, value):
+    client, run = setup
+    run['rollback_commands'] = ['kubectl scale deployment/api --replicas=0']
+    appmod._save_heal_run(run)
+    calls = []
+    monkeypatch.setattr(appmod, '_shell_sync', lambda *args: calls.append(args) or {'ok': True})
+    body = {'dry_run': False, 'approved': True, field: value}
+    assert client.post('/api/heal/runs/heal-recheck/rollback', json=body).status_code == 400
+    assert calls == []
+
+
+def test_failed_probe_cannot_confirm_recovery(setup, monkeypatch):
+    client, _ = setup
+    monkeypatch.setattr(appmod, '_verify_heal_recovery', lambda **kw: {'status': 'verified', 'recovered': True})
+    monkeypatch.setattr(appmod, 'verify_business_recovery', lambda *a, **kw: {
+        'status': 'failed', 'recovered': True, 'verification_scope': 'infrastructure_and_business_http'})
+    run = client.post('/api/heal/runs/heal-recheck/verify').json()
+    assert run['status'] == 'verification_pending'
+    assert run['success'] is None
+
+
+def test_auto_heal_record_shows_late_verification_without_dispatch(setup, monkeypatch):
+    client, run = setup
+    claim = {'source_run_id': 'rca-one', 'heal_run_id': run['id'], 'status': 'verification_pending',
+             'success': None, 'verification': run['verification']}
+    appmod._atomic_write_json(appmod._HEAL_ARTIFACT_DIR / 'auto-rca-one.json', claim)
+    monkeypatch.setattr(appmod, '_verify_heal_recovery', lambda **kw: {'status': 'verified', 'recovered': True})
+    monkeypatch.setattr(appmod, 'verify_business_recovery', lambda *a, **kw: {
+        'status': 'verified', 'recovered': True, 'verification_scope': 'infrastructure_and_business_http'})
+    checked = client.post('/api/heal/runs/heal-recheck/verify').json()
+    assert checked['status'] == 'succeeded'
+    shown = client.get('/api/rca/rca-one/auto-heal').json()
+    assert shown['status'] == checked['status'] and shown['verification'] == checked['verification']
+
+
+@pytest.mark.parametrize('field', ['approved', 'risk_ack', 'dry_run', 'auto_execute'])
+def test_execute_requires_boolean_flags_before_planning(setup, field):
+    client, _ = setup
+    response = client.post('/api/heal/execute', json={field: 'false'})
+    assert response.status_code == 400
+    assert field in response.json()['detail']

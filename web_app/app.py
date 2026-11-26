@@ -12878,10 +12878,19 @@ def _execute_ontology_command(command: str, context: Dict[str, Any], proposal_id
                 "outcome_unknown": persistence_error or not bool(result.get("ok"))}
 
 
+def _validate_heal_flags(body: Dict[str, Any], *fields: str) -> None:
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Expected a JSON object")
+    for field in fields:
+        if field in body and type(body[field]) is not bool:
+            raise HTTPException(400, f"{field} must be a JSON boolean")
+
+
 @app.post("/api/heal/execute")
 async def heal_execute(request: Request):
     """Execute user-confirmed self-healing commands, defaulting to dry-run."""
     body = await request.json()
+    _validate_heal_flags(body, "dry_run", "approved", "risk_ack", "auto_execute")
     ontology = _bind_ontology_heal_input(body, execution=True,
         guarded_skill=isinstance(request, _GuardedHealRequest))
     cfg = _get_config()
@@ -13148,7 +13157,7 @@ async def _guarded_auto_recovery(run_id: str) -> Dict[str, Any]:
                 if not isinstance(claim, dict) or claim.get("source_run_id") != run_id:
                     raise ValueError("invalid claim")
                 return ({**claim, "status": "outcome_unknown", "reason": "interrupted_attempt_requires_reconciliation"}
-                        if claim.get("status") in {"preparing", "dispatching"} else claim)
+                        if claim.get("status") in {"preparing", "dispatching"} else await _current_auto_heal_result(claim))
             except (ValueError, OSError):
                 raise HTTPException(503, "自动恢复记录不可读取，请人工核对")
         claim = {"source_run_id": run_id, "status": "preparing", "started_at": time.time()}
@@ -13316,7 +13325,24 @@ async def rca_guarded_auto_heal_status(run_id: str):
         raise HTTPException(503, "自动恢复记录不可读取，请人工核对") from exc
     if claim.get("status") in {"preparing", "dispatching"}:
         return {**claim, "outcome_final": False}
-    return claim
+    return await _current_auto_heal_result(claim)
+
+
+async def _current_auto_heal_result(claim: Dict[str, Any]) -> Dict[str, Any]:
+    """Read later verification from the linked run without replaying the action."""
+    if claim.get("status") != "verification_pending" or not claim.get("heal_run_id"):
+        return claim
+    try:
+        run = await heal_run_detail(claim["heal_run_id"])
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return claim
+        raise
+    if (run.get("id") != claim["heal_run_id"] or run.get("dry_run") is not False
+            or run.get("action_success") is not True or not run.get("verification_updated_at")):
+        return claim
+    return {**claim, "status": run["status"], "success": run["success"],
+            "verification": run["verification"], "verification_updated_at": run["verification_updated_at"]}
 
 
 def _reverify_heal_run(run_id: str) -> Dict[str, Any]:
@@ -13365,7 +13391,8 @@ def _reverify_heal_run(run_id: str) -> Dict[str, Any]:
             logger.exception("Recovery recheck failed for %s", run_id)
             verification = {"status": "unknown", "recovered": None, "reason": "verification_error", "checks": []}
         recovered = verification.get("recovered")
-        terminal = verification.get("status") in {"verified", "failed"} and type(recovered) is bool
+        terminal = (verification.get("status") == "verified" and type(recovered) is bool
+                    or verification.get("status") == "failed" and recovered is False)
         if not terminal:
             verification = {**verification, "recovered": None}
         run["verification_history"] = [*(run.get("verification_history") or []),
@@ -13399,8 +13426,9 @@ def _heal_run_rollback_locked(run_id: str, body: Dict[str, Any]):
 
 def _heal_run_rollback_sync(run_id: str, body: Dict[str, Any]):
     """Run recorded rollback commands for a healing run."""
-    dry_run = bool(body.get("dry_run", True))
-    approved = bool(body.get("approved"))
+    _validate_heal_flags(body, "dry_run", "approved")
+    dry_run = body.get("dry_run", True)
+    approved = body.get("approved") is True
     run = None
     for item in _load_heal_runs():
         if item.get("id") == run_id:
@@ -13420,8 +13448,20 @@ def _heal_run_rollback_sync(run_id: str, body: Dict[str, Any]):
     if not dry_run and not approved:
         raise HTTPException(400, "Rollback execution requires approved=true")
     if not dry_run:
-        if (run.get("rollback") or {}).get("status") in {"running", "outcome_unknown"}:
+        previous = run.get("rollback")
+        if previous and previous.get("dry_run") is not True:
+            if previous.get("status") == "completed" and previous.get("success") is True:
+                return previous
             raise HTTPException(409, "Previous rollback outcome is unknown; inspect before retrying")
+        forward = run.get("commands")
+        results = run.get("results")
+        if (run.get("dry_run") is not False or run.get("action_success") is not True
+                or not isinstance(forward, list) or not isinstance(results, list)
+                or len(commands) != len(forward) or len(results) != len(forward)
+                or any(not isinstance(step, dict) or step.get("ok") is not True
+                       or step.get("dry_run") or step.get("outcome_unknown") or step.get("executed") is False
+                       or step.get("index", index) != index for index, step in enumerate(results))):
+            raise HTTPException(409, "完整动作和对应的执行成功记录缺失，请人工核对后回退。")
         run["rollback"] = {"status": "running", "dry_run": False,
                            "started_at": time.time(), "results": [], "success": None}
         _save_heal_run(run)  # Fail closed before the first remote write.
