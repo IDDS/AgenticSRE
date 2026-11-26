@@ -74,11 +74,11 @@ COPY tools/ ./tools/
 COPY scripts/validate_persistent_data.py scripts/verify_workswarm_runtime.py ./scripts/
 COPY vllm_fault_injector/ ./vllm_fault_injector/
 COPY web_app/ ./web_app/
-COPY *.py ./
+COPY *.py run_mcp.sh ./
 COPY README.md USER_MANUAL.md AGENTS.md ./
 
 RUN python -m compileall -q /app \
-    && python -c "import fastapi, kubernetes, openai, pandas, sqlite3; import chromadb, web_app.app; print('AgenticSRE offline image verified')" \
+    && python -c "import fastapi, kubernetes, openai, pandas, sqlite3; import chromadb, mcp_server, web_app.app; print('AgenticSRE offline image verified')" \
     && for tool in curl dig ip jq mysql nc openssl pgrep ping psql redis-cli ssh kubectl; do command -v "$tool" >/dev/null; done \
     && python /app/scripts/validate_persistent_data.py --path /app/data --allow-missing
 

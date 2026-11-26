@@ -118,6 +118,26 @@ for service in agenticsre agenticsre-skill-runtime; do
     [ "${healthy}" = 1 ] || fail "${service} did not become healthy after restart"
 done
 
+docker exec -i agenticsre python - <<'PYTHON'
+import os
+import requests
+
+url = "http://127.0.0.1:8080"
+with requests.Session() as browser:
+    assert browser.get(url + "/api/workswarm/capabilities", timeout=5).status_code == 401
+    login = browser.post(url + "/api/auth/login", json={
+        "username": os.environ["AGENTICSRE_AUTH_USERNAME"],
+        "password": os.environ["AGENTICSRE_AUTH_PASSWORD"],
+    }, timeout=5)
+    login.raise_for_status()
+    assert login.json()["auth_enabled"]
+    assert 'data-view="workswarm"' in browser.get(url + "/", timeout=5).text
+    capabilities = browser.get(url + "/api/workswarm/capabilities", timeout=20)
+    capabilities.raise_for_status()
+    assert capabilities.json()["error"] == "模型未配置"
+print("Offline admin login, dashboard and unconfigured WorkSwarm state OK")
+PYTHON
+
 {
     printf 'result=PASS\n'
     printf 'network=none\n'

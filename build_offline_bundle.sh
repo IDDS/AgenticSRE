@@ -127,7 +127,7 @@ image_arch="$(docker image inspect "${IMAGE_REF}" --format '{{.Architecture}}')"
 
 info "Verifying image contents"
 docker run --rm --platform "linux/${TARGET_ARCH}" --entrypoint python "${IMAGE_REF}" -c \
-    'from pathlib import Path; import fastapi,kubernetes,openai,pandas,sqlite3,chromadb,web_app.app; from chromadb.utils.embedding_functions import DefaultEmbeddingFunction; assert Path("/app/hermes-agent/run_agent.py").is_file(); assert len(DefaultEmbeddingFunction()(["offline verification"])) == 1; print("offline image and embedded database dependencies ok")'
+    'from pathlib import Path; import fastapi,kubernetes,openai,pandas,sqlite3,chromadb,mcp_server,web_app.app; from chromadb.utils.embedding_functions import DefaultEmbeddingFunction; assert Path("/app/hermes-agent/run_agent.py").is_file(); assert len(DefaultEmbeddingFunction()(["offline verification"])) == 1; print("offline image and embedded database dependencies ok")'
 docker run --rm --platform "linux/${TARGET_ARCH}" --entrypoint bash "${IMAGE_REF}" -ec \
     'for tool in curl dig ip jq mysql nc openssl pgrep ping psql redis-cli ssh kubectl; do command -v "$tool" >/dev/null || { echo "missing runtime tool: $tool" >&2; exit 1; }; done'
 
