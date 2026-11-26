@@ -4554,7 +4554,8 @@ function renderRCAAutoRecovery(record) {
         && record?.verification?.status === 'verified' && record?.verification?.recovered === true;
     const labels = {blocked: '已阻断', preparing: '准备中或已中断，需核对', dispatching: '提交中或结果未确认，需核对',
         outcome_unknown: '结果未知，需核对', failed: '恢复未通过', verification_pending: '动作已执行，恢复待验证',
-        succeeded: verified ? '恢复验证通过' : '恢复状态待核对'};
+        succeeded: verified ? (record.verification.verification_scope === 'infrastructure'
+            ? '基础设施就绪，业务未验证' : '恢复验证通过') : '恢复状态待核对'};
     const blockers = Array.isArray(record?.blockers) ? record.blockers.filter(x => typeof x === 'string') : [];
     const reason = typeof record?.reason === 'string' ? record.reason : '';
     const recoveryId = typeof record?.heal_run_id === 'string' ? record.heal_run_id : '';

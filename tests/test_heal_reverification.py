@@ -269,3 +269,37 @@ def test_execute_requires_boolean_flags_before_planning(setup, field):
     response = client.post('/api/heal/execute', json={field: 'false'})
     assert response.status_code == 400
     assert field in response.json()['detail']
+
+
+@pytest.mark.parametrize('saved', ['complete', 'absent', 'incomplete', 'different_target', 'different_level', 'wrong_version'])
+def test_infrastructure_recheck_requires_original_matching_scope(setup, monkeypatch, saved):
+    from recovery_verification import verification_contract
+
+    client, run = setup
+    contract = verification_contract(profiles=[], cluster_id=run['cluster_id'],
+                                     namespace=run['namespace'], service='api')
+    if saved != 'absent':
+        scope = dict(contract)
+        if saved == 'incomplete':
+            scope['verification_contract_complete'] = False
+        if saved == 'wrong_version':
+            scope['verification_contract_version'] = 'unknown'
+        if saved == 'different_level':
+            scope['verification_level'] = 'http_headers'
+        if saved == 'different_target':
+            scope = verification_contract(profiles=[], cluster_id=run['cluster_id'],
+                                          namespace=run['namespace'], service='other')
+        run['recovery_history_scope'] = scope
+    appmod._save_heal_run(run)
+    monkeypatch.setattr(appmod, '_verify_heal_recovery', lambda **kw: {'status':'verified', 'recovered':True})
+    for _ in range(1 if saved == 'complete' else 2):
+        response = client.post('/api/heal/runs/heal-recheck/verify')
+        assert response.status_code == 200
+        result = response.json()
+        assert result['recovery_history_record']['recorded'] is False
+        if saved == 'complete':
+            assert result['status'] == 'succeeded' and result['success'] is True
+            assert result['verification']['verification_scope'] == 'infrastructure'
+            assert result['verification']['verification_fingerprint'] == contract['verification_fingerprint']
+        else:
+            assert result['status'] == 'verification_pending' and result['success'] is None

@@ -13398,10 +13398,21 @@ def _reverify_heal_run(run_id: str) -> Dict[str, Any]:
             elif expected_contract and not valid_verification_fingerprint(expected_contract):
                 verification = {**verification, 'status': 'unknown', 'recovered': None,
                                 'reason': 'verification_contract_invalid'}
-            # Never downgrade a prior business requirement to infrastructure-only success.
             if verification.get("recovered") is True and verification.get("verification_scope") != "infrastructure_and_business_http":
-                verification = {**verification, "status": "unknown", "recovered": None,
-                                "reason": "business_probe_required_for_reverification"}
+                # Only the original plan can authorize an infrastructure-only recheck.
+                # A previous observation may itself have been collected after configuration drift.
+                same_infrastructure_contract = (
+                    verification.get("verification_scope") == "infrastructure"
+                    and valid_verification_fingerprint(expected_contract)
+                    and saved_scope.get("verification_fingerprint") == expected_contract == verification.get("verification_fingerprint")
+                    and all(scope.get("verification_level") == "infrastructure"
+                            and scope.get("verification_contract_version") == VERIFICATION_CONTRACT_VERSION
+                            and scope.get("verification_contract_complete") is True
+                            for scope in (saved_scope, verification))
+                )
+                if not same_infrastructure_contract:
+                    verification = {**verification, "status": "unknown", "recovered": None,
+                                    "reason": "business_probe_required_for_reverification"}
         except Exception:
             logger.exception("Recovery recheck failed for %s", run_id)
             verification = {"status": "unknown", "recovered": None, "reason": "verification_error", "checks": []}
