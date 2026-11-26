@@ -733,47 +733,76 @@ function badgeClass(phase) {
 // Overview
 // ─────────────────────────────────────────
 
-async function loadOverview() {
-    const [data, nodesData, events] = await Promise.all([
-        api('/api/cluster/overview'),
-        api('/api/cluster/nodes'),
-        api('/api/cluster/events?limit=5'),
-    ]);
+let overviewSnapshotRequest = null;
+let overviewEventsRequest = null;
 
-    if (data) {
-        animateValue('stat-nodes', data.nodes || 0);
-        animateValue('stat-pods', data.pods_total || 0);
-        animateValue('stat-ns', data.namespaces || 0);
+function loadOverview() {
+    if (!overviewSnapshotRequest) {
+        overviewSnapshotRequest = loadOverviewSnapshot().finally(() => { overviewSnapshotRequest = null; });
+    }
+    if (!overviewEventsRequest) {
+        overviewEventsRequest = loadOverviewEvents().finally(() => { overviewEventsRequest = null; });
+    }
+    return Promise.all([overviewSnapshotRequest, overviewEventsRequest]);
+}
+
+async function loadOverviewSnapshot() {
+    const topology = await api('/api/cluster/topology');
+    if (topology) {
+        renderOverviewTopology(topology);
+        renderOverviewNodes(topology.nodes);
+        const phases = {};
+        for (const pod of topology.pods) {
+            const phase = pod.phase || 'Unknown';
+            phases[phase] = (phases[phase] || 0) + 1;
+        }
+        renderPodChart(phases);
+        return;
     }
 
-    if (nodesData?.nodes) {
-        document.getElementById('node-grid').innerHTML = nodesData.nodes.map(n => `
+    // Keep the summary and node cards available if only the topology endpoint fails.
+    await Promise.all([
+        api('/api/cluster/overview').then(data => {
+            if (!data) return;
+            animateValue('stat-nodes', data.nodes);
+            animateValue('stat-pods', data.pods_total);
+            animateValue('stat-ns', data.namespaces);
+            renderPodChart(data.pod_phases);
+        }),
+        api('/api/cluster/nodes').then(data => {
+            if (data?.nodes) renderOverviewNodes(data.nodes);
+        }),
+    ]);
+}
+
+function renderOverviewNodes(nodes) {
+    document.getElementById('node-grid').innerHTML = nodes.map(n => {
+        const ready = n.ready === true || n.ready === 'True';
+        return `
             <div class="node-card">
                 <div class="node-name">${escapeHtml(n.name)}</div>
                 <div class="node-meta">
-                    <span class="badge badge-${n.ready === 'True' ? 'success' : 'danger'}">${n.ready === 'True' ? 'Ready' : 'NotReady'}</span>
-                    ${n.roles.map(r => `<span class="badge badge-info">${r}</span>`).join(' ')}
+                    <span class="badge badge-${ready ? 'success' : 'danger'}">${ready ? 'Ready' : 'NotReady'}</span>
+                    ${n.roles.map(r => `<span class="badge badge-info">${escapeHtml(r)}</span>`).join(' ')}
                 </div>
-                <div class="node-meta" style="margin-top:4px">CPU: ${n.cpu} | Mem: ${n.memory} | ${n.version}</div>
+                <div class="node-meta" style="margin-top:4px">CPU: ${escapeHtml(n.cpu)} | Mem: ${escapeHtml(n.memory)} | ${escapeHtml(n.version || '')}</div>
             </div>
-        `).join('');
-    }
+        `;
+    }).join('');
+}
 
-    if (events?.events) {
-        const warnings = events.events.filter(e => e.type === 'Warning');
-        document.getElementById('alert-preview').innerHTML = warnings.length
-            ? warnings.map(e => `
-                <div class="signal-item">
-                    <span><span class="badge badge-warning">${e.reason}</span> ${escapeHtml(e.message?.substring(0, 100) || '')}</span>
-                    <span class="text-muted">${e.object}</span>
-                </div>
-            `).join('')
-            : '<p class="text-muted" style="padding:12px">暂无告警</p>';
-    }
-
-    // Load topology + pod chart
-    loadTopology();
-    if (data?.pod_phases) renderPodChart(data.pod_phases);
+async function loadOverviewEvents() {
+    const data = await api('/api/cluster/events?limit=5');
+    if (!data?.events) return;
+    const warnings = data.events.filter(e => e.type === 'Warning');
+    document.getElementById('alert-preview').innerHTML = warnings.length
+        ? warnings.map(e => `
+            <div class="signal-item">
+                <span><span class="badge badge-warning">${escapeHtml(e.reason)}</span> ${escapeHtml(e.message?.substring(0, 100) || '')}</span>
+                <span class="text-muted">${escapeHtml(e.object)}</span>
+            </div>
+        `).join('')
+        : '<p class="text-muted" style="padding:12px">暂无告警</p>';
 }
 
 function animateValue(elemId, target) {
@@ -840,9 +869,7 @@ function _nsColor(ns, nsList) {
     return NS_COLORS[idx % NS_COLORS.length];
 }
 
-async function loadTopology() {
-    const data = await api('/api/cluster/topology');
-    if (!data) return;
+function renderOverviewTopology(data) {
     _topo.topoData = data;
 
     const s = data.summary || {};

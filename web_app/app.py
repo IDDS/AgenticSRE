@@ -9667,6 +9667,7 @@ async def cluster_topology(cluster_id: str = ""):
             "roles": roles,
             "ready": ready,
             "is_faulty": not ready,
+            "version": status.get("nodeInfo", {}).get("kubeletVersion", ""),
             "cpu": status.get("capacity", {}).get("cpu", ""),
             "memory": status.get("capacity", {}).get("memory", ""),
         })
