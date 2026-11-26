@@ -3379,6 +3379,7 @@ function renderAlertHealPanelHtml(result, index) {
                     ${available ? `<button class="btn btn-sm btn-primary" onclick="openHealPlanFromAlert(${index})">查看/编辑方案</button>` : ''}
                     ${available ? `<button class="btn btn-sm" onclick="dryRunHealFromAlert(${index})">快速 Dry-run</button>` : ''}
                     <button class="btn btn-sm" onclick="startRCAFromAlert(${index})">先做 RCA</button>
+                    ${a?.service && a?.namespace && a?.cluster_id ? `<button class="btn btn-sm" onclick="startRCAFromAlert(${index}, 'workswarm')">WorkSwarm 服务取证</button>` : ''}
                     <button class="btn btn-sm" onclick="switchView('healcenter')">自愈中心</button>
                 </div>
             </div>
@@ -4120,7 +4121,7 @@ function updateSourceFilterButtons(sourcesEnabled) {
     });
 }
 
-function startRCAFromAlert(index) {
+function startRCAFromAlert(index, runtime = 'multi_agent') {
     const a = _filteredAlerts[index];
     if (!a) return;
     const query = `[${(a.severity || 'warning').toUpperCase()}] ${a.title || ''} — ${a.description || ''} (service=${a.service || ''}, namespace=${a.namespace || ''})`;
@@ -4128,25 +4129,54 @@ function startRCAFromAlert(index) {
     switchView('rca');
     document.getElementById('rca-query').value = query;
     document.getElementById('rca-ns').value = a.namespace || '';
-    startRCA();
+    if (runtime === 'workswarm') {
+        document.getElementById('rca-runtime').value = runtime;
+        document.getElementById('rca-ws-service').value = a.service;
+        document.getElementById('rca-ws-cluster').value = a.cluster_id;
+        updateRCARuntime();
+    }
+    startRCA(null, runtime);
 }
 
 // ─────────────────────────────────────────
 // RCA
 // ─────────────────────────────────────────
 
-async function startRCA(alertGroup = null) {
-    state.rcaHistoryGeneration = (state.rcaHistoryGeneration || 0) + 1;
-    if (state.rcaEventSource) state.rcaEventSource.close();
+function updateRCARuntime() {
+    document.getElementById('rca-workswarm-target').hidden = document.getElementById('rca-runtime').value !== 'workswarm';
+}
+
+async function startRCA(alertGroup = null, runtimeOverride = '') {
     const query = document.getElementById('rca-query').value.trim();
     const ns = document.getElementById('rca-ns').value.trim();
     if (!query) { alert('请描述故障现象'); return; }
 
-    const data = await api('/api/rca/run', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, namespace: ns, ...(alertGroup ? {alert_group: alertGroup} : {}) }),
-    });
+    const runtime = alertGroup ? 'multi_agent' : (runtimeOverride || document.getElementById('rca-runtime').value);
+    const body = {query, namespace: ns, diagnosis_runtime: runtime};
+    if (alertGroup) body.alert_group = alertGroup;
+    if (runtime === 'workswarm') {
+        body.service = document.getElementById('rca-ws-service').value.trim();
+        body.cluster_id = document.getElementById('rca-ws-cluster').value.trim();
+        if (!body.service) { showToast('请输入目标 Service 名称', 'error'); return; }
+    }
+    const generation = (state.rcaHistoryGeneration || 0) + 1;
+    state.rcaHistoryGeneration = generation;
+    let data;
+    try {
+        data = await api('/api/rca/run', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body), throwOnError: true,
+        });
+    } catch (error) {
+        showToast(error.message || '启动失败', 'error');
+        return;
+    }
+    if (generation !== state.rcaHistoryGeneration) return;
     if (!data?.run_id) { alert('启动失败'); return; }
+    if (state.rcaEventSource) state.rcaEventSource.close();
+    document.getElementById('rca-runtime').value = runtime;
+    updateRCARuntime();
+    if (runtime === 'workswarm') _activeRCAAlertKey = null;
 
     state.rcaRunId = data.run_id;
     const progress = document.getElementById('rca-progress');
@@ -4184,7 +4214,10 @@ async function startRCA(alertGroup = null) {
             else if (msg.type === 'done') { sse.close(); renderRCAFinalResult(msg.result); loadRCAHistory({reset:true}); }
         } catch {}
     };
-    sse.onerror = () => { sse.close(); };
+    sse.onerror = () => {
+        sse.close();
+        if (state.rcaRunId === data.run_id) pollRCAHistoryRun(data.run_id, runtime, generation);
+    };
 }
 
 function handleRCAEvent(evt) {
@@ -4424,6 +4457,16 @@ function renderRCAFinalResult(result) {
 
     if (!result) { content.innerHTML = '<p class="text-danger">未获取到结果</p>'; return; }
 
+    if (result.diagnosis_runtime === 'workswarm') {
+        const labels = {completed: '取证完成', partial: '证据不全', error: '诊断失败'};
+        content.innerHTML = `<h4>openJiuwen / WorkSwarm · ${escapeHtml(labels[result.workswarm_status] || '待复核')}</h4>
+            <p>${escapeHtml([result.cluster_id, result.namespace, result.service].filter(Boolean).join('/'))}</p>
+            <div>${renderSimpleMarkdown(result.answer || result.error || '')}</div>
+            ${(result.tool_evidence || []).map(row => `<details><summary>${escapeHtml(row.tool)} · ${row.status === 'ok' ? '已读取' : '读取失败'}</summary>
+                <pre>${escapeHtml(JSON.stringify(row.observation || {}, null, 2))}</pre></details>`).join('')}
+            ${result.missing_tools?.length ? `<p>缺少证据 · ${escapeHtml(result.missing_tools.join('、'))}</p>` : ''}`;
+        return;
+    }
     const status = result.status || 'unknown';
     const inner = result.result || result;
     const contextMeta = result.history_retrieval || inner.history_retrieval
@@ -5153,7 +5196,7 @@ function renderRCAHistoryList() {
         <div class="signal-item" role="button" tabindex="0" data-rca-run-id="${escapeHtmlAttr(r.id || '')}"
              onclick="openRCAHistoryRun(this.dataset.rcaRunId)"
              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openRCAHistoryRun(this.dataset.rcaRunId)}">
-            <span><span class="badge badge-${r.status === 'completed' ? 'success' : r.status === 'running' ? 'warning' : 'danger'}">${escapeHtml(statusLabel(r.status))}</span> ${escapeZh(r.query?.substring(0, 80) || '')}
+            <span><span class="badge badge-${r.status === 'completed' ? 'success' : r.status === 'running' ? 'warning' : 'danger'}">${escapeHtml(r.workswarm_status === 'partial' ? '证据不全' : statusLabel(r.status))}</span> ${r.diagnosis_runtime === 'workswarm' ? 'WorkSwarm · ' + escapeHtml(r.service) + ' · ' : ''}${escapeZh(r.query?.substring(0, 80) || '')}
                 <small class="text-muted">${escapeHtml(r.id || '')}${r.namespace ? ' · ' + escapeHtml(r.namespace) : ''}${r.cluster_id ? ' · ' + escapeHtml(r.cluster_id) : ''}</small></span>
             <span class="text-muted">${formatTime(r.started_at ? r.started_at * 1000 : null)}</span>
         </div>
@@ -5308,6 +5351,14 @@ async function openRCAHistoryRun(runId, mode = '') {
         showToast('RCA 工作流加载失败', 'error');
         return;
     }
+    const selector = document.getElementById('rca-runtime');
+    if (selector) {
+        selector.value = run.diagnosis_runtime === 'workswarm' ? 'workswarm' : 'multi_agent';
+        updateRCARuntime();
+        document.getElementById('rca-ws-service').value = run.service || '';
+        document.getElementById('rca-ws-cluster').value = run.cluster_id || '';
+    }
+    if (query) query.value = run.query || '';
     replayRCAWorkflowRun(run, mode);
     loadRCAHistory();
     if (!['completed', 'failed', 'cancelled', 'expired'].includes(run.status)) {

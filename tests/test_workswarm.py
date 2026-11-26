@@ -151,3 +151,73 @@ def test_process_omits_empty_proxy_overrides_only_in_child(monkeypatch, tmp_path
     assert client.env["http_proxy"] == "http://proxy.example:8080"
     assert client.env["NO_PROXY"] == "localhost"
     assert os.environ["HTTPS_PROXY"] == " "
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tools_used,status", [
+    (("read_service", "read_endpoints", "read_pods"), "completed"),
+    (("read_service",), "partial"), ((), "error"),
+])
+async def test_rca_workswarm_preserves_scope_evidence_and_history(monkeypatch, tmp_path, tools_used, status):
+    import json
+    import httpx
+    import web_app.app as dashboard
+
+    cfg = SimpleNamespace(llm=None, remediation=SimpleNamespace(auto_loop_enabled=True))
+    monkeypatch.setattr(dashboard, "_get_config", lambda: cfg)
+    monkeypatch.setattr(dashboard, "_llm_configured", lambda llm: True)
+    monkeypatch.setattr(dashboard, "_find_k8s_cluster", lambda cid: {"context": "east-context"} if cid == "east" else None)
+    monkeypatch.setattr(dashboard, "_RCA_HISTORY_FILE", tmp_path / "history.json")
+    monkeypatch.setitem(dashboard._state, "rca_runs", {})
+    monkeypatch.setitem(dashboard._state, "rca_dedup", {})
+    calls = []
+
+    def shell(command, timeout, cluster):
+        assert "--context=east-context" in command and "-n shop -o json" in command
+        calls.append(command)
+        result = {"items": []} if "endpointslices" in command else {"metadata": {"name": "cart"}, "spec": {}}
+        return {"ok": True, "stdout": json.dumps(result)}
+
+    class Client:
+        async def run(self, request, on_tool_call, deadline_seconds):
+            assert {row["name"] for row in request["host_tools"]} == workswarm.CLUSTER_TOOLS
+            with pytest.raises(ValueError):
+                await on_tool_call({"payload": {"name": "run_diagnostic_skill"}})
+            for name in tools_used:
+                await on_tool_call({"payload": {"name": name, "call_id": name}})
+            return {"status": "completed", "session_id": "private-sdk-id", "output": "取证记录"}
+
+    runtime = workswarm.WorkSwarmRuntime(lambda: cfg, lambda llm: True, None, dashboard._workswarm_cluster_reader)
+    monkeypatch.setattr(workswarm, "process_client", lambda llm: Client())
+    monkeypatch.setattr(dashboard, "_workswarm_runtime", runtime)
+    monkeypatch.setattr(dashboard, "_shell_sync", shell)
+    transport = httpx.ASGITransport(app=dashboard.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        body = {"query": "检查端点", "namespace": "shop", "service": "cart", "cluster_id": "east",
+                "diagnosis_runtime": "workswarm"}
+        for invalid in ({"service": "bad name"}, {"skill_workflow": {}}, {"query": " "},
+                        {"cluster_id": "unknown"}, {"diagnosis_runtime": "unknown"}):
+            assert (await client.post("/api/rca/run", json={**body, **invalid})).status_code in (400, 422)
+        assert not dashboard._state["rca_runs"]
+        reply = await client.post("/api/rca/run", json=body)
+        assert reply.status_code == 200, reply.text
+        run_id = reply.json()["run_id"]
+        stream = (await client.get(f"/api/rca/{run_id}/stream")).text
+        done = [json.loads(line[6:]) for line in stream.splitlines() if line.startswith("data: ")][-1]
+        history = (await client.get("/api/rca/history", params={"q": "cart"})).json()["runs"]
+        assert [(row["id"], row["diagnosis_runtime"], row["workswarm_status"]) for row in history] == [
+            (run_id, "workswarm", status)]
+        record = (await client.get(f"/api/rca/{run_id}")).json()
+        result = record["result"]
+        assert done["type"] == "done" and result == done["result"]
+        assert record["guarded_auto_recovery"] is False and result["automation_gate"]["allowed"] is False
+        assert record["status"] == ("failed" if status == "error" else "completed")
+        assert result["missing_tools"] == sorted(workswarm.CLUSTER_TOOLS - set(tools_used))
+        assert [row["tool"] for row in result["tool_evidence"]] == list(tools_used)
+        assert all(row["status"] == "ok" for row in result["tool_evidence"])
+        assert len(calls) == len(tools_used)
+        assert (await client.post(f"/api/rca/{run_id}/auto-heal")).json()["status"] == "blocked"
+        assert (await client.post(f"/api/rca/{run_id}/remediation/approve")).status_code == 400
+        assert (await client.post(f"/api/rca/{run_id}/remediation/rollback")).status_code == 409
+        stored = dashboard._RCA_HISTORY_FILE.read_text()
+        assert "private-sdk-id" not in stored and json.loads(stored)[0]["result"] == result

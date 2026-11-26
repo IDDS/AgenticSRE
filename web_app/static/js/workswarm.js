@@ -11,9 +11,16 @@ const workSwarm = (() => {
     let ready = false;
     let busy = false;
     let timer;
+    let toolNames = [], clusterTools = [];
+    function showTools() {
+        const tools = form.elements.cluster_id.value.trim() ? clusterTools : toolNames;
+        byId('ws-tools').textContent = tools.map(name => labels[name] || name).join('、');
+    }
+    form.elements.cluster_id.oninput = showTools;
     function controls() {
+        showTools();
         byId('ws-send').disabled = busy || !ready;
-        form.elements.namespace.readOnly = form.elements.service.readOnly = Boolean(selected) || busy;
+        form.elements.cluster_id.readOnly = form.elements.namespace.readOnly = form.elements.service.readOnly = Boolean(selected) || busy;
         byId('ws-new').disabled = history.disabled = busy;
     }
     function options() {
@@ -35,6 +42,7 @@ const workSwarm = (() => {
         return response.json();
     }
     function render(session) {
+        form.elements.cluster_id.value = session.cluster_id || '';
         form.elements.namespace.value = session.namespace;
         form.elements.service.value = session.service;
         const turns = byId('ws-turns');
@@ -117,7 +125,7 @@ const workSwarm = (() => {
             const data = await request('turn', {method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(body)});
             selected = data.session_id;
-            recent = [{id: selected, target: body.namespace + '/' + body.service},
+            recent = [{id: selected, target: [body.cluster_id, body.namespace, body.service].filter(Boolean).join('/')},
                 ...recent.filter(item => item.id !== selected)].slice(0, 20);
             try { sessionStorage.setItem(key, JSON.stringify(recent)); } catch {}
             options();
@@ -136,7 +144,8 @@ const workSwarm = (() => {
             ready = data.available;
             byId('ws-runtime').textContent = ready ? '运行时已连接' : data.error;
             byId('ws-model').textContent = '模型 · ' + (data.model || '未配置');
-            byId('ws-tools').textContent = (data.tools || []).map(name => labels[name] || name).join('、');
+            toolNames = data.tools || [];
+            clusterTools = data.cluster_tools || [];
         } catch (error) {
             ready = false;
             byId('ws-runtime').textContent = error.message;

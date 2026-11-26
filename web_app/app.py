@@ -53,7 +53,8 @@ from diagnostic_strategy import strategy_view
 from integrations.aishperf import AISHPerfCatalog, build_aiops_eval_summary
 from integrations.hermes_skill_runtime import HERMES_SKILL_TOOL_NAMES, HERMES_SKILL_TOOLSET, skill_tool_name
 from skill_runtime.detail import skill_catalog_item_from_definition, skill_detail_from_definition
-from web_app.workswarm import build_router as build_workswarm_router
+from pydantic import ValidationError
+from web_app.workswarm import WorkSwarmRuntime, Turn as WorkSwarmTurn, build_router as build_workswarm_router
 from skill_runtime.kubectl_safety import readonly_kubectl_args
 from skill_runtime.runtime_evidence import cuda_runtime_evidence, has_abnormal_container_termination
 from vllm_fault_injector.k8s_utils import build_label_selector
@@ -3303,6 +3304,10 @@ def _load_rca_history():
                         result={"status": "failed", "error_code": "process_interrupted",
                                 "error": "服务重启导致诊断中断；已保留过程证据，请复核后重新发起。"},
                     )
+                    if run.get("diagnosis_runtime") == "workswarm":
+                        run["result"].update(diagnosis_runtime="workswarm", workswarm_status="error",
+                                             namespace=run.get("namespace"), service=run.get("service"),
+                                             cluster_id=run.get("cluster_id"), automation_gate={"allowed": False})
                 _state["rca_runs"][run["id"]] = run
             _save_rca_history()
             logger.info(f"Loaded {len(data)} RCA runs from disk")
@@ -11438,6 +11443,23 @@ def _resolve_agent_skill_llm_timeout(configured_timeout: Any, requested_timeout:
 async def rca_run(request: Request):
     """Trigger an RCA pipeline."""
     body = await request.json()
+    runtime = body.get("diagnosis_runtime", "multi_agent")
+    if runtime not in ("multi_agent", "workswarm"):
+        raise HTTPException(422, "不支持的诊断运行时")
+    ws_turn = None
+    if runtime == "workswarm":
+        if any(body.get(key) is not None for key in ("skill_workflow", "alert_group", "initial_evidence")):
+            raise HTTPException(422, "WorkSwarm 服务诊断需要独立的目标和问题")
+        try:
+            ws_turn = WorkSwarmTurn(namespace=body.get("namespace") or "default",
+                                    service=body.get("service"), cluster_id=body.get("cluster_id") or "",
+                                    question=body.get("query"))
+        except ValidationError as exc:
+            raise HTTPException(422, "请填写有效的命名空间、Service 名称和诊断问题") from exc
+        body["namespace"] = ws_turn.namespace
+        body["query"] = ws_turn.question.strip()
+        if not body["query"]:
+            raise HTTPException(422, "请输入诊断问题")
     group_ref = body.get("alert_group")
     if group_ref is not None:
         if not isinstance(group_ref, dict) or body.get("skill_workflow"):
@@ -11467,7 +11489,7 @@ async def rca_run(request: Request):
         raise HTTPException(400, "Missing 'query' field")
 
     cfg = _get_config()
-    guarded_auto_recovery = getattr(cfg.remediation, "auto_loop_enabled", False) is True
+    guarded_auto_recovery = ws_turn is None and getattr(cfg.remediation, "auto_loop_enabled", False) is True
     if skill_workflow and guarded_auto_recovery:
         skill_workflow = copy.deepcopy(skill_workflow)
         skill_workflow.update(dry_run=True, stages=["detect", "diagnose"])
@@ -11478,6 +11500,8 @@ async def rca_run(request: Request):
         )
 
     dedup_key = str(body.get("dedup_key") or "").strip()
+    if ws_turn and dedup_key:
+        dedup_key = json.dumps(["workswarm", ws_turn.cluster_id, ws_turn.namespace, ws_turn.service, dedup_key])
     with _RCA_RUN_DEDUP_LOCK:
         existing_run_id = _state["rca_dedup"].get(dedup_key) if dedup_key else None
         existing_run = _state["rca_runs"].get(existing_run_id) if existing_run_id else None
@@ -11491,6 +11515,8 @@ async def rca_run(request: Request):
             "namespace": namespace,
             "cluster_id": cluster_id,
             "cluster_kind": _cluster_kind(cluster) if cluster else "",
+            "diagnosis_runtime": "workswarm" if ws_turn else ("agent_skill" if skill_workflow else "multi_agent"),
+            **({"service": ws_turn.service} if ws_turn else {}),
             "guarded_auto_recovery": guarded_auto_recovery,
             "dedup_key": dedup_key,
             "status": "running",
@@ -11506,6 +11532,34 @@ async def rca_run(request: Request):
             if dedup_key:
                 _state["rca_dedup"].pop(dedup_key, None)
             raise HTTPException(503, "无法保存诊断任务，请检查数据目录后重试。")
+
+    if ws_turn:
+        record = _state["rca_runs"][run_id]
+        record["logs"].append(f"WorkSwarm 正在读取 {ws_turn.namespace}/{ws_turn.service} 的集群证据")
+
+        def finish(status, turn):
+            result = {"diagnosis_runtime": "workswarm", "service": ws_turn.service,
+                      "cluster_id": cluster_id, "namespace": ws_turn.namespace,
+                      "status": "failed" if status == "error" else "completed",
+                      "workswarm_status": status, "answer": turn.get("answer", ""),
+                      "tool_evidence": turn.get("evidence", []), "missing_tools": turn.get("missing_tools", []),
+                      "error": turn.get("error"), "diagnosis_status": "requires_review",
+                      "duration_s": round(time.time() - record["started_at"], 2),
+                      "automation_gate": {"allowed": False, "reason": "read_only_workswarm_diagnosis"}}
+            record.update(result=result, status=result["status"], finished_at=time.time())
+            if not _save_rca_history(required_run_id=run_id):
+                record["persistence_error"] = True
+
+        try:
+            session = await _workswarm_runtime.start(ws_turn, finished=finish)
+        except HTTPException as exc:
+            finish("error", {"error": str(exc.detail)})
+            raise
+        except Exception:
+            finish("error", {"error": "WorkSwarm 运行时启动失败"})
+            raise HTTPException(503, "WorkSwarm 运行时启动失败")
+        record["workswarm_session_id"] = session["session_id"]
+        return {"run_id": run_id, "session_id": session["session_id"]}
 
     def log_cb(msg):
         if isinstance(msg, dict):
@@ -11711,11 +11765,13 @@ async def rca_history(response: Response, limit: int = Query(20, ge=1, le=100),
         rows.append({'id': run['id'], 'query': text(run.get('query')),
                      'status': text(run.get('status')) or 'unknown', 'started_at': stamp,
                      'namespace': text(run.get('namespace')), 'cluster_id': text(run.get('cluster_id')),
+                     'diagnosis_runtime': text(run.get('diagnosis_runtime')), 'service': text(run.get('service')),
+                     'workswarm_status': text(result.get('workswarm_status')),
                      'duration_s': result.get('duration_s', 0),
                      'session_id': text(result.get('session_id'))})
     retained_total = len(rows)
     rows = [row for row in rows if not query or any(query in row[field].casefold()
-            for field in ('id', 'query', 'namespace', 'cluster_id'))]
+            for field in ('id', 'query', 'namespace', 'cluster_id', 'service', 'diagnosis_runtime'))]
     rows.sort(key=lambda row: (row['started_at'], row['id']), reverse=True)
     total = len(rows)
     if before is not None:
@@ -21094,7 +21150,28 @@ async def on_startup():
         logger.info(f"LLM configured: model={cfg.llm.model}, base_url={cfg.llm.base_url}")
 
 
-app.include_router(build_workswarm_router(_get_config, _llm_configured, _kubectl_json))
+def _workswarm_cluster_reader(cluster_id):
+    cluster = _find_k8s_cluster(cluster_id)
+    if not cluster or not (cluster.get("context") or _cluster_kubeconfig_path(cluster)):
+        raise HTTPException(422, "所选集群需要有效的 context 或 kubeconfig")
+    # Capture the selected route once so profile changes cannot redirect later tools.
+    argv = [_cluster_kubectl_path(cluster)]
+    if _cluster_kubeconfig_path(cluster):
+        argv.append("--kubeconfig=" + _cluster_kubeconfig_path(cluster))
+    if cluster.get("context"):
+        argv.append("--context=" + cluster["context"])
+
+    async def read(command, namespace):
+        cmd = shlex.join([*argv, *shlex.split(command), "-n", namespace, "-o", "json"])
+        result = await asyncio.to_thread(_shell_sync, cmd, 30, None)
+        if not result.get("ok"):
+            return {"error": result.get("stderr") or "集群读取失败"}
+        return json.loads(result["stdout"])
+    return read
+
+
+_workswarm_runtime = WorkSwarmRuntime(_get_config, _llm_configured, _kubectl_json, _workswarm_cluster_reader)
+app.include_router(build_workswarm_router(_get_config, _llm_configured, _kubectl_json, runtime=_workswarm_runtime))
 
 
 if __name__ == "__main__":

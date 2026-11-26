@@ -36,6 +36,7 @@ TOOL_DEFINITIONS = [
 
 
 class Turn(BaseModel):
+    cluster_id: str = Field(default="", max_length=128)
     namespace: str = Field(pattern=DNS_LABEL)
     service: str = Field(pattern=DNS_LABEL)
     question: str = Field(min_length=1, max_length=4000)
@@ -130,14 +131,17 @@ async def read_evidence(name, namespace, service, read_json):
                         if c.get("type") == "Ready"), None)} for pod in pods[:30]]}
 
 
-def build_router(get_config, configured, read_json):
-    router = APIRouter(prefix="/api/workswarm")
-    sessions = {}
-    tasks = set()
+class WorkSwarmRuntime:
+    def __init__(self, get_config, configured, read_json, cluster_reader=None):
+        self.get_config = get_config
+        self.configured = configured
+        self.read_json = read_json
+        self.cluster_reader = cluster_reader
+        self.sessions = {}
+        self.tasks = set()
 
-    @router.get("/capabilities")
-    async def capabilities():
-        llm = get_config().llm
+    async def capabilities(self):
+        llm = self.get_config().llm
         error = ""
         try:
             client = process_client(llm)
@@ -148,19 +152,22 @@ def build_router(get_config, configured, read_json):
             error = "WorkSwarm SDK 未安装"
         except Exception:
             error = "WorkSwarm 运行时不可用"
-        if not error and not configured(llm):
+        if not error and not self.configured(llm):
             error = "模型未配置"
         return {"available": not error, "error": error, "model": llm.model,
-                "runtime": "openJiuwen / WorkSwarm", "tools": list(TOOLS)}
+                "runtime": "openJiuwen / WorkSwarm", "tools": list(TOOLS),
+                "cluster_tools": [name for name in TOOLS if name in CLUSTER_TOOLS]}
 
-    async def run(session, turn, client, question):
+    async def run(self, session, turn, client, question, read_json, finished):
         skills = HermesSkillRuntimeClient(timeout_s=30, source="workswarm")
+
+        allowed = CLUSTER_TOOLS if session["cluster_id"] else TOOLS
 
         async def tool(event):
             payload = event["payload"]
             name = payload["name"]
             arguments = payload.get("arguments") or {}
-            if name not in TOOLS or (name != "run_diagnostic_skill" and arguments):
+            if name not in allowed or (name != "run_diagnostic_skill" and arguments):
                 raise ValueError("无效的工具调用")
             record = {"tool": name, "call_id": payload["call_id"], "status": "reading"}
             turn["evidence"].append(record)
@@ -193,10 +200,10 @@ def build_router(get_config, configured, read_json):
             request = {
                 "input": f"目标 {session['namespace']}/{session['service']}。用户问题：{question}",
                 "mode": "agent.work.normal",
-                "agent": {"name": "agenticsre-service-diagnosis", "tools": list(TOOLS),
+                "agent": {"name": "agenticsre-service-diagnosis", "tools": [name for name in TOOLS if name in allowed],
                           "instructions": "以中文回答。每轮使用只读工具核对目标 Service、EndpointSlice 和 Pod。"
                                           "先给出结论，再用简短列表引用具体对象和就绪状态，说明证据不足或列表截断。"},
-                "skills": [], "mcp": [], "host_tools": TOOL_DEFINITIONS,
+                "skills": [], "mcp": [], "host_tools": [spec for spec in TOOL_DEFINITIONS if spec["name"] in allowed],
                 "timeout_seconds": 180, "max_turns": 10,
             }
             if session["runtime_session"]:
@@ -216,53 +223,74 @@ def build_router(get_config, configured, read_json):
                 session["runtime_session"] = result["session_id"]
                 turn["answer"] = result["output"]
                 turn["partial"] = bool(turn["missing_tools"]) or "error" in latest.values()
+        except asyncio.CancelledError:
+            turn["error"] = "WorkSwarm 诊断中断"
+            raise
         except Exception as exc:
             turn["error"] = f"WorkSwarm 调用失败（{type(exc).__name__}）"
         finally:
             session["status"] = "error" if turn.get("error") else ("partial" if turn.get("partial") else "completed")
 
-    @router.post("/turn", status_code=202)
-    async def start(body: Turn):
+            if finished is not None:
+                finished(session["status"], turn)
+
+    async def start(self, body: Turn, finished=None):
         question = body.question.strip()
         if not question:
             raise HTTPException(422, "请输入诊断问题")
-        llm = get_config().llm
-        if not configured(llm):
+        llm = self.get_config().llm
+        if not self.configured(llm):
             raise HTTPException(503, "模型未配置")
         try:
             client = process_client(llm)
         except (ImportError, OSError, RuntimeError):
             raise HTTPException(503, "WorkSwarm SDK 或运行时不可用")
-        if len(tasks) >= 4:
+        if len(self.tasks) >= 4:
             raise HTTPException(429, "运行中的诊断已达上限")
         sid = body.session_id
         if sid:
-            session = sessions.get(sid)
+            session = self.sessions.get(sid)
             if not session:
                 raise HTTPException(404, "会话已过期")
-            if session["status"] == "running" or (session["namespace"], session["service"]) != (body.namespace, body.service):
+            target = (session["cluster_id"], session["namespace"], session["service"])
+            if session["status"] == "running" or target != (body.cluster_id, body.namespace, body.service):
                 raise HTTPException(409, "会话忙或诊断对象已改变")
             if len(session["turns"]) >= 20:
                 raise HTTPException(409, "此会话已满，请新建会话")
         else:
-            if len(sessions) >= 100:
-                oldest = next(key for key, item in sessions.items() if item["status"] != "running")
-                del sessions[oldest]
+            read_json = self.read_json
+            if body.cluster_id:
+                if self.cluster_reader is None:
+                    raise HTTPException(422, "此运行时没有配置集群路由")
+                read_json = self.cluster_reader(body.cluster_id)
+            if len(self.sessions) >= 100:
+                oldest = next(key for key, item in self.sessions.items() if item["status"] != "running")
+                del self.sessions[oldest]
             sid = uuid.uuid4().hex
-            session = sessions[sid] = {"namespace": body.namespace, "service": body.service,
-                                       "turns": [], "runtime_session": None}
+            session = self.sessions[sid] = {"cluster_id": body.cluster_id, "namespace": body.namespace, "service": body.service,
+                                           "turns": [], "runtime_session": None, "read_json": read_json}
         turn = {"question": question, "evidence": [], "started": time.time()}
         session["turns"].append(turn)
         session["status"] = "running"
-        task = asyncio.create_task(run(session, turn, client, question))
-        tasks.add(task)
-        task.add_done_callback(tasks.discard)
+        task = asyncio.create_task(self.run(session, turn, client, question, session["read_json"], finished))
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
         return {"session_id": sid}
 
-    @router.get("/sessions/{sid}")
-    async def get_session(sid: str):
-        if sid not in sessions:
+    async def get_session(self, sid: str):
+        if sid not in self.sessions:
             raise HTTPException(404, "会话已过期")
-        return {key: value for key, value in sessions[sid].items() if key != "runtime_session"}
+        return {key: value for key, value in self.sessions[sid].items() if key not in {"runtime_session", "read_json"}}
+
+
+def build_router(get_config, configured, read_json, *, runtime=None):
+    runtime = runtime or WorkSwarmRuntime(get_config, configured, read_json)
+    router = APIRouter(prefix="/api/workswarm")
+    router.add_api_route("/capabilities", runtime.capabilities, methods=["GET"])
+    router.add_api_route("/sessions/{sid}", runtime.get_session, methods=["GET"])
+
+    @router.post("/turn", status_code=202)
+    async def start(body: Turn):
+        return await runtime.start(body)
 
     return router

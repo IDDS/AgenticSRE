@@ -545,8 +545,17 @@
                     <textarea id="rca-query" class="textarea" rows="3" placeholder="描述故障现象，例如：Pod频繁重启，服务延迟增高..."></textarea>
                     <div class="filter-row">
                         <input id="rca-ns" class="input-sm" placeholder="命名空间 (可选)">
+                        <label>诊断方式
+                            <select id="rca-runtime" class="select-sm" onchange="updateRCARuntime()">
+                                <option value="multi_agent">多智能体 RCA</option>
+                                <option value="workswarm">openJiuwen / WorkSwarm 服务诊断</option>
+                            </select>
+                        </label>
+                        <span id="rca-workswarm-target" hidden>
+                            <input id="rca-ws-service" class="input-sm" aria-label="Service 名称" maxlength="63" placeholder="Service 名称">
+                            <input id="rca-ws-cluster" class="input-sm" aria-label="集群配置 ID" maxlength="128" placeholder="集群配置 ID（可选）">
+                        </span>
                         <button class="btn btn-primary" onclick="startRCA()">开始分析</button>
-                        <button class="btn btn-sm" type="button" onclick="switchView('workswarm')">WorkSwarm 服务诊断</button>
                     </div>
                 </div>
             </div>
@@ -2227,7 +2236,7 @@
     </div>
 
     <script src="/static/js/ontology.js?v=6"></script>
-    <script src="/static/js/workswarm.js?v=2"></script>
-    <script src="/static/js/app.js?v=153"></script>
+    <script src="/static/js/workswarm.js?v=3"></script>
+    <script src="/static/js/app.js?v=154"></script>
 </body>
 </html>

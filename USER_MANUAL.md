@@ -424,6 +424,8 @@ rm -rf data/cluster_profiles.json data/memory data/evolution
 
 ### WorkSwarm 服务端点诊断
 
+在 **RCA 分析** 中选择 **openJiuwen / WorkSwarm 服务诊断**，填写 Service、命名空间和问题即可开始。页面显示取证结论、逐项观测与缺失证据。可在 RCA 历史按 Service 名称或 WorkSwarm 搜索并重新打开。这个入口只读取证，不触发自动恢复。指定集群配置 ID 时，只使用该集群的 Service、EndpointSlice 和 Pod 工具。
+
 从主导航进入 **WorkSwarm 诊断**，检查 openJiuwen 运行时和配置中心所选模型，填写目标命名空间、Service 名称和问题。Agent 可读取该 Service、EndpointSlice 和匹配 Pod，也可检索 Skill 或以 dry-run 调用 detect、diagnose 阶段。展开每次工具调用可以核对观测值。三个集群工具均成功返回时，完整诊断显示“已完成”，缺少部分观测时显示“证据不全”。
 
 同一会话可继续追问同一服务。切换目标时选择“新建会话”。最近会话保存在当前浏览器标签页，服务端重启后应新建会话。Hermes 位于“高级工具”中的“智能助手”。
